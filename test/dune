@@ -37,3 +37,7 @@
 (test
  (name test_trpc)
  (libraries kirin kirin.trpc alcotest str unix))
+
+(test
+ (name test_tanstack)
+ (libraries kirin kirin.tanstack alcotest str unix))

@@ -1,0 +1,4 @@
+(library
+ (name kirin_tanstack)
+ (public_name kirin.tanstack)
+ (libraries kirin yojson unix str))

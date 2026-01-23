@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 20 Complete ✅ (All phases through 20)
+## Current Status: Phase 21 Complete ✅ (All phases through 21)
 
-**588 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC)
+**678 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack)
 
 ```
 lib/
@@ -97,6 +97,17 @@ lib/
 │   ├── handler.ml     - Kirin route handler integration
 │   ├── subscription.ml - WebSocket subscriptions
 │   └── codegen.ml     - TypeScript/Zod/JSON Schema generation
+│
+├── TanStack Router (Phase 21)
+│   ├── kirin_tanstack.ml - API facade
+│   ├── route_def.ml      - Route definitions with loaders/actions
+│   ├── file_router.ml    - File-based route discovery
+│   ├── loader.ml         - Data loading (Remix-style)
+│   ├── action.ml         - Form handling and mutations
+│   ├── manifest.ml       - Route manifest generation
+│   ├── preload.ml        - Route preloading hints
+│   ├── handler.ml        - Kirin route handler integration
+│   └── codegen.ml        - TypeScript type generation
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -381,15 +392,19 @@ Three levels of integration:
 - [x] Zod schema generation
 - [x] 74 tRPC tests
 
-### Phase 21: TanStack Router 🛣️
+### Phase 21: TanStack Router ✅ Complete
 **Goal**: 파일 기반 타입 안전 라우팅
 
-- [ ] File-based route discovery
-- [ ] Route manifest generation
-- [ ] Loader/Action pattern (Remix-style)
-- [ ] Type-safe route params
-- [ ] Nested layouts support
-- [ ] Route preloading hints
+- [x] Route definitions with loaders/actions (route_def.ml)
+- [x] File-based route discovery ([id], [...slug], [[opt]], (group))
+- [x] Route manifest generation and JSON serialization
+- [x] Loader pattern (parallel/sequential, redirect, not_found, unauthorized)
+- [x] Action pattern (success, redirect, validation_error, server_error)
+- [x] Type-safe route params (string, int, uuid, slug, optional)
+- [x] Route preloading hints (intent, viewport, render)
+- [x] Kirin handler integration
+- [x] TypeScript code generation (route types, router file, hooks)
+- [x] 90 TanStack Router tests
 
 ### Phase 22: Solid.js SSR 🚀
 **Goal**: React 대안 SSR 지원
@@ -480,7 +495,8 @@ dune exec examples/high_performance/main.exe
 | 18 | React | 58 |
 | 19 | HTMX+ | 38 |
 | 20 | tRPC | 74 |
-| **Total** | | **588** |
+| 21 | TanStack Router | 90 |
+| **Total** | | **678** |
 
 ---
 
