@@ -452,6 +452,46 @@ let stream_to_response = Stream.to_response
 (** Streaming module for advanced use *)
 module Stream = Stream
 
+(** {1 Connection Pool (Phase 9)} *)
+
+(** Generic connection pool for managing expensive resources.
+
+    {[
+      let db_pool = Kirin.Pool.create
+        ~max_size:10
+        ~create:(fun () -> Db.connect url)
+        ~destroy:Db.close
+        ()
+
+      Kirin.Pool.use db_pool (fun conn ->
+        Db.query conn "SELECT * FROM users")
+    ]}
+*)
+module Pool = Pool
+
+(** Pool configuration type *)
+type pool_config = Pool.config = {
+  min_size : int;
+  max_size : int;
+  idle_timeout : float;
+  max_wait_time : float;
+  health_check_interval : float;
+}
+
+(** Default pool configuration *)
+let default_pool_config = Pool.default_config
+
+(** Pool statistics type *)
+type pool_stats = Pool.stats = {
+  total_connections : int;
+  active_connections : int;
+  idle_connections : int;
+  waiting_requests : int;
+  total_acquisitions : int;
+  total_timeouts : int;
+  total_errors : int;
+}
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)
