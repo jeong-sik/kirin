@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 18 Complete ✅ (All phases through 18)
+## Current Status: Phase 19 Complete ✅ (All phases through 19)
 
-**476 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React)
+**514 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX)
 
 ```
 lib/
@@ -78,6 +78,15 @@ lib/
 │   ├── node_worker.ml - Node.js subprocess pool
 │   ├── ssr.ml         - SSR engine
 │   └── streaming.ml   - React 18 streaming SSR
+│
+├── HTMX+ (Phase 19)
+│   ├── kirin_htmx.ml  - API facade
+│   ├── headers.ml     - HTMX response headers
+│   ├── hyperscript.ml - Hyperscript DSL helpers
+│   ├── alpine.ml      - Alpine.js integration
+│   ├── extensions.ml  - HTMX extensions
+│   ├── oob.ml         - Out-of-Band swaps
+│   └── form.ml        - Form helpers
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -333,15 +342,17 @@ Three levels of integration:
 
 ## Future Phases
 
-### Phase 19: HTMX Enhancement 🎯
+### Phase 19: HTMX Enhancement ✅ Complete
 **Goal**: HTMX + Hyperscript + Alpine.js 통합
 
-- [ ] Hyperscript integration (`_="on click..."`)
-- [ ] Alpine.js x-data binding helpers
-- [ ] HTMX extension system (preload, ws, sse)
-- [ ] Form validation with HTMX
-- [ ] Infinite scroll / lazy load helpers
-- [ ] HTMX-specific response headers (HX-Trigger, HX-Push-Url)
+- [x] HTMX response headers (HX-Trigger, HX-Push-Url, HX-Redirect, etc.)
+- [x] Hyperscript DSL helpers (`_="on click..."`)
+- [x] Alpine.js x-data/x-show/x-model/x-bind helpers
+- [x] HTMX extensions (preload, ws, sse, response-targets, loading-states)
+- [x] Out-of-Band (OOB) swap helpers
+- [x] Form generation with HTMX attributes
+- [x] Common patterns (infinite scroll, lazy load, search, click-to-edit)
+- [x] 38 HTMX tests
 
 ### Phase 20: tRPC Integration 🔮
 **Goal**: End-to-end 타입 안전 API
@@ -450,7 +461,8 @@ dune exec examples/high_performance/main.exe
 | 16 | Validation | 60 |
 | 17 | Testing | 44 |
 | 18 | React | 58 |
-| **Total** | | **476** |
+| 19 | HTMX+ | 38 |
+| **Total** | | **514** |
 
 ---
 

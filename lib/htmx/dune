@@ -1,0 +1,4 @@
+(library
+ (name kirin_htmx)
+ (public_name kirin.htmx)
+ (libraries kirin yojson))
