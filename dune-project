@@ -19,19 +19,38 @@
  (name kirin)
  (synopsis "OCaml 5.x Eio-native web framework with Dream-like DX")
  (description
-  "Kirin is an OCaml 5.x web framework built on Eio for direct-style async.\nIt combines Dream's developer experience with Axum's architecture patterns.")
+  "Kirin is a modern OCaml 5.x web framework built on Eio for direct-style async.
+
+Features:
+- Routing with path parameters (/users/:id)
+- Middleware composition (logger, CORS, compression, rate limiting)
+- WebSocket support (RFC 6455)
+- Server-Sent Events (SSE)
+- HTML template engine (Mustache-like syntax)
+- Cookie handling with HMAC signing
+- ETag/304 caching
+- Multipart form parsing (RFC 7578)
+- TLS/HTTPS configuration
+- Response compression (gzip/deflate)")
  (depends
   (ocaml (>= "5.1"))
   (dune (>= "3.16"))
   (eio (>= "1.0"))
   (eio_main (>= "1.0"))
+  (cohttp (>= "5.0"))
   (cohttp-eio (>= "6.0"))
   (yojson (>= "2.0"))
   (uri (>= "4.0"))
+  (mirage-crypto (>= "1.0"))
   (mirage-crypto-rng (>= "1.0"))
+  (cstruct (>= "6.0"))
   (base64 (>= "3.0"))
+  (digestif (>= "1.0"))
+  (decompress (>= "1.5"))
+  (bigstringaf (>= "0.9"))
   (ppx_deriving (>= "5.0"))
   (ppx_deriving_yojson (>= "3.0"))
-  (alcotest :with-test))
+  (alcotest :with-test)
+  (odoc :with-doc))
  (tags
-  (web eio http framework)))
+  (web eio http framework websocket sse templates)))

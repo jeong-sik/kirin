@@ -1,7 +1,22 @@
 (** Kirin - OCaml 5.x Eio-native Web Framework
 
-    Dream의 DX + Axum의 아키텍처 + Eio의 Direct-style
+    Dream's DX + Axum's Architecture + Eio's Direct-style
 
+    {b Features:}
+    - Direct-style async (no Lwt monads)
+    - Type-safe routing with path parameters
+    - Middleware composition using [@@]
+    - WebSocket support (RFC 6455)
+    - Server-Sent Events (SSE)
+    - Mustache-like template engine
+    - HMAC-signed cookies
+    - Multipart form-data parsing
+    - Static file serving
+    - Rate limiting (token bucket)
+    - Gzip/deflate compression
+    - ETag caching
+
+    {b Quick Start:}
     {[
       let () = Kirin.start ~port:8000
         @@ Kirin.logger
@@ -10,8 +25,24 @@
              Kirin.get "/hello/:name" (fun req ->
                let name = Kirin.param "name" req in
                Kirin.html ("Hello, " ^ name ^ "!"));
+             Kirin.get "/api/data" (fun _ ->
+               Kirin.json (`Assoc [("status", `String "ok")]));
            ]
     ]}
+
+    {b Middleware Stack:}
+    {[
+      let () = Kirin.start ~port:8000
+        @@ Kirin.logger      (* Log requests/responses *)
+        @@ Kirin.timing      (* X-Response-Time header *)
+        @@ Kirin.cors ()     (* CORS headers *)
+        @@ Kirin.compress    (* Gzip/deflate *)
+        @@ Kirin.etag        (* ETag caching *)
+        @@ Kirin.rate_limit  (* Rate limiting *)
+        @@ routes
+    ]}
+
+    @see <https://github.com/jeong-sik/kirin> GitHub Repository
 *)
 
 (** {1 Core Types} *)
@@ -396,6 +427,29 @@ let template_interpolate = Template.interpolate
 (** HTML escape string *)
 let html_escape = Template.html_escape
 
+(** {1 TLS/HTTPS Configuration} *)
+
+(** TLS configuration type *)
+type tls_config = Tls_config.t
+
+(** TLS error type *)
+type tls_error = Tls_config.error
+
+(** Create TLS config from certificate and key files *)
+let tls_config = Tls_config.make
+
+(** Create TLS config from PEM strings *)
+let tls_from_pem = Tls_config.from_pem
+
+(** Development TLS config (self-signed, DO NOT USE IN PRODUCTION) *)
+let tls_dev = Tls_config.dev_config
+
+(** Validate TLS config *)
+let tls_validate = Tls_config.validate
+
+(** TLS error to string *)
+let tls_error_string = Tls_config.error_to_string
+
 (** {1 Internal Modules (for advanced use/testing)} *)
 
 module Request = Request
@@ -411,3 +465,4 @@ module Ratelimit = Ratelimit
 module Websocket = Websocket
 module Sse = Sse
 module Template = Template
+module Tls_config = Tls_config
