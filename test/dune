@@ -5,3 +5,7 @@
 (test
  (name test_auth)
  (libraries kirin kirin.auth alcotest str unix))
+
+(test
+ (name test_mcp)
+ (libraries kirin kirin.mcp alcotest str))
