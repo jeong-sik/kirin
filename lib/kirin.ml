@@ -401,6 +401,57 @@ let sse_ping = Sse.ping
 (** Get Last-Event-ID header *)
 let sse_last_id = Sse.last_event_id
 
+(** {1 Streaming I/O (Phase 9)} *)
+
+(** Streaming response for large data
+    Memory-efficient chunked transfer encoding.
+
+    {[
+      let download _req =
+        Kirin.stream_file ~filename:"data.csv" "/path/to/large.csv"
+
+      let generator _req =
+        Kirin.stream (fun yield ->
+          for i = 1 to 1000000 do
+            yield (Printf.sprintf "Line %d\n" i)
+          done)
+    ]}
+*)
+
+(** Create streaming response from a chunk producer *)
+let stream = Stream.response
+
+(** Create streaming file download response *)
+let stream_file = Stream.file_response
+
+(** Create inline file response (displayed in browser) *)
+let stream_file_inline = Stream.file_inline
+
+(** Save uploaded file to disk efficiently *)
+let save_upload = Stream.save_upload
+
+(** Read request body in chunks *)
+let read_chunks = Stream.read_chunks
+
+(** Progress callback for file operations *)
+type progress = Stream.progress_callback = {
+  on_progress : bytes_sent:int -> total_bytes:int option -> unit;
+  on_complete : unit -> unit;
+  on_error : exn -> unit;
+}
+
+(** Create stderr progress reporter *)
+let progress_stderr = Stream.stderr_progress
+
+(** Silent progress (no-op) *)
+let progress_silent = Stream.silent_progress
+
+(** Convert streaming response to regular response (collects all data) *)
+let stream_to_response = Stream.to_response
+
+(** Streaming module for advanced use *)
+module Stream = Stream
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)

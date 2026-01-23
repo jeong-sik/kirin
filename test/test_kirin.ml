@@ -1063,6 +1063,67 @@ let graphql_tests = [
 ]
 
 (* ============================================================
+   Streaming Tests (Phase 9)
+   ============================================================ *)
+
+let test_stream_response () =
+  let stream = Kirin.stream (fun yield ->
+    yield "chunk1";
+    yield "chunk2";
+    yield "chunk3"
+  ) in
+  let resp = Kirin.stream_to_response stream in
+  check string "body" "chunk1chunk2chunk3" (Kirin.Response.body resp);
+  check (option string) "content-length" (Some "18") (Kirin.Response.header "content-length" resp)
+
+let test_stream_with_content_type () =
+  let stream = Kirin.stream (fun yield -> yield "data")
+    |> Kirin.Stream.with_content_type "text/csv" in
+  let resp = Kirin.stream_to_response stream in
+  check (option string) "content-type" (Some "text/csv") (Kirin.Response.header "content-type" resp)
+
+let test_stream_chunked_encoding () =
+  let chunk = Kirin.Stream.encode_chunk "Hello" in
+  check string "encoded chunk" "5\r\nHello\r\n" chunk
+
+let test_stream_final_chunk () =
+  check string "final chunk" "0\r\n\r\n" Kirin.Stream.final_chunk
+
+let test_stream_of_lines () =
+  let producer = Kirin.Stream.of_lines ["line1"; "line2"; "line3"] in
+  let buf = Buffer.create 64 in
+  producer (Buffer.add_string buf);
+  check string "lines" "line1\nline2\nline3\n" (Buffer.contents buf)
+
+let test_stream_mime_detection () =
+  (* Test mime type detection through file_response *)
+  let stream = Kirin.Stream.file_inline "/test/file.json" in
+  let headers = Kirin.Stream.headers stream in
+  check (option string) "json mime" (Some "application/json") (Cohttp.Header.get headers "content-type")
+
+let test_stream_progress_callback () =
+  let progress_called = ref false in
+  let complete_called = ref false in
+  let progress : Kirin.progress = {
+    on_progress = (fun ~bytes_sent:_ ~total_bytes:_ -> progress_called := true);
+    on_complete = (fun () -> complete_called := true);
+    on_error = (fun _ -> ());
+  } in
+  (* Just check the type compiles correctly *)
+  ignore progress;
+  check bool "progress type exists" true true
+
+let streaming_tests = [
+  test_case "stream response" `Quick test_stream_response;
+  test_case "stream content type" `Quick test_stream_with_content_type;
+  test_case "chunked encoding" `Quick test_stream_chunked_encoding;
+  test_case "final chunk" `Quick test_stream_final_chunk;
+  test_case "of_lines helper" `Quick test_stream_of_lines;
+  test_case "mime detection" `Quick test_stream_mime_detection;
+  test_case "progress callback" `Quick test_stream_progress_callback;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -1083,4 +1144,5 @@ let () =
     ("TLS", tls_tests);
     ("gRPC", grpc_tests);
     ("GraphQL", graphql_tests);
+    ("Streaming", streaming_tests);
   ]

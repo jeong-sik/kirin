@@ -1,0 +1,3 @@
+(executable
+ (name main)
+ (libraries kirin eio_main unix))
