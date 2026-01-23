@@ -27,6 +27,7 @@
   caqti-eio
   caqti-eio.unix
   unix
-  threads)
+  threads
+  str)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

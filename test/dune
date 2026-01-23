@@ -9,3 +9,19 @@
 (test
  (name test_mcp)
  (libraries kirin kirin.mcp alcotest str))
+
+(test
+ (name test_openapi)
+ (libraries kirin alcotest str))
+
+(test
+ (name test_i18n)
+ (libraries kirin alcotest str))
+
+(test
+ (name test_validation)
+ (libraries kirin alcotest str))
+
+(test
+ (name test_testing)
+ (libraries kirin alcotest str unix))

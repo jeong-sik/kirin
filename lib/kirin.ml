@@ -922,3 +922,144 @@ module Migrate = Migrate
 
 (** Type-safe SQL query builder *)
 module Query = Query
+
+(** {1 OpenAPI/Swagger (Phase 14)}
+
+    OpenAPI 3.0 specification builder with Swagger UI and ReDoc support.
+
+    {b Quick Example:}
+    {[
+      let spec = Kirin.Openapi.(create
+        ~info:(info ~title:"My API" ~version:"1.0.0"
+          ~description:"A sample API" ())
+        ()
+        |> add_path "/users"
+          ~get:(Operation.get ~summary:"List users"
+            ~responses:[(200, Response.json ~description:"Success"
+              ~schema:(Schema.array (Schema.ref_ "User")) ())]
+            ())
+          ~post:(Operation.post ~summary:"Create user"
+            ~request_body:(RequestBody.json
+              ~schema:(Schema.ref_ "UserInput") ~required:true ())
+            ~responses:[(201, Response.json ~description:"Created"
+              ~schema:(Schema.ref_ "User") ())]
+            ())
+          ()
+        |> add_schema "User" (Schema.object_
+            ~properties:[
+              ("id", Schema.string ());
+              ("name", Schema.string ~min_length:1 ());
+              ("email", Schema.string ~format:"email" ());
+            ]
+            ~required:["id"; "name"] ())
+      ) in
+
+      (* Expose OpenAPI routes *)
+      let routes = Kirin.router [
+        Kirin.get "/openapi.json" (fun _ ->
+          Kirin.json (Kirin.Openapi.to_json spec));
+        Kirin.get "/docs" (fun _ ->
+          Kirin.html (Kirin.Openapi.swagger_ui spec));
+        Kirin.get "/redoc" (fun _ ->
+          Kirin.html (Kirin.Openapi.redoc spec));
+      ]
+    ]}
+
+    @see <Openapi> for full API documentation
+*)
+module Openapi = Openapi
+
+(** {1 Internationalization (Phase 15)}
+
+    Multi-language support with locale detection and translation loading.
+
+    {b Quick Example:}
+    {[
+      let i18n = Kirin.I18n.(create ()
+        |> add_translations "en" [
+             ("greeting", "Hello, {{name}}!");
+             ("items", "{{count}} item(s)");
+           ]
+        |> add_translations "ko" [
+             ("greeting", "안녕하세요, {{name}}님!");
+             ("items", "{{count}}개의 항목");
+           ]) in
+
+      (* Use in handler *)
+      let handler req =
+        let accept_lang = Kirin.header "Accept-Language" req in
+        let t = Kirin.I18n.translator_for_header i18n accept_lang in
+        let msg = t "greeting" ~args:[("name", "World")] () in
+        Kirin.html msg
+
+      (* Pluralization *)
+      let count_msg = Kirin.I18n.translate i18n ~locale:"en" ~count:5 "items"
+    ]}
+
+    @see <I18n> for full API documentation
+*)
+module I18n = I18n
+
+(** {1 Validation (Phase 16)}
+
+    Schema-based request/response validation with clear error messages.
+
+    {b Quick Example:}
+    {[
+      let user_schema = Kirin.Validation.(
+        object_ [
+          field "name" (string ~min_length:1 ~max_length:100 ());
+          field "email" (email ());
+          field "age" (int ~minimum:0 ~maximum:150 ());
+        ] ~required:["name"; "email"]
+      ) in
+
+      let create_user req =
+        let body = Kirin.body req in
+        match Kirin.Validation.validate_body user_schema body with
+        | Ok data -> Kirin.json data
+        | Error errors ->
+          Kirin.json ~status:`Bad_request
+            (Kirin.Validation.errors_to_json errors)
+    ]}
+
+    @see <Validation> for full API documentation
+*)
+module Validation = Validation
+
+(** {1 Testing Utilities (Phase 17)}
+
+    Tools for testing Kirin applications.
+
+    {b Quick Example - Test Request/Response:}
+    {[
+      open Kirin.Testing
+
+      let test_get_users () =
+        let req = Test_request.get "/api/users"
+          |> Test_request.with_header "Authorization" "Bearer token" in
+        let resp = my_handler req in
+        Assert.ok resp;
+        Assert.json resp;
+        Assert.json_path "users[0].name" (`String "Alice") resp
+
+      let test_create_user () =
+        let req = Test_request.post "/api/users"
+          |> Test_request.with_json (`Assoc [("name", `String "Bob")]) in
+        let resp = my_handler req in
+        Assert.created resp
+    ]}
+
+    {b Quick Example - Mock Server:}
+    {[
+      let mock = Mock.create ()
+        |> Mock.on `GET "/api/users"
+            (Test_response.json (`List [`String "Alice"; `String "Bob"]))
+        |> Mock.fallback (Test_response.not_found "Not found") in
+
+      let resp = Mock.handle mock (Test_request.get "/api/users")
+    ]}
+
+    @see <Testing> for full API documentation
+*)
+module Testing = Testing
