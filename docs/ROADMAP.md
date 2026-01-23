@@ -2,7 +2,7 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 12 Complete ✅
+## Current Status: Phase 12 Complete ✅ + Phase 7 Complete ✅
 
 **204 tests passing**
 
@@ -49,10 +49,13 @@ lib/
 │   ├── metrics.ml     - Prometheus metrics
 │   └── shutdown.ml    - Graceful shutdown
 │
-└── Database (Phase 12)
-    ├── db.ml          - Caqti-eio connection pooling
-    ├── migrate.ml     - Version-tracked migrations
-    └── query.ml       - Type-safe query builder
+├── Database (Phase 12)
+│   ├── db.ml          - Caqti-eio connection pooling
+│   ├── migrate.ml     - Version-tracked migrations
+│   └── query.ml       - Type-safe query builder
+│
+└── Browser (Phase 7)
+    └── kirin_browser.ml - Client-side framework (js_of_ocaml)
 ```
 
 ---
@@ -115,13 +118,17 @@ lib/
 - [x] Batched queries
 - [x] 8 GraphQL tests
 
-### Phase 7: Browser/WASM (Partial)
+### Phase 7: Browser/WASM ✅ Complete
 **Goal**: 브라우저에서 실행
 
-- [x] Direct-Style Promise Effects 설계
+- [x] js_of_ocaml 기반 브라우저 모듈 (`kirin.browser`)
+- [x] DOM 조작 (query, create, manipulate, events)
+- [x] Fetch API (GET/POST/PUT/DELETE/PATCH)
+- [x] History API 라우팅 (pushState, popstate)
+- [x] localStorage 지원
+- [x] SSR + Hydration (component registry, data attributes)
+- [x] Timer utilities (setTimeout, setInterval, requestAnimationFrame)
 - [ ] wasm_of_ocaml 지원 (future)
-- [ ] Universal routing
-- [ ] SSR + Hydration
 
 ### Phase 8: MCP Integration ✅ Complete
 **Goal**: AI 에이전트 통합
@@ -213,6 +220,14 @@ lib/
 ├─────────────────────────────────────────────────────────────┤
 │                     Eio Runtime                              │
 │             (OCaml 5.x Effects + Multicore)                 │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                Browser (js_of_ocaml)                         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┬─────────┬─────────┬─────────┬─────────┐       │
+│  │   DOM   │  Fetch  │ History │ Storage │ Hydrate │       │
+│  └─────────┴─────────┴─────────┴─────────┴─────────┘       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
