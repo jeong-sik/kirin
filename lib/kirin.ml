@@ -572,6 +572,23 @@ type job_priority = Jobs.priority =
   | Normal
   | Low
 
+(** {1 Parallel Processing (Phase 9)} *)
+
+(** OCaml 5 Domain-based parallel computation.
+
+    {[
+      (* Parallel map *)
+      let results = Kirin.Parallel.map ~domains:4 process items
+
+      (* Parallel reduce *)
+      let sum = Kirin.Parallel.reduce ~domains:4 ( + ) 0 numbers
+
+      (* Fork-join *)
+      let (a, b) = Kirin.Parallel.both task1 task2
+    ]}
+*)
+module Parallel = Parallel
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)
