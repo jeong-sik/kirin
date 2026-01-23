@@ -719,3 +719,97 @@ module Graphql = Graphql_adapter
     @see <Mcp_adapter> for full API documentation
 *)
 module Mcp = Mcp_adapter
+
+(** {1 Health Checks (Phase 10)} *)
+
+(** Kubernetes-style health check endpoints.
+
+    {b Quick Example:}
+    {[
+      let health = Kirin.Health.create () in
+
+      (* Register custom checks *)
+      Kirin.Health.register health "database" (fun () ->
+        if Db.ping () then Kirin.Health.Healthy
+        else Kirin.Health.Unhealthy "connection failed");
+
+      (* Add to routes *)
+      let routes = Kirin.Health.routes health @ my_routes
+    ]}
+
+    Provides:
+    - /health - Detailed health status
+    - /live - Liveness probe (process alive?)
+    - /ready - Readiness probe (accepting traffic?)
+    - /healthz, /livez, /readyz - Kubernetes-style endpoints
+
+    @see <Health> for full API documentation
+*)
+module Health = Health
+
+(** Health status type *)
+type health_status = Health.status =
+  | Healthy
+  | Unhealthy of string
+  | Degraded of string
+
+(** {1 Prometheus Metrics (Phase 10)} *)
+
+(** Prometheus-compatible metrics for monitoring.
+
+    {b Quick Example:}
+    {[
+      let metrics = Kirin.Metrics.create () in
+
+      let requests = Kirin.Metrics.counter metrics "http_requests_total"
+        ~help:"Total HTTP requests" ~labels:["method"; "path"; "status"] () in
+
+      let latency = Kirin.Metrics.histogram metrics "http_request_duration_seconds"
+        ~help:"Request latency" ~labels:["method"; "path"] () in
+
+      (* Record values *)
+      Kirin.Metrics.Counter.inc requests
+        ~labels:[("method", "GET"); ("path", "/"); ("status", "200")];
+      Kirin.Metrics.Histogram.observe latency 0.042 ~labels:[("method", "GET"); ("path", "/")];
+
+      (* Expose endpoint *)
+      Kirin.get "/metrics" (Kirin.Metrics.handler metrics)
+    ]}
+
+    @see <Metrics> for full API documentation
+*)
+module Metrics = Metrics
+
+(** {1 Graceful Shutdown (Phase 10)} *)
+
+(** Graceful shutdown with signal handling.
+
+    {b Quick Example:}
+    {[
+      let shutdown = Kirin.Shutdown.create ~timeout:30.0 () in
+
+      (* Register cleanup hooks *)
+      Kirin.Shutdown.on_shutdown shutdown (fun () ->
+        Printf.printf "Closing database connections...\n";
+        Db.close_all ());
+
+      (* Run server with graceful shutdown *)
+      Kirin.Shutdown.run shutdown (fun () ->
+        Kirin.start ~port:8080 @@ routes)
+    ]}
+
+    Features:
+    - SIGTERM/SIGINT signal handling
+    - Connection draining with timeout
+    - Cleanup hooks for resource release
+    - Health check integration
+
+    @see <Shutdown> for full API documentation
+*)
+module Shutdown = Shutdown
+
+(** Shutdown state type *)
+type shutdown_state = Shutdown.state =
+  | Running
+  | ShuttingDown
+  | Stopped

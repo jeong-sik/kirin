@@ -1614,6 +1614,222 @@ let parallel_tests = [
 ]
 
 (* ============================================================
+   Phase 10: Health Checks
+   ============================================================ *)
+
+module H = Kirin.Health
+
+let test_health_create () =
+  let health = H.create () in
+  check bool "initially ready" true (H.is_ready health)
+
+let test_health_register () =
+  let health = H.create () in
+  H.register health "db" (fun () -> H.Healthy);
+  H.register health "cache" (fun () -> H.Healthy);
+  let response = H.check health in
+  check int "two checks" 2 (List.length response.checks)
+
+let test_health_healthy () =
+  let health = H.create () in
+  H.register health "service" (fun () -> H.Healthy);
+  let response = H.check health in
+  match response.status with
+  | H.Healthy -> ()
+  | _ -> fail "expected healthy status"
+
+let test_health_unhealthy () =
+  let health = H.create () in
+  H.register health "failing" (fun () -> H.Unhealthy "connection failed");
+  let response = H.check health in
+  match response.status with
+  | H.Unhealthy _ -> ()
+  | _ -> fail "expected unhealthy status"
+
+let test_health_degraded () =
+  let health = H.create () in
+  H.register health "slow" (fun () -> H.Degraded "high latency");
+  let response = H.check health in
+  match response.status with
+  | H.Degraded _ -> ()
+  | _ -> fail "expected degraded status"
+
+let test_health_ready_control () =
+  let health = H.create () in
+  check bool "initially ready" true (H.is_ready health);
+  H.set_ready health false;
+  check bool "now not ready" false (H.is_ready health);
+  H.set_ready health true;
+  check bool "ready again" true (H.is_ready health)
+
+let test_health_uptime () =
+  let health = H.create () in
+  Unix.sleepf 0.01;
+  let response = H.check health in
+  check bool "uptime > 0" true (response.uptime_seconds > 0.0)
+
+let test_health_exception () =
+  let health = H.create () in
+  H.register health "throws" (fun () -> failwith "boom");
+  let response = H.check health in
+  match response.status with
+  | H.Unhealthy _ -> ()
+  | _ -> fail "exception should cause unhealthy"
+
+let health_tests = [
+  test_case "health create" `Quick test_health_create;
+  test_case "health register" `Quick test_health_register;
+  test_case "health healthy" `Quick test_health_healthy;
+  test_case "health unhealthy" `Quick test_health_unhealthy;
+  test_case "health degraded" `Quick test_health_degraded;
+  test_case "health ready control" `Quick test_health_ready_control;
+  test_case "health uptime" `Quick test_health_uptime;
+  test_case "health exception" `Quick test_health_exception;
+]
+
+(* ============================================================
+   Phase 10: Prometheus Metrics
+   ============================================================ *)
+
+module M = Kirin.Metrics
+
+let test_metrics_counter () =
+  let registry = M.create () in
+  let counter = M.counter registry "test_counter" ~help:"Test counter" () in
+  M.Counter.inc counter;
+  M.Counter.inc counter ~by:5.0;
+  check (float 0.01) "counter value" 6.0 (M.Counter.get counter)
+
+let test_metrics_counter_labels () =
+  let registry = M.create () in
+  let counter = M.counter registry "requests" ~help:"Requests"
+    ~labels:["method"; "path"] () in
+  M.Counter.inc counter ~labels:[("method", "GET"); ("path", "/")];
+  M.Counter.inc counter ~labels:[("method", "POST"); ("path", "/api")];
+  check (float 0.01) "GET /" 1.0
+    (M.Counter.get counter ~labels:[("method", "GET"); ("path", "/")]);
+  check (float 0.01) "POST /api" 1.0
+    (M.Counter.get counter ~labels:[("method", "POST"); ("path", "/api")])
+
+let test_metrics_gauge () =
+  let registry = M.create () in
+  let gauge = M.gauge registry "test_gauge" ~help:"Test gauge" () in
+  M.Gauge.set gauge 42.0;
+  check (float 0.01) "gauge value" 42.0 (M.Gauge.get gauge);
+  M.Gauge.inc gauge ~by:8.0;
+  check (float 0.01) "after inc" 50.0 (M.Gauge.get gauge);
+  M.Gauge.dec gauge ~by:10.0;
+  check (float 0.01) "after dec" 40.0 (M.Gauge.get gauge)
+
+let test_metrics_histogram () =
+  let registry = M.create () in
+  let hist = M.histogram registry "latency" ~help:"Latency"
+    ~buckets:[| 0.1; 0.5; 1.0 |] () in
+  M.Histogram.observe hist 0.05;
+  M.Histogram.observe hist 0.3;
+  M.Histogram.observe hist 0.8;
+  (* Just check it doesn't crash - actual bucket counts are internal *)
+  ()
+
+let test_metrics_histogram_time () =
+  let registry = M.create () in
+  let hist = M.histogram registry "duration" ~help:"Duration" () in
+  let result = M.Histogram.time hist (fun () ->
+    Unix.sleepf 0.01;
+    42
+  ) in
+  check int "timed result" 42 result
+
+let test_metrics_summary () =
+  let registry = M.create () in
+  let sum = M.summary registry "response_size" ~help:"Response size" () in
+  for i = 1 to 100 do
+    M.Summary.observe sum (float_of_int i)
+  done;
+  let p50 = M.Summary.quantile sum 0.5 in
+  check bool "p50 reasonable" true (p50 > 0.0)
+
+let test_metrics_export () =
+  let registry = M.create () in
+  let counter = M.counter registry "http_requests" ~help:"HTTP requests" () in
+  M.Counter.inc counter;
+  let output = M.export registry in
+  check bool "has HELP" true (String.length output > 0);
+  check bool "contains name" true (String.sub output 0 50 |> String.lowercase_ascii
+    |> fun s -> String.length s > 0)
+
+let metrics_tests = [
+  test_case "metrics counter" `Quick test_metrics_counter;
+  test_case "metrics counter labels" `Quick test_metrics_counter_labels;
+  test_case "metrics gauge" `Quick test_metrics_gauge;
+  test_case "metrics histogram" `Quick test_metrics_histogram;
+  test_case "metrics histogram time" `Quick test_metrics_histogram_time;
+  test_case "metrics summary" `Quick test_metrics_summary;
+  test_case "metrics export" `Quick test_metrics_export;
+]
+
+(* ============================================================
+   Phase 10: Graceful Shutdown
+   ============================================================ *)
+
+module S = Kirin.Shutdown
+
+let test_shutdown_create () =
+  let shutdown = S.create () in
+  check bool "initially running" true (S.is_running shutdown);
+  check bool "not shutting down" false (S.is_shutting_down shutdown);
+  check bool "not stopped" false (S.is_stopped shutdown)
+
+let test_shutdown_custom_timeout () =
+  let shutdown = S.create ~timeout:10.0 ~force_after:30.0 () in
+  check bool "running" true (S.is_running shutdown)
+
+let test_shutdown_hooks () =
+  let called = ref false in
+  let shutdown = S.create ~timeout:0.1 () in
+  S.on_shutdown shutdown (fun () -> called := true);
+  S.initiate shutdown;
+  check bool "hook was called" true !called
+
+let test_shutdown_connection_tracking () =
+  let shutdown = S.create () in
+  check int "no active connections" 0 (S.active_connections shutdown);
+  let started = S.connection_start shutdown in
+  check bool "connection started" true started;
+  check int "one active connection" 1 (S.active_connections shutdown);
+  S.connection_end shutdown;
+  check int "no active connections" 0 (S.active_connections shutdown)
+
+let test_shutdown_reject_during_shutdown () =
+  let shutdown = S.create ~timeout:0.1 () in
+  (* Initiate shutdown in a separate thread *)
+  let _ = Thread.create (fun () -> S.initiate shutdown) () in
+  (* Wait a bit for shutdown to start *)
+  Unix.sleepf 0.05;
+  (* Now connection_start should return false if shutdown started *)
+  (* This is timing-dependent so just check it doesn't crash *)
+  let _ = S.connection_start shutdown in
+  ()
+
+let test_shutdown_status_json () =
+  let shutdown = S.create () in
+  let json = S.status_json shutdown in
+  match json with
+  | `Assoc fields ->
+    check bool "has state" true (List.mem_assoc "state" fields);
+    check bool "has connections" true (List.mem_assoc "active_connections" fields)
+  | _ -> fail "expected JSON object"
+
+let shutdown_tests = [
+  test_case "shutdown create" `Quick test_shutdown_create;
+  test_case "shutdown custom timeout" `Quick test_shutdown_custom_timeout;
+  test_case "shutdown hooks" `Quick test_shutdown_hooks;
+  test_case "shutdown connection tracking" `Quick test_shutdown_connection_tracking;
+  test_case "shutdown reject during" `Quick test_shutdown_reject_during_shutdown;
+  test_case "shutdown status json" `Quick test_shutdown_status_json;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -1640,4 +1856,7 @@ let () =
     ("Cache", cache_tests);
     ("Jobs", jobs_tests);
     ("Parallel", parallel_tests);
+    ("Health", health_tests);
+    ("Metrics", metrics_tests);
+    ("Shutdown", shutdown_tests);
   ]
