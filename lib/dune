@@ -1,0 +1,14 @@
+(library
+ (name kirin)
+ (public_name kirin)
+ (libraries
+  eio
+  eio_main
+  cohttp
+  cohttp-eio
+  yojson
+  uri
+  mirage-crypto-rng
+  base64)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving_yojson)))

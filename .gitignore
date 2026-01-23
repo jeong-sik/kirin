@@ -1,0 +1,19 @@
+# Dune build artifacts
+_build/
+*.install
+
+# opam
+_opam/
+*.opam.locked
+
+# Editor
+*.merlin
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
