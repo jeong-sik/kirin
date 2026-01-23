@@ -1,3 +1,7 @@
 (test
  (name test_kirin)
  (libraries kirin alcotest grpc-direct-core))
+
+(test
+ (name test_auth)
+ (libraries kirin kirin.auth alcotest str unix))

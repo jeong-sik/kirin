@@ -388,6 +388,82 @@ let hydrate (root : element) =
   hydrate_element root;
   log (Printf.sprintf "[Kirin] Hydrated %d components" (List.length comps))
 
+(** {1 Client-Side Router} *)
+
+module Router = struct
+  (** Route pattern *)
+  type route_pattern = {
+    pattern : string;
+    segments : string list;
+    handler : (string * string) list -> unit;
+  }
+
+  (** Router state *)
+  type t = {
+    routes : route_pattern list;
+    not_found : (string * string) list -> unit;
+  }
+
+  (** Create a route definition *)
+  let route pattern handler =
+    let segments = String.split_on_char '/' pattern
+      |> List.filter (fun s -> s <> "") in
+    { pattern; segments; handler }
+
+  (** Create router *)
+  let create ~not_found routes =
+    { routes; not_found }
+
+  (** Match path against pattern segments *)
+  let match_path pattern_segs path_segs =
+    if List.length pattern_segs <> List.length path_segs then None
+    else
+      let rec aux params = function
+        | [], [] -> Some (List.rev params)
+        | (p :: ps), (s :: ss) ->
+            if String.length p > 0 && p.[0] = ':' then
+              let key = String.sub p 1 (String.length p - 1) in
+              aux ((key, s) :: params) (ps, ss)
+            else if p = s then
+              aux params (ps, ss)
+            else None
+        | _ -> None
+      in
+      aux [] (pattern_segs, path_segs)
+
+  (** Find matching route *)
+  let find_route router pathname =
+    let path_segs = String.split_on_char '/' pathname
+      |> List.filter (fun s -> s <> "") in
+    let rec try_routes = function
+      | [] -> None
+      | r :: rest ->
+          match match_path r.segments path_segs with
+          | Some params -> Some (r.handler, params)
+          | None -> try_routes rest
+    in
+    try_routes router.routes
+
+  (** Navigate to path *)
+  let navigate router pathname =
+    navigate pathname;
+    match find_route router pathname with
+    | Some (handler, params) -> handler params
+    | None -> router.not_found []
+
+  (** Handle current location *)
+  let handle_current router =
+    let loc = location () in
+    match find_route router loc.pathname with
+    | Some (handler, params) -> handler params
+    | None -> router.not_found []
+
+  (** Start router (handle initial location + listen for navigation) *)
+  let start router =
+    handle_current router;
+    on_navigate (fun _loc -> handle_current router)
+end
+
 (** {1 App Start} *)
 
 (** Start Kirin browser app *)

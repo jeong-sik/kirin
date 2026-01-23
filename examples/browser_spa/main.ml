@@ -1,8 +1,8 @@
 (** Kirin Browser SPA Example
 
     A simple single-page application demonstrating:
-    - Direct-style async with Promise effects
-    - Client-side routing
+    - Callback-style async with timers
+    - Client-side routing with History API
     - HTTP requests with Fetch API
 
     Build: dune build examples/browser_spa/main.js
@@ -42,9 +42,8 @@ let render_users () =
       <a href="/" onclick="return false;" class="nav-link">Home</a>
     </nav>
   |};
-  (* Simulate API call - in real app would use Fetch *)
-  Promise.run_ignore (fun () ->
-    let _ = Promise.await (Promise.sleep 500) in
+  (* Simulate API call with timeout - in real app would use Fetch *)
+  let _cancel = set_timeout 500 (fun () ->
     set_html app {|
       <h1>Users</h1>
       <ul>
@@ -56,7 +55,8 @@ let render_users () =
         <a href="/" onclick="return false;" class="nav-link">Home</a>
       </nav>
     |}
-  )
+  ) in
+  ()
 
 let render_user params =
   let app = get_element "app" in

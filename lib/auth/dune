@@ -1,0 +1,11 @@
+(library
+ (name kirin_auth)
+ (public_name kirin.auth)
+ (libraries
+  kirin
+  http            ; HTTP types
+  digestif        ; SHA256, HMAC
+  base64          ; Base64 encoding
+  yojson          ; JSON handling
+  uri             ; URL encoding for OAuth2
+  eio))
