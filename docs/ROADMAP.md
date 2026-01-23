@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 12 Complete ✅ + Phase 7 Complete ✅
+## Current Status: Phase 13 Complete ✅ (All phases through 13)
 
-**204 tests passing**
+**246 tests passing** (204 core + 22 MCP + 20 Auth)
 
 ```
 lib/
@@ -138,6 +138,7 @@ lib/
 - [x] JSON-RPC 2.0 구현
 - [x] stdio/HTTP+SSE 전송
 - [x] Kirin 어댑터 통합
+- [x] 22 tests for MCP module
 
 ---
 
@@ -188,6 +189,21 @@ lib/
 - [x] Multi-database support (PostgreSQL, SQLite, MariaDB)
 - [x] Health check integration
 - [x] 29 database tests (18 Query, 7 Migrate, 4 Db)
+
+---
+
+### Phase 13: Authentication ✅ Complete
+**Goal**: 인증 및 보안 모듈
+
+- [x] JWT (encode/decode, HMAC-SHA256, claims validation)
+- [x] Password hashing (PBKDF2-SHA256, salt, strength checker)
+- [x] Session management (in-memory store, TTL)
+- [x] CSRF protection (token generation/validation)
+- [x] OAuth2 providers (Google, GitHub, Apple, Discord)
+- [x] PKCE support (code_challenge, code_verifier)
+- [x] Auth middleware (Bearer, Session, API Key)
+- [x] Rate limiting (per-IP, per-user)
+- [x] 20 authentication tests (5 JWT, 4 Password, 3 Session, 4 CSRF, 4 OAuth2)
 
 ---
 
@@ -253,11 +269,14 @@ dune exec examples/high_performance/main.exe
 | 1-3 | Core (Response, Router, etc.) | 75 |
 | 5 | gRPC | 8 |
 | 6 | GraphQL | 8 |
+| 7 | Browser | 0 |
+| 8 | MCP | 22 |
 | 9 | High-Performance | 44 |
 | 10 | Production | 21 |
 | 11 | WebRTC | 12 |
 | 12 | Database | 29 |
-| **Total** | | **204** |
+| 13 | Authentication | 20 |
+| **Total** | | **246** |
 
 ---
 
