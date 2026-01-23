@@ -8,7 +8,15 @@
   cohttp-eio
   yojson
   uri
+  mirage-crypto
   mirage-crypto-rng
-  base64)
+  cstruct
+  base64
+  digestif
+  decompress.de
+  decompress.gz
+  decompress.zl
+  bigstringaf
+  unix)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

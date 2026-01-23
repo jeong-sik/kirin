@@ -31,6 +31,7 @@
   (mirage-crypto-rng (>= "1.0"))
   (base64 (>= "3.0"))
   (ppx_deriving (>= "5.0"))
-  (ppx_deriving_yojson (>= "3.0")))
+  (ppx_deriving_yojson (>= "3.0"))
+  (alcotest :with-test))
  (tags
   (web eio http framework)))

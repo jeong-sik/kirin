@@ -46,9 +46,6 @@ let delete pattern handler = route `DELETE pattern handler
 let head pattern handler = route `HEAD pattern handler
 let options pattern handler = route `OPTIONS pattern handler
 
-(** Create a router from routes *)
-let router routes = routes
-
 (** Match a path against route segments, returning extracted params *)
 let match_segments segments path_parts =
   let rec loop segs parts params =
@@ -95,6 +92,9 @@ let dispatch routes req =
     route.handler req
   | None ->
     Response.not_found ()
+
+(** Create a router from routes - returns a handler *)
+let router routes = fun req -> dispatch routes req
 
 (** Scoped routes with prefix and middleware *)
 let scope prefix middlewares routes =

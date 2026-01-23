@@ -23,6 +23,7 @@ depends: [
   "base64" {>= "3.0"}
   "ppx_deriving" {>= "5.0"}
   "ppx_deriving_yojson" {>= "3.0"}
+  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [

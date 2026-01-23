@@ -55,4 +55,4 @@ let () =
   Kirin.start ~port:3000
   @@ Kirin.logger
   @@ Kirin.timing
-  @@ Kirin.dispatch routes
+  @@ routes

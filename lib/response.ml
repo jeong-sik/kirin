@@ -20,6 +20,12 @@ let headers t = t.headers
 (** Get body *)
 let body t = t.body
 
+(** Get a specific header by name *)
+let header name t = Http.Header.get t.headers name
+
+(** Get status as int *)
+let status_code t = Http.Status.to_int t.status
+
 (** Add a header to response *)
 let with_header name value t =
   let headers = Http.Header.add t.headers name value in
