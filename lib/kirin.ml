@@ -492,6 +492,36 @@ type pool_stats = Pool.stats = {
   total_errors : int;
 }
 
+(** {1 Backpressure & Flow Control (Phase 9)} *)
+
+(** Backpressure module for flow control.
+
+    Prevents fast producers from overwhelming slow consumers.
+
+    {[
+      (* Rate-limited streaming *)
+      let limiter = Kirin.Backpressure.RateLimiter.create ~rate:100.0 () in
+      Stream.response (fun yield ->
+        for i = 1 to 1000 do
+          Kirin.Backpressure.RateLimiter.acquire limiter;
+          yield (Printf.sprintf "Item %d\n" i)
+        done)
+
+      (* Bounded channel for producer-consumer *)
+      let ch = Kirin.Backpressure.Channel.create ~capacity:100 () in
+      Kirin.Backpressure.Channel.send ch data;
+      let data = Kirin.Backpressure.Channel.recv ch in
+    ]}
+*)
+module Backpressure = Backpressure
+
+(** Backpressure strategy type *)
+type backpressure_strategy = Backpressure.strategy =
+  | Block
+  | Drop_oldest
+  | Drop_newest
+  | Error
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)
