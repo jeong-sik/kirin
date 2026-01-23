@@ -992,3 +992,494 @@ let mime = Kirin.Static.get_mime_type "file.json"
 let safe = Kirin.Static.is_safe_path "../etc/passwd"
 let etag = Kirin.Etag.generate "content"
 ```
+
+---
+
+## High-Performance Modules
+
+### Streaming
+
+Large data handling without memory overflow. Process data incrementally using chunks.
+
+```ocaml
+(** Chunk for streaming *)
+type chunk =
+  | Data of string
+  | End
+
+(** Streaming source - lazy sequence of chunks *)
+type source = unit -> chunk
+
+(** Streaming sink - consumes chunks *)
+type 'a sink = chunk -> 'a
+
+(** Streaming transform - modifies chunks *)
+type transform = chunk -> chunk
+```
+
+#### File Streaming
+
+```ocaml
+(** Stream from file *)
+val file_source : string -> source
+
+(** Stream to file *)
+val file_sink : string -> unit sink
+
+(** Copy file using streaming *)
+val copy_file : src:string -> dst:string -> unit
+```
+
+#### Transformations
+
+```ocaml
+(** Map over chunks *)
+val map : (string -> string) -> transform
+
+(** Filter chunks *)
+val filter : (string -> bool) -> transform
+
+(** Take n bytes *)
+val take : int -> transform
+
+(** Drop n bytes *)
+val drop : int -> transform
+
+(** Compose transforms *)
+val ( >> ) : transform -> transform -> transform
+```
+
+**Example:**
+```ocaml
+(* Process large CSV file line by line *)
+let uppercase_lines =
+  Kirin.Streaming.file_source "input.csv"
+  |> Kirin.Streaming.lines
+  |> Kirin.Streaming.map String.uppercase_ascii
+  |> Kirin.Streaming.to_sink (Kirin.Streaming.file_sink "output.csv")
+
+(* Streaming HTTP response *)
+let stream_handler _req =
+  let source = Kirin.Streaming.file_source "large_file.bin" in
+  Kirin.Streaming.stream_response source
+```
+
+---
+
+### Pool
+
+Generic connection pooling with health checks and automatic resource management.
+
+```ocaml
+(** Pool configuration *)
+type config = {
+  min_size : int;           (** Minimum connections to keep (default: 1) *)
+  max_size : int;           (** Maximum connections allowed (default: 10) *)
+  idle_timeout : float;     (** Seconds before idle connection is closed (default: 300.0) *)
+  max_wait_time : float;    (** Max seconds to wait for connection (default: 30.0) *)
+  health_check_interval : float;  (** Seconds between health checks (default: 60.0) *)
+}
+
+(** Pool statistics *)
+type stats = {
+  total_connections : int;
+  active_connections : int;
+  idle_connections : int;
+  waiting_requests : int;
+  total_acquisitions : int;
+  total_timeouts : int;
+  total_errors : int;
+}
+
+(** Pool type *)
+type 'a t
+```
+
+#### Pool Operations
+
+```ocaml
+(** Create pool with labeled arguments *)
+val create :
+  ?min_size:int ->
+  ?max_size:int ->
+  ?idle_timeout:float ->
+  ?max_wait_time:float ->
+  ?health_check_interval:float ->
+  ~create:(unit -> 'a) ->
+  ~destroy:('a -> unit) ->
+  ?validate:('a -> bool) ->
+  unit -> 'a t
+
+(** Use resource with automatic release *)
+val use : 'a t -> ('a -> 'b) -> 'b
+
+(** Get pool statistics *)
+val stats : 'a t -> stats
+
+(** Drain and shutdown pool *)
+val drain : 'a t -> unit
+```
+
+**Example:**
+```ocaml
+(* Database connection pool *)
+let db_pool = Kirin.Pool.create
+  ~max_size:10
+  ~create:(fun () -> Db.connect ~host:"localhost" ~db:"myapp")
+  ~destroy:Db.close
+  ~validate:Db.ping
+  ()
+
+let query_handler req =
+  Kirin.Pool.use db_pool (fun conn ->
+    let results = Db.query conn "SELECT * FROM users" in
+    Kirin.json (users_to_json results)
+  )
+```
+
+---
+
+### Backpressure
+
+Flow control to prevent fast producers from overwhelming slow consumers.
+
+```ocaml
+(** Backpressure strategy *)
+type strategy =
+  | Block        (** Block producer until consumer catches up *)
+  | Drop_oldest  (** Drop oldest items when buffer full *)
+  | Drop_newest  (** Drop newest items when buffer full *)
+  | Error        (** Raise exception when buffer full *)
+```
+
+#### Buffer
+
+```ocaml
+(** Bounded buffer with backpressure *)
+module Buffer : sig
+  type 'a t
+
+  val create : ?strategy:strategy -> capacity:int -> unit -> 'a t
+  val push : 'a t -> 'a -> bool  (** Returns false if dropped *)
+  val pop : 'a t -> 'a option
+  val size : 'a t -> int
+  val is_full : 'a t -> bool
+end
+```
+
+#### Channel
+
+```ocaml
+(** Async channel with backpressure *)
+module Channel : sig
+  type 'a t
+
+  val create : ?capacity:int -> unit -> 'a t
+  val send : 'a t -> 'a -> unit
+  val receive : 'a t -> 'a
+  val try_receive : 'a t -> 'a option
+  val close : 'a t -> unit
+end
+```
+
+#### Rate Limiter
+
+```ocaml
+(** Token bucket rate limiter *)
+module RateLimiter : sig
+  type t
+
+  val create : ?rate:float -> ?burst:int -> unit -> t
+  val acquire : t -> unit     (** Block until token available *)
+  val try_acquire : t -> bool (** Non-blocking, returns false if no token *)
+  val acquire_n : t -> int -> unit
+end
+```
+
+**Example:**
+```ocaml
+(* Rate-limited API calls *)
+let api_limiter = Kirin.Backpressure.RateLimiter.create
+  ~rate:10.0  (* 10 requests/second *)
+  ~burst:20   (* Allow burst of 20 *)
+  ()
+
+let api_handler req =
+  if Kirin.Backpressure.RateLimiter.try_acquire api_limiter then
+    process_request req
+  else
+    Kirin.Response.make ~status:`Too_many_requests "Rate limited"
+
+(* Bounded work queue *)
+let work_buffer = Kirin.Backpressure.Buffer.create
+  ~strategy:Drop_oldest ~capacity:1000 ()
+
+let submit_work item =
+  if not (Kirin.Backpressure.Buffer.push work_buffer item) then
+    Printf.eprintf "Work dropped due to backpressure\n"
+```
+
+---
+
+### Cache
+
+LRU (Least Recently Used) cache with optional TTL support.
+
+```ocaml
+(** Cache type *)
+type ('k, 'v) t
+
+(** Cache configuration *)
+type config = {
+  max_size : int;        (** Maximum entries *)
+  default_ttl : float option;  (** Default TTL in seconds *)
+}
+```
+
+#### Operations
+
+```ocaml
+(** Create cache *)
+val create : ?config:config -> unit -> ('k, 'v) t
+
+(** Get value *)
+val get : ('k, 'v) t -> 'k -> 'v option
+
+(** Set value with optional TTL *)
+val set : ?ttl:float -> ('k, 'v) t -> 'k -> 'v -> unit
+
+(** Get or compute and cache *)
+val get_or_set : ?ttl:float -> ('k, 'v) t -> 'k -> (unit -> 'v) -> 'v
+
+(** Remove value *)
+val remove : ('k, 'v) t -> 'k -> unit
+
+(** Clear all entries *)
+val clear : ('k, 'v) t -> unit
+
+(** Cache statistics *)
+val stats : ('k, 'v) t -> stats
+```
+
+**Example:**
+```ocaml
+(* User cache with 5-minute TTL *)
+let user_cache = Kirin.Cache.create ~config:{
+  max_size = 10000;
+  default_ttl = Some 300.0;  (* 5 minutes *)
+} ()
+
+let get_user id =
+  Kirin.Cache.get_or_set user_cache id (fun () ->
+    Db.fetch_user id  (* Only called on cache miss *)
+  )
+
+(* Response memoization *)
+let expensive_handler req =
+  let cache_key = Kirin.Request.path req in
+  Kirin.Cache.get_or_set ~ttl:60.0 response_cache cache_key (fun () ->
+    compute_expensive_response req
+  )
+```
+
+---
+
+### Jobs
+
+Background job queue with priority levels and retry support.
+
+```ocaml
+(** Job priority *)
+type priority =
+  | Critical  (** Highest priority *)
+  | High
+  | Normal
+  | Low       (** Lowest priority *)
+
+(** Job status *)
+type 'a status =
+  | Pending
+  | Running
+  | Completed of 'a
+  | Failed of exn
+```
+
+#### Queue Operations
+
+```ocaml
+(** Create job queue *)
+val create : ?workers:int -> ?max_queue_size:int -> unit -> 'a t
+
+(** Start processing jobs *)
+val start : 'a t -> unit
+
+(** Stop processing *)
+val stop : 'a t -> unit
+
+(** Submit job *)
+val submit : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) -> job_id
+
+(** Get job status *)
+val status : 'a t -> job_id -> 'a status
+
+(** Wait for job completion *)
+val wait : 'a t -> job_id -> 'a status
+
+(** Cancel pending job *)
+val cancel : 'a t -> job_id -> bool
+
+(** Queue statistics *)
+val stats : 'a t -> stats
+```
+
+**Example:**
+```ocaml
+(* Email sending queue *)
+let email_queue = Kirin.Jobs.create ~workers:4 ()
+let () = Kirin.Jobs.start email_queue
+
+let send_welcome_email user =
+  let job_id = Kirin.Jobs.submit ~priority:High email_queue (fun () ->
+    Email.send ~to_:user.email ~subject:"Welcome!" ~body:"..."
+  ) in
+  Printf.printf "Email job queued: %s\n" job_id
+
+(* Async job with status check *)
+let export_handler req =
+  let job_id = Kirin.Jobs.submit ~priority:Low export_queue (fun () ->
+    generate_large_report ()
+  ) in
+  Kirin.json (`Assoc [("job_id", `String job_id); ("status", `String "pending")])
+
+let status_handler req =
+  let job_id = Kirin.query "id" req in
+  match Kirin.Jobs.status export_queue job_id with
+  | Completed url -> Kirin.json (`Assoc [("status", `String "done"); ("url", `String url)])
+  | Running -> Kirin.json (`Assoc [("status", `String "processing")])
+  | Pending -> Kirin.json (`Assoc [("status", `String "queued")])
+  | Failed exn -> Kirin.json (`Assoc [("status", `String "failed"); ("error", `String (Printexc.to_string exn))])
+```
+
+---
+
+### Parallel
+
+OCaml 5 Domain-based parallel computation for CPU-bound tasks.
+True parallelism without GIL limitations.
+
+```ocaml
+(** Get recommended domain count based on CPUs *)
+val recommended_domains : unit -> int
+```
+
+#### Parallel Collections
+
+```ocaml
+(** Parallel map *)
+val map : ?domains:int -> ('a -> 'b) -> 'a list -> 'b list
+
+(** Parallel iter *)
+val iter : ?domains:int -> ('a -> unit) -> 'a list -> unit
+
+(** Parallel filter *)
+val filter : ?domains:int -> ('a -> bool) -> 'a list -> 'a list
+
+(** Parallel reduce *)
+val reduce : ?domains:int -> ('a -> 'a -> 'a) -> 'a -> 'a list -> 'a
+
+(** Parallel map with index *)
+val mapi : ?domains:int -> (int -> 'a -> 'b) -> 'a list -> 'b list
+```
+
+#### Fork-Join
+
+```ocaml
+(** Run two computations in parallel *)
+val both : (unit -> 'a) -> (unit -> 'b) -> 'a * 'b
+
+(** Run three computations in parallel *)
+val triple : (unit -> 'a) -> (unit -> 'b) -> (unit -> 'c) -> 'a * 'b * 'c
+
+(** Run all computations in parallel *)
+val all : (unit -> 'a) list -> 'a list
+```
+
+#### Domain Pool
+
+```ocaml
+module Pool : sig
+  type t
+
+  val create : ?size:int -> unit -> t
+  val map : t -> ('a -> 'b) -> 'a list -> 'b list
+  val shutdown : t -> unit
+end
+```
+
+**Example:**
+```ocaml
+(* Parallel image processing *)
+let process_images images =
+  Kirin.Parallel.map ~domains:8 process_single_image images
+
+(* Parallel aggregation *)
+let total = Kirin.Parallel.reduce ~domains:4 (+) 0 numbers
+
+(* Fork-join for independent computations *)
+let (user_data, order_data) = Kirin.Parallel.both
+  (fun () -> fetch_user_data user_id)
+  (fun () -> fetch_order_data user_id)
+
+(* Chunked processing for fine-grained work *)
+let results = Kirin.Parallel.map_chunked ~chunk_size:100 ~domains:4
+  tiny_computation huge_list
+```
+
+---
+
+## Performance Tips
+
+### Streaming for Large Data
+```ocaml
+(* BAD: Loads entire file into memory *)
+let content = In_channel.read_all "huge.csv"
+
+(* GOOD: Stream processing *)
+Kirin.Streaming.file_source "huge.csv"
+|> Kirin.Streaming.lines
+|> Kirin.Streaming.fold process_line initial
+```
+
+### Connection Pooling
+```ocaml
+(* BAD: New connection per request *)
+let handler req =
+  let conn = Db.connect () in
+  let result = Db.query conn "..." in
+  Db.close conn;
+  result
+
+(* GOOD: Use connection pool *)
+let handler req =
+  Kirin.Pool.with_resource db_pool (fun conn ->
+    Db.query conn "..."
+  )
+```
+
+### Caching Hot Data
+```ocaml
+(* Use get_or_set for transparent memoization *)
+let get_config key =
+  Kirin.Cache.get_or_set config_cache key (fun () ->
+    load_config_from_db key
+  )
+```
+
+### Parallel for CPU-Bound Work
+```ocaml
+(* Use Parallel for CPU-intensive operations *)
+let results = Kirin.Parallel.map ~domains:8 expensive_computation items
+
+(* Use Jobs for I/O-bound background work *)
+Kirin.Jobs.submit queue (fun () -> send_email user)
+```

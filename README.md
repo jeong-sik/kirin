@@ -20,6 +20,7 @@ let () = Kirin.start ~port:8000
 
 ## Features
 
+### Core Web Framework
 - **Direct-style async** - No Lwt monads, just functions
 - **Type-safe routing** - Path params with `:name` syntax
 - **Middleware composition** - `@@` operator for elegant chaining
@@ -33,6 +34,14 @@ let () = Kirin.start ~port:8000
 - **Rate limiting** - Token bucket algorithm
 - **Compression** - Gzip and deflate support
 - **ETag caching** - Automatic 304 responses
+
+### High-Performance Components
+- **Streaming I/O** - Large file handling without memory overflow
+- **Connection Pool** - Generic resource pooling with health checks
+- **Backpressure** - Flow control to prevent producer overwhelming consumer
+- **LRU Cache** - In-memory caching with TTL support
+- **Background Jobs** - Priority job queue with retry support
+- **Parallel Processing** - OCaml 5 Domain-based true parallelism
 
 ## Installation
 
