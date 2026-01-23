@@ -333,6 +333,45 @@ Three levels of integration:
 
 ## Future Phases
 
+### Phase 19: HTMX Enhancement 🎯
+**Goal**: HTMX + Hyperscript + Alpine.js 통합
+
+- [ ] Hyperscript integration (`_="on click..."`)
+- [ ] Alpine.js x-data binding helpers
+- [ ] HTMX extension system (preload, ws, sse)
+- [ ] Form validation with HTMX
+- [ ] Infinite scroll / lazy load helpers
+- [ ] HTMX-specific response headers (HX-Trigger, HX-Push-Url)
+
+### Phase 20: tRPC Integration 🔮
+**Goal**: End-to-end 타입 안전 API
+
+- [ ] tRPC router adapter for Kirin
+- [ ] Procedure definition DSL (OCaml → TypeScript types)
+- [ ] Input/output validation with Zod bridge
+- [ ] Subscription support (WebSocket)
+- [ ] Batch request handling
+- [ ] OpenAPI generation from tRPC schema
+
+### Phase 21: TanStack Router 🛣️
+**Goal**: 파일 기반 타입 안전 라우팅
+
+- [ ] File-based route discovery
+- [ ] Route manifest generation
+- [ ] Loader/Action pattern (Remix-style)
+- [ ] Type-safe route params
+- [ ] Nested layouts support
+- [ ] Route preloading hints
+
+### Phase 22: Solid.js SSR 🚀
+**Goal**: React 대안 SSR 지원
+
+- [ ] Solid.js worker pool (reuse React SSR architecture)
+- [ ] renderToString / renderToStream
+- [ ] Hydration mismatch prevention
+- [ ] Solid-specific meta helpers
+- [ ] SolidStart-style file routing (optional)
+
 ---
 
 ## Architecture
@@ -348,9 +387,10 @@ Three levels of integration:
 │  │   Router    │  Middleware │  Response   │               │
 │  └─────────────┴─────────────┴─────────────┘               │
 ├─────────────────────────────────────────────────────────────┤
-│                   React Integration                          │
+│                   Frontend Integration                       │
 │  ┌─────────┬─────────┬─────────┬─────────┬─────────┐       │
-│  │  Vite   │Hydration│   SSR   │Streaming│  Meta   │       │
+│  │  React  │ Solid.js│  HTMX+  │  tRPC   │TanStack │       │
+│  │   SSR   │   SSR   │ Alpine  │ Adapter │ Router  │       │
 │  └─────────┴─────────┴─────────┴─────────┴─────────┘       │
 ├─────────────────────────────────────────────────────────────┤
 │                High-Performance Layer                        │
