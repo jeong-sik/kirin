@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 21 Complete ✅ (All phases through 21)
+## Current Status: Phase 22 Complete ✅ (All phases through 22)
 
-**678 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack)
+**777 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack + 99 Solid)
 
 ```
 lib/
@@ -108,6 +108,23 @@ lib/
 │   ├── preload.ml        - Route preloading hints
 │   ├── handler.ml        - Kirin route handler integration
 │   └── codegen.ml        - TypeScript type generation
+│
+├── Solid.js SSR (Phase 22)
+│   ├── kirin_solid.ml    - API facade
+│   ├── route_def.ml      - Route definitions with Solid patterns
+│   ├── file_router.ml    - File-based route discovery
+│   ├── loader.ml         - Data loading (SolidStart-style)
+│   ├── action.ml         - Form handling and server functions
+│   ├── manifest.ml       - Route manifest generation
+│   ├── preload.ml        - Route preloading hints
+│   ├── meta.ml           - Solid Meta tag helpers
+│   ├── data.ml           - Initial data serialization
+│   ├── hydrate.ml        - HTML shell generation
+│   ├── protocol.ml       - JSON-RPC for SSR
+│   ├── ssr.ml            - SSR engine with caching
+│   ├── streaming.ml      - Suspense streaming SSR
+│   ├── handler.ml        - Kirin route handler integration
+│   └── codegen.ml        - TypeScript generation
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -406,14 +423,74 @@ Three levels of integration:
 - [x] TypeScript code generation (route types, router file, hooks)
 - [x] 90 TanStack Router tests
 
-### Phase 22: Solid.js SSR 🚀
+### Phase 22: Solid.js SSR ✅ Complete
 **Goal**: React 대안 SSR 지원
 
-- [ ] Solid.js worker pool (reuse React SSR architecture)
-- [ ] renderToString / renderToStream
-- [ ] Hydration mismatch prevention
-- [ ] Solid-specific meta helpers
-- [ ] SolidStart-style file routing (optional)
+Solid.js is a reactive JavaScript framework with fine-grained reactivity. Unlike React's virtual DOM diffing, Solid compiles to direct DOM operations for better performance.
+
+Three integration levels (reusing React SSR architecture pattern):
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| Level 1: Static | Vite build serving | SPA, CSR apps |
+| Level 2: Hydration | Server HTML shell + progressive hydrate | SEO meta tags |
+| Level 3: Full SSR | Node.js worker pool rendering + streaming | Full SEO, TTFB optimization |
+
+- [x] **Route System**
+  - [x] Route definitions with loaders/actions (route_def.ml)
+  - [x] File-based route discovery ([id], [...slug], (group))
+  - [x] Route manifest generation and JSON serialization
+  - [x] SolidStart-style patterns
+
+- [x] **Data Loading**
+  - [x] Loader pattern (parallel/sequential, redirect, not_found)
+  - [x] Action pattern (success, redirect, validation_error, server_error)
+  - [x] createResource/createRouteData support
+  - [x] Optimistic updates
+
+- [x] **Preloading**
+  - [x] Route preloading hints (intent, viewport, render)
+  - [x] Progressive hydration priorities (Immediate, Visible, Idle, Interaction)
+
+- [x] **SSR Engine**
+  - [x] JSON-RPC 2.0 protocol over stdio (protocol.ml)
+  - [x] Worker pool management with round-robin
+  - [x] Render caching with TTL and LRU eviction
+  - [x] Memory limit monitoring (200MB threshold)
+  - [x] Graceful restart after N requests
+
+- [x] **Streaming SSR**
+  - [x] Suspense support with out-of-order streaming
+  - [x] renderToStringAsync / renderToStream equivalents
+  - [x] Progressive chunk delivery (Html, Script, Complete, Error)
+  - [x] SSE-based streaming response
+
+- [x] **Meta Tags**
+  - [x] SEO meta tag helpers (OG, Twitter Cards)
+  - [x] Builder pattern for meta composition
+  - [x] JSON serialization for client hydration
+
+- [x] **Hydration**
+  - [x] XSS-safe initial data serialization (__SOLID_DATA__)
+  - [x] HTML shell generation with Vite integration
+  - [x] Island architecture support (component-based hydration)
+  - [x] Streaming placeholders and replacement scripts
+
+- [x] **Code Generation**
+  - [x] TypeScript route types
+  - [x] Loader/action type definitions
+  - [x] Router configuration generation
+
+- [x] 99 Solid.js tests
+
+### Phase 23: Svelte SSR 🚀
+**Goal**: Svelte/SvelteKit SSR 지원
+
+- [ ] Svelte 5 worker pool (reuse SSR architecture)
+- [ ] Runes-based reactivity support
+- [ ] SvelteKit-style file routing
+- [ ] load functions and form actions
+- [ ] Streaming SSR with +layout/+page
 
 ---
 
@@ -496,7 +573,8 @@ dune exec examples/high_performance/main.exe
 | 19 | HTMX+ | 38 |
 | 20 | tRPC | 74 |
 | 21 | TanStack Router | 90 |
-| **Total** | | **678** |
+| 22 | Solid.js SSR | 99 |
+| **Total** | | **777** |
 
 ---
 

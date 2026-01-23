@@ -1,0 +1,4 @@
+(library
+ (name kirin_solid)
+ (public_name kirin.solid)
+ (libraries kirin yojson unix str))

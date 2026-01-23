@@ -41,3 +41,7 @@
 (test
  (name test_tanstack)
  (libraries kirin kirin.tanstack alcotest str unix))
+
+(test
+ (name test_solid)
+ (libraries kirin kirin.solid alcotest str unix))
