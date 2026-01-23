@@ -540,6 +540,314 @@ let ratelimit_tests = [
 ]
 
 (* ============================================================
+   WebSocket Tests
+   ============================================================ *)
+
+let test_ws_accept_key () =
+  (* Test vector from RFC 6455 *)
+  let client_key = "dGhlIHNhbXBsZSBub25jZQ==" in
+  let accept_key = Kirin.Websocket.compute_accept_key client_key in
+  check string "accept key" "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" accept_key
+
+let test_ws_is_upgrade_request () =
+  (* Valid upgrade request *)
+  let raw_valid = Http.Request.make
+    ~headers:(Http.Header.of_list [
+      ("upgrade", "websocket");
+      ("connection", "Upgrade");
+      ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==");
+    ])
+    ~meth:`GET "/" in
+  let req_valid = Kirin.Request.make ~raw:raw_valid ~body:"" in
+  check bool "is upgrade" true (Kirin.is_websocket_upgrade req_valid);
+
+  (* Non-upgrade request *)
+  let raw_invalid = Http.Request.make
+    ~headers:(Http.Header.of_list [("content-type", "text/html")])
+    ~meth:`GET "/" in
+  let req_invalid = Kirin.Request.make ~raw:raw_invalid ~body:"" in
+  check bool "not upgrade" false (Kirin.is_websocket_upgrade req_invalid)
+
+let test_ws_upgrade_response () =
+  let raw = Http.Request.make
+    ~headers:(Http.Header.of_list [
+      ("upgrade", "websocket");
+      ("connection", "Upgrade");
+      ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==");
+    ])
+    ~meth:`GET "/" in
+  let req = Kirin.Request.make ~raw ~body:"" in
+
+  match Kirin.websocket_upgrade req with
+  | Ok resp ->
+    check int "status 101" 101 (Kirin.Response.status_code resp);
+    check (option string) "upgrade header" (Some "websocket")
+      (Kirin.Response.header "upgrade" resp);
+    check (option string) "accept key" (Some "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+      (Kirin.Response.header "sec-websocket-accept" resp)
+  | Error msg ->
+    fail ("Upgrade failed: " ^ msg)
+
+let test_ws_encode_text_frame () =
+  let frame = Kirin.ws_text "Hello" in
+  let encoded = Kirin.ws_encode frame in
+
+  (* First byte: FIN=1, opcode=1 (text) = 0x81 *)
+  check char "first byte" '\x81' encoded.[0];
+  (* Second byte: MASK=0, length=5 = 0x05 *)
+  check char "second byte" '\x05' encoded.[1];
+  (* Payload *)
+  check string "payload" "Hello" (String.sub encoded 2 5)
+
+let test_ws_encode_large_frame () =
+  (* Test 16-bit length encoding (126-65535 bytes) *)
+  let payload = String.make 1000 'X' in
+  let frame = Kirin.ws_binary payload in
+  let encoded = Kirin.ws_encode frame in
+
+  (* First byte: FIN=1, opcode=2 (binary) = 0x82 *)
+  check char "first byte" '\x82' encoded.[0];
+  (* Second byte: MASK=0, length=126 (indicating 16-bit length follows) *)
+  check char "second byte" '\x7e' encoded.[1];
+  (* 16-bit length in big-endian: 1000 = 0x03E8 *)
+  check int "length high" 0x03 (Char.code encoded.[2]);
+  check int "length low" 0xE8 (Char.code encoded.[3])
+
+let test_ws_decode_masked_frame () =
+  (* Build a masked text frame: "Hi" with mask key [0x12, 0x34, 0x56, 0x78] *)
+  let raw = Bytes.create 8 in
+  Bytes.set raw 0 '\x81';  (* FIN=1, opcode=1 *)
+  Bytes.set raw 1 '\x82';  (* MASK=1, length=2 *)
+  (* Mask key *)
+  Bytes.set raw 2 '\x12';
+  Bytes.set raw 3 '\x34';
+  Bytes.set raw 4 '\x56';
+  Bytes.set raw 5 '\x78';
+  (* Masked payload: 'H' xor 0x12, 'i' xor 0x34 *)
+  Bytes.set raw 6 (Char.chr (Char.code 'H' lxor 0x12));
+  Bytes.set raw 7 (Char.chr (Char.code 'i' lxor 0x34));
+
+  match Kirin.ws_decode (Bytes.to_string raw) with
+  | Ok (frame, consumed) ->
+    check bool "fin" true frame.fin;
+    check bool "is text" (frame.opcode = Kirin.Text) true;
+    check string "payload" "Hi" frame.payload;
+    check int "consumed" 8 consumed
+  | Error msg ->
+    fail ("Decode failed: " ^ msg)
+
+let test_ws_close_frame () =
+  let frame = Kirin.ws_close ~code:Kirin.Normal ~reason:"Bye" () in
+  check bool "is close" (frame.opcode = Kirin.Close) true;
+  (* Payload: 2 bytes for code (1000) + "Bye" *)
+  check int "payload length" 5 (String.length frame.payload);
+  (* Parse it back *)
+  let code, reason = Kirin.Websocket.parse_close_payload frame.payload in
+  check (option bool) "code is Normal" (Some true)
+    (Option.map (fun c -> c = Kirin.Normal) code);
+  check string "reason" "Bye" reason
+
+let test_ws_ping_pong () =
+  let ping = Kirin.ws_ping ~payload:"ping-data" () in
+  check bool "is ping" (ping.opcode = Kirin.Ping) true;
+  check string "ping payload" "ping-data" ping.payload;
+
+  let pong = Kirin.ws_pong ~payload:ping.payload in
+  check bool "is pong" (pong.opcode = Kirin.Pong) true;
+  check string "pong echoes" "ping-data" pong.payload
+
+let websocket_tests = [
+  test_case "compute accept key" `Quick test_ws_accept_key;
+  test_case "is upgrade request" `Quick test_ws_is_upgrade_request;
+  test_case "upgrade response" `Quick test_ws_upgrade_response;
+  test_case "encode text frame" `Quick test_ws_encode_text_frame;
+  test_case "encode large frame" `Quick test_ws_encode_large_frame;
+  test_case "decode masked frame" `Quick test_ws_decode_masked_frame;
+  test_case "close frame" `Quick test_ws_close_frame;
+  test_case "ping pong" `Quick test_ws_ping_pong;
+]
+
+(* ============================================================
+   SSE Tests
+   ============================================================ *)
+
+let test_sse_encode_simple () =
+  let evt = Kirin.sse_data "hello world" in
+  let encoded = Kirin.sse_encode evt in
+  check string "simple event" "data: hello world\n\n" encoded
+
+let test_sse_encode_multiline () =
+  let evt = Kirin.sse_data "line1\nline2\nline3" in
+  let encoded = Kirin.sse_encode evt in
+  check string "multiline event" "data: line1\ndata: line2\ndata: line3\n\n" encoded
+
+let test_sse_encode_with_type () =
+  let evt = Kirin.sse_event ~event_type:"message" "test payload" in
+  let encoded = Kirin.sse_encode evt in
+  check string "typed event" "event: message\ndata: test payload\n\n" encoded
+
+let test_sse_encode_with_id () =
+  let evt = Kirin.sse_data "data" |> Kirin.sse_with_id "evt-123" in
+  let encoded = Kirin.sse_encode evt in
+  check string "event with id" "data: data\nid: evt-123\n\n" encoded
+
+let test_sse_encode_with_retry () =
+  let evt = Kirin.sse_data "reconnect" |> Kirin.sse_with_retry 5000 in
+  let encoded = Kirin.sse_encode evt in
+  check string "event with retry" "data: reconnect\nretry: 5000\n\n" encoded
+
+let test_sse_encode_full () =
+  let evt = Kirin.sse_event ~event_type:"update" "new data"
+    |> Kirin.sse_with_id "42"
+    |> Kirin.sse_with_retry 3000 in
+  let encoded = Kirin.sse_encode evt in
+  check string "full event" "event: update\ndata: new data\nid: 42\nretry: 3000\n\n" encoded
+
+let test_sse_response () =
+  let events = [
+    Kirin.sse_data "first";
+    Kirin.sse_data "second";
+  ] in
+  let resp = Kirin.sse_response events in
+
+  check (option string) "content-type" (Some "text/event-stream")
+    (Kirin.Response.header "content-type" resp);
+  check (option string) "cache-control" (Some "no-cache")
+    (Kirin.Response.header "cache-control" resp);
+
+  let body = Kirin.Response.body resp in
+  check bool "contains first" true (string_contains body "data: first");
+  check bool "contains second" true (string_contains body "data: second")
+
+let test_sse_ping () =
+  let ping = Kirin.sse_ping () in
+  check string "ping format" ": ping\n\n" ping
+
+let test_sse_middleware () =
+  let counter = ref 0 in
+  let on_events () =
+    incr counter;
+    [Kirin.sse_event ~event_type:"tick" (string_of_int !counter)]
+  in
+  let fallback _req = Kirin.text "Not SSE" in
+  let handler = Kirin.sse ~path:"/events" ~on_events fallback in
+
+  (* SSE request *)
+  let raw_sse = Http.Request.make ~meth:`GET "/events" in
+  let req_sse = Kirin.Request.make ~raw:raw_sse ~body:"" in
+  let resp_sse = handler req_sse in
+  check (option string) "sse content-type" (Some "text/event-stream")
+    (Kirin.Response.header "content-type" resp_sse);
+
+  (* Non-SSE request *)
+  let raw_other = Http.Request.make ~meth:`GET "/other" in
+  let req_other = Kirin.Request.make ~raw:raw_other ~body:"" in
+  let resp_other = handler req_other in
+  check string "fallback body" "Not SSE" (Kirin.Response.body resp_other)
+
+let sse_tests = [
+  test_case "encode simple" `Quick test_sse_encode_simple;
+  test_case "encode multiline" `Quick test_sse_encode_multiline;
+  test_case "encode with type" `Quick test_sse_encode_with_type;
+  test_case "encode with id" `Quick test_sse_encode_with_id;
+  test_case "encode with retry" `Quick test_sse_encode_with_retry;
+  test_case "encode full" `Quick test_sse_encode_full;
+  test_case "response headers" `Quick test_sse_response;
+  test_case "ping" `Quick test_sse_ping;
+  test_case "middleware" `Quick test_sse_middleware;
+]
+
+(* ============================================================
+   Template Tests
+   ============================================================ *)
+
+let test_template_simple_var () =
+  let ctx = Kirin.template_context [("name", "World")] in
+  let result = Kirin.template_render ctx "Hello, {{name}}!" in
+  check string "simple var" "Hello, World!" result
+
+let test_template_html_escape () =
+  let ctx = Kirin.template_context [("html", "<script>alert('xss')</script>")] in
+  let result = Kirin.template_render ctx "{{html}}" in
+  check string "escaped" "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;" result
+
+let test_template_raw_var () =
+  let ctx = Kirin.template_context [("html", "<b>bold</b>")] in
+  let result = Kirin.template_render ctx "{{{html}}}" in
+  check string "raw" "<b>bold</b>" result
+
+let test_template_if_true () =
+  let ctx = Kirin.template_context_of [("show", `Bool true)] in
+  let result = Kirin.template_render ctx "{{#if show}}visible{{/if show}}" in
+  check string "if true" "visible" result
+
+let test_template_if_false () =
+  let ctx = Kirin.template_context_of [("show", `Bool false)] in
+  let result = Kirin.template_render ctx "{{#if show}}visible{{/if show}}" in
+  check string "if false" "" result
+
+let test_template_if_else () =
+  let ctx = Kirin.template_context_of [("logged_in", `Bool false)] in
+  let result = Kirin.template_render ctx "{{#if logged_in}}Welcome{{else}}Login{{/if logged_in}}" in
+  check string "if else" "Login" result
+
+let test_template_unless () =
+  let ctx = Kirin.template_context_of [("error", `Null)] in
+  let result = Kirin.template_render ctx "{{#unless error}}OK{{/unless error}}" in
+  check string "unless null" "OK" result
+
+let test_template_each () =
+  let ctx = Kirin.template_context_of [
+    ("items", `List [`String "a"; `String "b"; `String "c"])
+  ] in
+  let result = Kirin.template_render ctx "{{#each items}}{{this}}{{/each items}}" in
+  check string "each" "abc" result
+
+let test_template_each_objects () =
+  let ctx = Kirin.template_context_of [
+    ("users", `List [
+      `Assoc [("name", `String "Alice")];
+      `Assoc [("name", `String "Bob")];
+    ])
+  ] in
+  let result = Kirin.template_render ctx "{{#each users}}{{name}} {{/each users}}" in
+  check string "each objects" "Alice Bob " result
+
+let test_template_dot_notation () =
+  let ctx = Kirin.template_context_of [
+    ("user", `Assoc [("profile", `Assoc [("name", `String "John")])])
+  ] in
+  let result = Kirin.template_render ctx "{{user.profile.name}}" in
+  check string "dot notation" "John" result
+
+let test_template_interpolate () =
+  let result = Kirin.template_interpolate "Hello {{name}}, welcome to {{place}}!"
+    [("name", "Alice"); ("place", "Wonderland")] in
+  check string "interpolate" "Hello Alice, welcome to Wonderland!" result
+
+let test_template_html_response () =
+  let ctx = Kirin.template_context [("title", "Test")] in
+  let resp = Kirin.template_html ctx "<h1>{{title}}</h1>" in
+  check string "body" "<h1>Test</h1>" (Kirin.Response.body resp);
+  check (option string) "content-type" (Some "text/html; charset=utf-8")
+    (Kirin.Response.header "content-type" resp)
+
+let template_tests = [
+  test_case "simple variable" `Quick test_template_simple_var;
+  test_case "html escape" `Quick test_template_html_escape;
+  test_case "raw variable" `Quick test_template_raw_var;
+  test_case "if true" `Quick test_template_if_true;
+  test_case "if false" `Quick test_template_if_false;
+  test_case "if else" `Quick test_template_if_else;
+  test_case "unless" `Quick test_template_unless;
+  test_case "each" `Quick test_template_each;
+  test_case "each objects" `Quick test_template_each_objects;
+  test_case "dot notation" `Quick test_template_dot_notation;
+  test_case "interpolate" `Quick test_template_interpolate;
+  test_case "html response" `Quick test_template_html_response;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -554,4 +862,7 @@ let () =
     ("Multipart", multipart_tests);
     ("Compress", compress_tests);
     ("RateLimit", ratelimit_tests);
+    ("WebSocket", websocket_tests);
+    ("SSE", sse_tests);
+    ("Template", template_tests);
   ]

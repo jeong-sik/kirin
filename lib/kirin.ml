@@ -268,6 +268,134 @@ let generate_etag = Etag.generate
 let with_etag etag resp =
   Response.with_header "etag" (Etag.to_string etag) resp
 
+(** {1 WebSocket Support (RFC 6455)} *)
+
+(** Check if request is a WebSocket upgrade request *)
+let is_websocket_upgrade = Websocket.is_upgrade_request
+
+(** Create WebSocket upgrade response *)
+let websocket_upgrade = Websocket.upgrade_response
+
+(** WebSocket middleware for handling upgrade requests *)
+let websocket = Websocket.middleware
+
+(** Create a text WebSocket frame *)
+let ws_text = Websocket.text_frame
+
+(** Create a binary WebSocket frame *)
+let ws_binary = Websocket.binary_frame
+
+(** Create a ping frame *)
+let ws_ping = Websocket.ping_frame
+
+(** Create a pong frame *)
+let ws_pong = Websocket.pong_frame
+
+(** Create a close frame *)
+let ws_close = Websocket.close_frame
+
+(** Encode WebSocket frame for sending *)
+let ws_encode = Websocket.encode_frame
+
+(** Decode WebSocket frame from received data *)
+let ws_decode = Websocket.decode_frame
+
+(** WebSocket opcodes *)
+type ws_opcode = Websocket.opcode =
+  | Continuation
+  | Text
+  | Binary
+  | Close
+  | Ping
+  | Pong
+
+(** WebSocket frame *)
+type ws_frame = Websocket.frame = {
+  fin : bool;
+  opcode : ws_opcode;
+  payload : string;
+}
+
+(** WebSocket close codes *)
+type ws_close_code = Websocket.close_code =
+  | Normal
+  | GoingAway
+  | ProtocolError
+  | UnsupportedData
+  | InvalidPayload
+  | PolicyViolation
+  | MessageTooBig
+  | InternalError
+
+(** Default echo handler *)
+let ws_echo_handler = Websocket.echo_handler
+
+(** {1 Server-Sent Events (SSE)} *)
+
+(** SSE event type *)
+type sse_event = Sse.event = {
+  event : string option;
+  data : string;
+  id : string option;
+  retry : int option;
+}
+
+(** Create a simple data-only SSE event *)
+let sse_data = Sse.data
+
+(** Create an SSE event with type *)
+let sse_event = Sse.event
+
+(** Add ID to SSE event *)
+let sse_with_id = Sse.with_id
+
+(** Add retry interval to SSE event *)
+let sse_with_retry = Sse.with_retry
+
+(** Encode SSE event to string *)
+let sse_encode = Sse.encode
+
+(** Create SSE response with events *)
+let sse_response = Sse.response
+
+(** SSE endpoint handler *)
+let sse_handler = Sse.handler
+
+(** SSE middleware *)
+let sse = Sse.middleware
+
+(** SSE keep-alive ping *)
+let sse_ping = Sse.ping
+
+(** Get Last-Event-ID header *)
+let sse_last_id = Sse.last_event_id
+
+(** {1 HTML Template Engine} *)
+
+(** Template context type *)
+type template_context = Template.context
+
+(** Empty template context *)
+let template_context_empty = Template.empty_context
+
+(** Create context from string pairs *)
+let template_context = Template.context
+
+(** Create context from Yojson values *)
+let template_context_of = Template.context_of
+
+(** Render template with context *)
+let template_render = Template.render
+
+(** Render template to HTML response *)
+let template_html = Template.html
+
+(** Simple string interpolation *)
+let template_interpolate = Template.interpolate
+
+(** HTML escape string *)
+let html_escape = Template.html_escape
+
 (** {1 Internal Modules (for advanced use/testing)} *)
 
 module Request = Request
@@ -280,3 +408,6 @@ module Etag = Etag
 module Multipart = Multipart
 module Compress = Compress
 module Ratelimit = Ratelimit
+module Websocket = Websocket
+module Sse = Sse
+module Template = Template
