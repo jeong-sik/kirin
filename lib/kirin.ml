@@ -522,6 +522,30 @@ type backpressure_strategy = Backpressure.strategy =
   | Drop_newest
   | Error
 
+(** {1 In-Memory Cache (Phase 9)} *)
+
+(** LRU cache with TTL support.
+
+    {[
+      let cache = Kirin.Cache.create ~max_size:1000 ~default_ttl:300.0 () in
+      Kirin.Cache.set cache "key" "value";
+      match Kirin.Cache.get cache "key" with
+      | Some v -> v
+      | None -> "default"
+    ]}
+*)
+module Cache = Cache
+
+(** Cache statistics type *)
+type cache_stats = Cache.stats = {
+  hits : int;
+  misses : int;
+  evictions : int;
+  expirations : int;
+  current_size : int;
+  max_size : int;
+}
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)
