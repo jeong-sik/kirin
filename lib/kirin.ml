@@ -858,3 +858,67 @@ type webrtc_ice_state = Webrtc_adapter.ice_state =
   | Failed
   | Disconnected
   | Closed
+
+(** {1 Database Integration (Phase 12)}
+
+    Kirin provides database connectivity using Caqti-eio with direct-style APIs.
+
+    {b Features:}
+    - Connection pooling with automatic management
+    - Transaction support with rollback
+    - Version-tracked migrations
+    - Type-safe query builder
+
+    {b Quick Example - Database Query:}
+    {[
+      Kirin.Db.with_pool ~sw ~env "postgresql://localhost/mydb" (fun pool ->
+        Kirin.Db.use pool (fun (module C : Kirin.Db.CONNECTION) ->
+          let open Caqti_request.Infix in
+          let req = (Caqti_type.int ->! Caqti_type.string)
+            "SELECT name FROM users WHERE id = ?" in
+          C.find req 1))
+    ]}
+
+    {b Quick Example - Migrations:}
+    {[
+      let migrations = Kirin.Migrate.[
+        migration ~version:1 ~name:"create_users"
+          ~up:"CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)"
+          ~down:"DROP TABLE users";
+
+        migration ~version:2 ~name:"add_email"
+          ~up:"ALTER TABLE users ADD COLUMN email TEXT"
+          ~down:"ALTER TABLE users DROP COLUMN email";
+      ] in
+
+      Kirin.Db.with_pool ~sw ~env uri (fun pool ->
+        let result = Kirin.Migrate.up pool migrations ~scheme:(Some "postgresql") in
+        print_endline (Kirin.Migrate.pp_result result))
+    ]}
+
+    {b Quick Example - Query Builder:}
+    {[
+      let q = Kirin.Query.(
+        select ["id"; "name"; "email"]
+        |> from "users"
+        |> where "age > ?" [Int 18]
+        |> order_by "name" Asc
+        |> limit 10
+        |> build
+      ) in
+      (* q.sql = "SELECT id, name, email FROM users WHERE age > ? ORDER BY name ASC LIMIT 10" *)
+    ]}
+
+    @see <Db> for connection pool and query execution
+    @see <Migrate> for database migrations
+    @see <Query> for query builder
+*)
+
+(** Database adapter with Caqti-eio integration *)
+module Db = Db
+
+(** Database migration system *)
+module Migrate = Migrate
+
+(** Type-safe SQL query builder *)
+module Query = Query

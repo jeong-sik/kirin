@@ -23,6 +23,9 @@
   graphql_parser
   kirin_mcp
   ocaml-webrtc
+  caqti
+  caqti-eio
+  caqti-eio.unix
   unix
   threads)
  (preprocess
