@@ -21,6 +21,7 @@
   grpc-direct-core
   graphql
   graphql_parser
+  kirin_mcp
   unix)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

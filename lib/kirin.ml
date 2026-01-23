@@ -503,3 +503,31 @@ module Grpc = Grpc
     @see <Graphql_adapter> for full API documentation
 *)
 module Graphql = Graphql_adapter
+
+(** {1 MCP Integration (Phase 8)} *)
+
+(** MCP module for AI agent integration
+
+    {b Quick Example - Server:}
+    {[
+      open Kirin.Mcp
+
+      let mcp = Server.create () in
+      Server.add_tool mcp
+        ~name:"greet"
+        ~description:"Greet a person"
+        ~schema:(Schema.object_ [
+          "name", Schema.string ~description:"Person's name" ()
+        ] ~required:["name"])
+        ~handler:(fun params ->
+          let name = Yojson.Safe.Util.(params |> member "name" |> to_string) in
+          `String (Printf.sprintf "Hello, %s!" name));
+
+      let routes = Kirin.router (routes mcp @ [
+        Kirin.get "/" (fun _ -> Kirin.html "MCP Server");
+      ])
+    ]}
+
+    @see <Mcp_adapter> for full API documentation
+*)
+module Mcp = Mcp_adapter

@@ -1,0 +1,4 @@
+(library
+ (name kirin_mcp)
+ (public_name kirin.mcp)
+ (libraries yojson eio))
