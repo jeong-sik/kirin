@@ -19,6 +19,8 @@
   bigstringaf
   grpc-direct
   grpc-direct-core
+  graphql
+  graphql_parser
   unix)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

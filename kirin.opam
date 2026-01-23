@@ -20,7 +20,17 @@ Features:
 maintainer: ["Seungji Park <yousleepwhen@gmail.com>"]
 authors: ["Seungji Park <yousleepwhen@gmail.com>"]
 license: "MIT"
-tags: ["web" "eio" "http" "framework" "websocket" "sse" "templates" "grpc"]
+tags: [
+  "web"
+  "eio"
+  "http"
+  "framework"
+  "websocket"
+  "sse"
+  "templates"
+  "grpc"
+  "graphql"
+]
 homepage: "https://github.com/jeong-sik/kirin"
 doc: "https://github.com/jeong-sik/kirin"
 bug-reports: "https://github.com/jeong-sik/kirin/issues"
@@ -44,6 +54,8 @@ depends: [
   "ppx_deriving_yojson" {>= "3.0"}
   "grpc-direct" {>= "0.1.0"}
   "grpc-direct-core" {>= "0.1.0"}
+  "graphql" {>= "0.14.0"}
+  "graphql_parser" {>= "0.14.0"}
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]

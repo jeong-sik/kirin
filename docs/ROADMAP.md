@@ -84,14 +84,18 @@ Total: ~614 lines
 - [x] 8 gRPC tests added
 - [ ] Protobuf code generation (use ocaml-protoc separately)
 
-### Phase 6: GraphQL Support
+### Phase 6: GraphQL Support ✅ (Complete)
 **Goal**: GraphQL API 지원
 
-- [ ] graphql-lwt 어댑터 (Lwt → Eio)
-- [ ] Schema-first development
-- [ ] Subscriptions (WebSocket)
-- [ ] DataLoader pattern
-- [ ] GraphQL Playground integration
+- [x] Graphql 어댑터 (Kirin.Graphql 모듈)
+- [x] Schema-first development (obj, field, enum, scalar)
+- [x] HTTP handler (POST /graphql)
+- [x] GraphQL Playground integration (GET /graphql)
+- [x] Batched queries support
+- [x] Error helpers
+- [x] 8 GraphQL tests added
+- [ ] Subscriptions (WebSocket/SSE) - future
+- [ ] DataLoader pattern - future
 
 ### Phase 7: Cross-Platform (WASM)
 **Goal**: 브라우저에서 실행

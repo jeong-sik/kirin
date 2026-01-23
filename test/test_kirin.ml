@@ -949,6 +949,120 @@ let grpc_tests = [
 ]
 
 (* ============================================================
+   GraphQL Tests
+   ============================================================ *)
+
+module GQL = Kirin.Graphql
+
+let test_graphql_schema_create () =
+  let schema = GQL.schema [
+    GQL.field "hello" ~typ:(GQL.non_null GQL.string)
+      ~args:GQL.Arg.[]
+      ~resolve:(fun _info () -> "Hello, World!");
+  ] in
+  (* Schema created successfully *)
+  check Alcotest.bool "schema created" true (schema |> Obj.repr |> Obj.is_block)
+
+let test_graphql_execute () =
+  let schema = GQL.schema [
+    GQL.field "greeting" ~typ:(GQL.non_null GQL.string)
+      ~args:GQL.Arg.[arg "name" ~typ:GQL.Arg.string]
+      ~resolve:(fun _info () name_opt ->
+        let name = Option.value ~default:"World" name_opt in
+        "Hello, " ^ name ^ "!");
+  ] in
+  let result = GQL.execute schema ~ctx:() ~query:"{ greeting }" () in
+  match result with
+  | Ok (`Response json) ->
+    let expected = `Assoc [("data", `Assoc [("greeting", `String "Hello, World!")])] in
+    check Alcotest.string "graphql response" (Yojson.Basic.to_string expected) (Yojson.Basic.to_string json)
+  | _ -> fail "Expected response"
+
+let test_graphql_execute_with_args () =
+  let schema = GQL.schema [
+    GQL.field "greeting" ~typ:(GQL.non_null GQL.string)
+      ~args:GQL.Arg.[arg "name" ~typ:GQL.Arg.string]
+      ~resolve:(fun _info () name_opt ->
+        let name = Option.value ~default:"World" name_opt in
+        "Hello, " ^ name ^ "!");
+  ] in
+  let result = GQL.execute schema ~ctx:() ~query:{|{ greeting(name: "Alice") }|} () in
+  match result with
+  | Ok (`Response json) ->
+    let expected = `Assoc [("data", `Assoc [("greeting", `String "Hello, Alice!")])] in
+    check Alcotest.string "graphql response with args" (Yojson.Basic.to_string expected) (Yojson.Basic.to_string json)
+  | _ -> fail "Expected response"
+
+let test_graphql_object_type () =
+  let user_type = GQL.obj "User" ~fields:[
+    GQL.field "id" ~typ:(GQL.non_null GQL.string)
+      ~args:GQL.Arg.[]
+      ~resolve:(fun _info (id, _name) -> id);
+    GQL.field "name" ~typ:(GQL.non_null GQL.string)
+      ~args:GQL.Arg.[]
+      ~resolve:(fun _info (_id, name) -> name);
+  ] in
+  let schema = GQL.schema [
+    GQL.field "user" ~typ:user_type
+      ~args:GQL.Arg.[]
+      ~resolve:(fun _info () -> Some ("1", "Alice"));
+  ] in
+  let result = GQL.execute schema ~ctx:() ~query:"{ user { id name } }" () in
+  match result with
+  | Ok (`Response json) ->
+    let expected = `Assoc [("data", `Assoc [("user", `Assoc [("id", `String "1"); ("name", `String "Alice")])])] in
+    check Alcotest.string "user object" (Yojson.Basic.to_string expected) (Yojson.Basic.to_string json)
+  | _ -> fail "Expected response"
+
+let test_graphql_parse_request () =
+  let body = {|{"query":"{ hello }","operationName":"GetHello","variables":{"id":"1"}}|} in
+  let req = GQL.parse_request body in
+  match req with
+  | Some r ->
+    check Alcotest.string "query" "{ hello }" r.query;
+    check (option Alcotest.string) "operation name" (Some "GetHello") r.operation_name;
+    check Alcotest.bool "variables present" true (Option.is_some r.variables)
+  | None -> fail "Failed to parse request"
+
+let test_graphql_parse_request_minimal () =
+  let body = {|{"query":"{ hello }"}|} in
+  let req = GQL.parse_request body in
+  match req with
+  | Some r ->
+    check Alcotest.string "query" "{ hello }" r.query;
+    check (option Alcotest.string) "operation name" None r.operation_name;
+    check Alcotest.bool "variables none" true (Option.is_none r.variables)
+  | None -> fail "Failed to parse request"
+
+let test_graphql_error_helpers () =
+  let err = GQL.error "Something went wrong" in
+  check Alcotest.string "error message" "Something went wrong" err.message;
+  let err_loc = GQL.error_with_location "Parse error" ~line:10 ~column:5 in
+  check (option (list (pair Alcotest.int Alcotest.int))) "locations"
+    (Some [(10, 5)]) err_loc.locations;
+  let err_path = GQL.error_with_path "Field error" ["user"; "name"] in
+  check (option (list Alcotest.string)) "path"
+    (Some ["user"; "name"]) err_path.path
+
+let test_graphql_playground () =
+  let req = make_test_request "/graphql" in
+  let resp = GQL.playground_handler req in
+  check Alcotest.int "status" 200 (Kirin.Response.status_code resp);
+  let body = Kirin.Response.body resp in
+  check Alcotest.bool "contains doctype" true (String.length body > 100 && String.sub body 0 15 = "<!DOCTYPE html>")
+
+let graphql_tests = [
+  test_case "schema create" `Quick test_graphql_schema_create;
+  test_case "execute query" `Quick test_graphql_execute;
+  test_case "execute with args" `Quick test_graphql_execute_with_args;
+  test_case "object type" `Quick test_graphql_object_type;
+  test_case "parse request" `Quick test_graphql_parse_request;
+  test_case "parse request minimal" `Quick test_graphql_parse_request_minimal;
+  test_case "error helpers" `Quick test_graphql_error_helpers;
+  test_case "playground handler" `Quick test_graphql_playground;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -968,4 +1082,5 @@ let () =
     ("Template", template_tests);
     ("TLS", tls_tests);
     ("gRPC", grpc_tests);
+    ("GraphQL", graphql_tests);
   ]

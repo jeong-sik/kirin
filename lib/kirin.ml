@@ -474,3 +474,32 @@ module Tls_config = Tls_config
     @see <Grpc> for full API documentation
 *)
 module Grpc = Grpc
+
+(** {1 GraphQL Integration (Phase 6)} *)
+
+(** GraphQL module for building GraphQL APIs
+
+    {b Quick Example:}
+    {[
+      open Kirin.Graphql
+
+      let user = obj "User" ~fields:(fun _ -> [
+        field "id" ~typ:(non_null string) ~args:[] ~resolve:(fun _ u -> u.id);
+        field "name" ~typ:(non_null string) ~args:[] ~resolve:(fun _ u -> u.name);
+      ])
+
+      let schema = schema [
+        field "user" ~typ:user
+          ~args:Arg.[arg "id" ~typ:(non_null string)]
+          ~resolve:(fun _ () id -> find_user id)
+      ]
+
+      let routes = Kirin.router [
+        Kirin.post "/graphql" (Kirin.Graphql.handler schema);
+        Kirin.get "/graphql" (Kirin.Graphql.playground_handler);
+      ]
+    ]}
+
+    @see <Graphql_adapter> for full API documentation
+*)
+module Graphql = Graphql_adapter
