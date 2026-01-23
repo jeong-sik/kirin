@@ -264,6 +264,32 @@ let combined_middleware = Kirin.pipeline [
 ]
 
 (** ============================================================
+    Static File Simulation
+    ============================================================ *)
+
+(** Mock static file middleware (simulates path matching and file serving) *)
+let mock_static_middleware : Kirin.middleware =
+  let cached_content = String.make 10000 'x' in
+  fun handler req ->
+    let path = Kirin.Request.path req in
+    if String.length path >= 7 && String.sub path 0 7 = "/static" then
+      (* Simulate serving a cached file *)
+      Kirin.Response.make cached_content
+      |> Kirin.Response.with_header "content-type" "text/html; charset=utf-8"
+      |> Kirin.Response.with_header "cache-control" "public, max-age=3600"
+    else
+      handler req
+
+(** Benchmark for MIME type detection *)
+let mime_paths = [|
+  "/static/style.css";
+  "/static/app.js";
+  "/static/image.png";
+  "/static/data.json";
+  "/static/doc.html";
+|]
+
+(** ============================================================
     Benchmark Runner
     ============================================================ *)
 
@@ -271,15 +297,15 @@ let () =
   print_endline "=== Kirin Framework Benchmark Suite ===";
   print_endline "";
   print_endline "Configuration:";
-  print_endline "  - Warmup iterations: 10,000";
-  print_endline "  - Sample count: 100,000";
-  print_endline "  - Allocation iterations: 10,000";
+  print_endline "  - Warmup iterations: 1,000";
+  print_endline "  - Sample count: 10,000";
+  print_endline "  - Allocation iterations: 1,000";
   print_endline "";
   print_endline "Starting benchmarks...";
 
-  let warmup_iterations = 10_000 in
-  let sample_count = 100_000 in
-  let alloc_iterations = 10_000 in
+  let warmup_iterations = 1_000 in
+  let sample_count = 10_000 in
+  let alloc_iterations = 1_000 in
 
   let run name f = Bench.run ~name ~warmup_iterations ~sample_count ~alloc_iterations f in
 
@@ -295,7 +321,7 @@ let () =
   in
 
   (* ===== Handler Benchmarks ===== *)
-  print_endline "\n[1/5] Running handler benchmarks...";
+  print_endline "\n[1/6] Running handler benchmarks...";
   let handler_results = [
     run "handler/hello_text" (fun () -> handler_hello_text req_root);
     run "handler/hello_html" (fun () -> handler_hello_html req_root);
@@ -309,7 +335,7 @@ let () =
   Bench.print_results handler_results;
 
   (* ===== Router Benchmarks ===== *)
-  print_endline "[2/5] Running router benchmarks...";
+  print_endline "[2/6] Running router benchmarks...";
   let router_results = [
     run "router/simple_3routes" (fun () -> router_simple req_root);
     run "router/100routes_first" (fun () -> router_many req_route0);
@@ -320,7 +346,7 @@ let () =
   Bench.print_results router_results;
 
   (* ===== Middleware Benchmarks ===== *)
-  print_endline "[3/5] Running middleware benchmarks...";
+  print_endline "[3/6] Running middleware benchmarks...";
   let handler_none = handler_hello_text in
   let handler_logger = silent_logger handler_hello_text in
   let handler_timing = timing_middleware handler_hello_text in
@@ -341,7 +367,7 @@ let () =
   Bench.print_results middleware_results;
 
   (* ===== Response Construction Benchmarks ===== *)
-  print_endline "[4/5] Running response benchmarks...";
+  print_endline "[4/6] Running response benchmarks...";
   let base_resp = Kirin.Response.make "Hello" in
   let response_results = [
     run "response/make" (fun () -> Kirin.Response.make "Hello");
@@ -357,7 +383,7 @@ let () =
   Bench.print_results response_results;
 
   (* ===== Compression Benchmarks ===== *)
-  print_endline "[5/5] Running compression benchmarks...";
+  print_endline "[5/6] Running compression benchmarks...";
   let data_1kb = String.make 1024 'x' in
   let data_10kb = String.make 10240 'x' in
   let data_100kb = String.make 102400 'x' in
@@ -370,6 +396,20 @@ let () =
     run "compress/deflate_10kb" (fun () -> Kirin.compress_deflate data_10kb);
   ] in
   Bench.print_results compression_results;
+
+  (* ===== Static File Simulation Benchmarks ===== *)
+  print_endline "[6/6] Running static file benchmarks...";
+  let req_static = make_request ~path:"/static/style.css" () in
+  let handler_static = mock_static_middleware handler_hello_text in
+
+  let static_results = [
+    run "static/path_match" (fun () -> handler_static req_static);
+    run "static/path_miss" (fun () -> handler_static req_root);
+    run "static/mime_type" (fun () ->
+      let path = mime_paths.(Random.int (Array.length mime_paths)) in
+      ignore (Kirin.Static.get_mime_type path));
+  ] in
+  Bench.print_results static_results;
 
   (* ===== Summary ===== *)
   print_endline "=== Benchmark Complete ===";

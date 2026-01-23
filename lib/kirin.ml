@@ -466,3 +466,11 @@ module Websocket = Websocket
 module Sse = Sse
 module Template = Template
 module Tls_config = Tls_config
+
+(** {1 gRPC Integration (Phase 5)} *)
+
+(** gRPC module for building gRPC services alongside HTTP
+
+    @see <Grpc> for full API documentation
+*)
+module Grpc = Grpc

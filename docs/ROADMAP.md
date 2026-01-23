@@ -72,14 +72,17 @@ Total: ~614 lines
 
 ## Protocol Extension Phases
 
-### Phase 5: gRPC Integration
+### Phase 5: gRPC Integration ✅ (Complete)
 **Goal**: gRPC 서비스 지원
 
-- [ ] grpc-eio 통합
-- [ ] Unified middleware for HTTP + gRPC
-- [ ] Protobuf serialization
-- [ ] Streaming RPC support
-- [ ] gRPC reflection
+- [x] grpc-direct 통합 (Kirin.Grpc 모듈)
+- [x] Unified middleware/interceptor bridge
+- [x] Streaming RPC support (unary, server, client, bidi)
+- [x] gRPC status codes and helpers
+- [x] gRPC-Web support via grpc-direct
+- [x] Health check and reflection modules
+- [x] 8 gRPC tests added
+- [ ] Protobuf code generation (use ocaml-protoc separately)
 
 ### Phase 6: GraphQL Support
 **Goal**: GraphQL API 지원

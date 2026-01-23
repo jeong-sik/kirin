@@ -31,7 +31,9 @@ Features:
 - ETag/304 caching
 - Multipart form parsing (RFC 7578)
 - TLS/HTTPS configuration
-- Response compression (gzip/deflate)")
+- Response compression (gzip/deflate)
+- gRPC integration (via grpc-direct)
+- Unified HTTP + gRPC server")
  (depends
   (ocaml (>= "5.1"))
   (dune (>= "3.16"))
@@ -50,7 +52,9 @@ Features:
   (bigstringaf (>= "0.9"))
   (ppx_deriving (>= "5.0"))
   (ppx_deriving_yojson (>= "3.0"))
+  (grpc-direct (>= "0.1.0"))
+  (grpc-direct-core (>= "0.1.0"))
   (alcotest :with-test)
   (odoc :with-doc))
  (tags
-  (web eio http framework websocket sse templates)))
+  (web eio http framework websocket sse templates grpc)))

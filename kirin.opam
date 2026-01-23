@@ -14,11 +14,13 @@ Features:
 - ETag/304 caching
 - Multipart form parsing (RFC 7578)
 - TLS/HTTPS configuration
-- Response compression (gzip/deflate)"""
+- Response compression (gzip/deflate)
+- gRPC integration (via grpc-direct)
+- Unified HTTP + gRPC server"""
 maintainer: ["Seungji Park <yousleepwhen@gmail.com>"]
 authors: ["Seungji Park <yousleepwhen@gmail.com>"]
 license: "MIT"
-tags: ["web" "eio" "http" "framework" "websocket" "sse" "templates"]
+tags: ["web" "eio" "http" "framework" "websocket" "sse" "templates" "grpc"]
 homepage: "https://github.com/jeong-sik/kirin"
 doc: "https://github.com/jeong-sik/kirin"
 bug-reports: "https://github.com/jeong-sik/kirin/issues"
@@ -40,6 +42,8 @@ depends: [
   "bigstringaf" {>= "0.9"}
   "ppx_deriving" {>= "5.0"}
   "ppx_deriving_yojson" {>= "3.0"}
+  "grpc-direct" {>= "0.1.0"}
+  "grpc-direct-core" {>= "0.1.0"}
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]

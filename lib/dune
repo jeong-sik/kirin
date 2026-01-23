@@ -17,6 +17,8 @@
   decompress.gz
   decompress.zl
   bigstringaf
+  grpc-direct
+  grpc-direct-core
   unix)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))
