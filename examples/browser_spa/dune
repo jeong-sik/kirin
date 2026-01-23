@@ -1,0 +1,8 @@
+(executable
+ (name main)
+ (modes js)
+ (libraries kirin.browser)
+ (preprocess
+  (pps js_of_ocaml-ppx))
+ (js_of_ocaml
+  (flags (:standard --effects=double-translation))))

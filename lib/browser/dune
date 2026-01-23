@@ -1,0 +1,8 @@
+(library
+ (name kirin_browser)
+ (public_name kirin.browser)
+ (libraries js_of_ocaml yojson)
+ (preprocess
+  (pps js_of_ocaml-ppx))
+ (js_of_ocaml
+  (flags (:standard --effects=double-translation))))
