@@ -637,14 +637,14 @@ let test_ws_decode_masked_frame () =
     fail ("Decode failed: " ^ msg)
 
 let test_ws_close_frame () =
-  let frame = Kirin.ws_close ~code:Kirin.Normal ~reason:"Bye" () in
+  let frame = Kirin.ws_close ~code:Kirin.Websocket.Normal ~reason:"Bye" () in
   check bool "is close" (frame.opcode = Kirin.Close) true;
   (* Payload: 2 bytes for code (1000) + "Bye" *)
   check int "payload length" 5 (String.length frame.payload);
   (* Parse it back *)
   let code, reason = Kirin.Websocket.parse_close_payload frame.payload in
   check (option bool) "code is Normal" (Some true)
-    (Option.map (fun c -> c = Kirin.Normal) code);
+    (Option.map (fun c -> c = Kirin.Websocket.Normal) code);
   check string "reason" "Bye" reason
 
 let test_ws_ping_pong () =
@@ -1463,6 +1463,78 @@ let cache_tests = [
 ]
 
 (* ============================================================
+   Jobs Tests (Phase 9)
+   ============================================================ *)
+
+module J = Kirin.Jobs
+
+let test_jobs_create () =
+  let queue = J.create ~workers:2 () in
+  check bool "not running" false (J.is_running queue);
+  check int "pending" 0 (J.pending_count queue)
+
+let test_jobs_submit () =
+  let queue = J.create ~workers:2 () in
+  let job_id = J.submit queue (fun () -> "result") in
+  check bool "has job id" true (String.length job_id > 0);
+  check int "pending" 1 (J.pending_count queue)
+
+let test_jobs_run_sync () =
+  let result = J.run_sync (fun () -> 42) in
+  check int "sync result" 42 result
+
+let test_jobs_run_once () =
+  let result = J.run_once (fun () -> "done") in
+  match result with
+  | J.Completed v -> check string "completed" "done" v
+  | J.Failed e -> fail ("Failed: " ^ Printexc.to_string e)
+  | _ -> fail "Unexpected status"
+
+let test_jobs_stats () =
+  let queue = J.create ~workers:2 () in
+  let _ = J.submit queue (fun () -> 1) in
+  let _ = J.submit queue (fun () -> 2) in
+  let stats = J.stats queue in
+  check int "submitted" 2 stats.total_submitted;
+  check int "queue size" 2 stats.queue_size
+
+let test_jobs_cancel () =
+  let queue = J.create ~workers:1 () in
+  let job_id = J.submit queue (fun () -> "result") in
+  let cancelled = J.cancel queue job_id in
+  check bool "cancelled" true cancelled;
+  check int "pending after cancel" 0 (J.pending_count queue)
+
+let test_jobs_clear () =
+  let queue = J.create ~workers:1 () in
+  let _ = J.submit queue (fun () -> 1) in
+  let _ = J.submit queue (fun () -> 2) in
+  let _ = J.submit queue (fun () -> 3) in
+  let cleared = J.clear queue in
+  check int "cleared count" 3 cleared;
+  check int "pending after clear" 0 (J.pending_count queue)
+
+let test_jobs_priority () =
+  let queue = J.create ~workers:1 () in
+  let _ = J.submit ~priority:J.Low queue (fun () -> "low") in
+  let _ = J.submit ~priority:J.Critical queue (fun () -> "critical") in
+  let _ = J.submit ~priority:J.Normal queue (fun () -> "normal") in
+  (* Jobs should be ordered: Critical, Normal, Low *)
+  let stats = J.stats queue in
+  check int "all queued" 3 stats.queue_size
+
+let jobs_tests = [
+  test_case "jobs create" `Quick test_jobs_create;
+  test_case "jobs submit" `Quick test_jobs_submit;
+  test_case "jobs run_sync" `Quick test_jobs_run_sync;
+  test_case "jobs run_once" `Quick test_jobs_run_once;
+  test_case "jobs stats" `Quick test_jobs_stats;
+  test_case "jobs cancel" `Quick test_jobs_cancel;
+  test_case "jobs clear" `Quick test_jobs_clear;
+  test_case "jobs priority" `Quick test_jobs_priority;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -1487,4 +1559,5 @@ let () =
     ("Pool", pool_tests);
     ("Backpressure", backpressure_tests);
     ("Cache", cache_tests);
+    ("Jobs", jobs_tests);
   ]

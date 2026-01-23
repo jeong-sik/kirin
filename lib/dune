@@ -22,6 +22,7 @@
   graphql
   graphql_parser
   kirin_mcp
-  unix)
+  unix
+  threads)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

@@ -546,6 +546,32 @@ type cache_stats = Cache.stats = {
   max_size : int;
 }
 
+(** {1 Background Jobs (Phase 9)} *)
+
+(** Background job queue for async task processing.
+
+    {[
+      let queue = Kirin.Jobs.create ~workers:4 () in
+      Kirin.Jobs.start queue;
+
+      let job_id = Kirin.Jobs.submit queue (fun () ->
+        send_email user "Welcome!") in
+
+      match Kirin.Jobs.status queue job_id with
+      | Kirin.Jobs.Completed _ -> "Done"
+      | Kirin.Jobs.Running -> "Working..."
+      | _ -> "Pending or failed"
+    ]}
+*)
+module Jobs = Jobs
+
+(** Job priority type *)
+type job_priority = Jobs.priority =
+  | Critical
+  | High
+  | Normal
+  | Low
+
 (** {1 HTML Template Engine} *)
 
 (** Template context type *)
