@@ -22,6 +22,7 @@
   graphql
   graphql_parser
   kirin_mcp
+  ocaml-webrtc
   unix
   threads)
  (preprocess

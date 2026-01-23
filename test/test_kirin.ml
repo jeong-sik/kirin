@@ -1830,6 +1830,129 @@ let shutdown_tests = [
 ]
 
 (* ============================================================
+   WebRTC Tests (Phase 11)
+   ============================================================ *)
+
+module WR = Kirin.WebRTC
+
+(* Test ICE state types *)
+let test_webrtc_ice_states () =
+  let states : Kirin.webrtc_ice_state list = [
+    New; Checking; Connected; Completed; Failed; Disconnected; Closed
+  ] in
+  check int "ice states count" 7 (List.length states)
+
+(* Test DataChannel creation *)
+let test_webrtc_datachannel_create () =
+  let dc = WR.DataChannel.create ~label:"test-channel" () in
+  check string "label" "test-channel" (WR.DataChannel.label dc);
+  check bool "initial state not open" false (WR.DataChannel.is_open dc)
+
+(* Test DataChannel with options *)
+let test_webrtc_datachannel_options () =
+  let options = {
+    WR.default_datachannel_options with
+    ordered = false;
+    protocol = "custom-protocol";
+  } in
+  let dc = WR.DataChannel.create ~label:"ordered-channel" ~options () in
+  check string "label" "ordered-channel" (WR.DataChannel.label dc)
+
+(* Test PeerConnection creation *)
+let test_webrtc_peerconnection_create () =
+  let pc = WR.PeerConnection.create () in
+  check bool "ice state is new"
+    true (WR.PeerConnection.ice_state pc = Kirin.New);
+  check (option (module struct
+    type t = WR.session_description
+    let pp fmt _ = Format.fprintf fmt "<session_description>"
+    let equal _ _ = true
+  end)) "no local desc" None (WR.PeerConnection.local_description pc)
+
+(* Test PeerConnection with custom ICE servers *)
+let test_webrtc_peerconnection_ice_servers () =
+  let ice_servers = [
+    { WR.urls = ["stun:stun.example.com:3478"]; username = None; credential = None };
+    { WR.urls = ["turn:turn.example.com:3478"]; username = Some "user"; credential = Some "pass" };
+  ] in
+  let pc = WR.PeerConnection.create ~ice_servers () in
+  check bool "ice state is new"
+    true (WR.PeerConnection.ice_state pc = Kirin.New)
+
+(* Test create_data_channel on PeerConnection *)
+let test_webrtc_peerconnection_data_channel () =
+  let pc = WR.PeerConnection.create () in
+  let dc = WR.PeerConnection.create_data_channel pc ~label:"chat" () in
+  check string "channel label" "chat" (WR.DataChannel.label dc)
+
+(* Test create_offer *)
+let test_webrtc_create_offer () =
+  let pc = WR.PeerConnection.create () in
+  let _ = WR.PeerConnection.create_data_channel pc ~label:"data" () in
+  let offer = WR.PeerConnection.create_offer pc in
+  check bool "offer type" true (offer.sdp_type = WR.Offer);
+  check bool "offer has SDP" true (String.length offer.sdp > 0);
+  check bool "SDP contains v=0" true (String.sub offer.sdp 0 4 = "v=0 " ||
+                                       String.sub offer.sdp 0 3 = "v=0")
+
+(* Test Signaling message encoding *)
+let test_webrtc_signaling_encode () =
+  let msg = WR.Signaling.SdpOffer { from_peer = "peer1"; sdp = "v=0..." } in
+  let json = WR.Signaling.encode_message msg in
+  check bool "contains type" true (String.contains (String.lowercase_ascii json) 'o');
+  check bool "is json object" true (json.[0] = '{')
+
+(* Test Signaling message decoding *)
+let test_webrtc_signaling_decode () =
+  let json = {|{"type":"join","peerId":"peer123","room":"test-room"}|} in
+  match WR.Signaling.decode_message json with
+  | Ok (WR.Signaling.Join { peer_id; room }) ->
+    check string "peer_id" "peer123" peer_id;
+    check string "room" "test-room" room
+  | Ok _ -> fail "expected Join message"
+  | Error e -> fail ("decode failed: " ^ e)
+
+(* Test Signaling decode error *)
+let test_webrtc_signaling_decode_error () =
+  let invalid_json = {|{"type":"unknown_type"}|} in
+  match WR.Signaling.decode_message invalid_json with
+  | Error _ -> ()  (* expected *)
+  | Ok _ -> fail "expected error for unknown type"
+
+(* Test ICE candidate encoding/decoding *)
+let test_webrtc_ice_candidate () =
+  let candidate : WR.ice_candidate = {
+    candidate = "candidate:1 1 UDP 2122252543 192.168.1.1 12345 typ host";
+    sdp_mid = Some "0";
+    sdp_mline_index = Some 0;
+    ufrag = None;
+  } in
+  let msg = WR.Signaling.IceCandidate { from_peer = "peer1"; candidate } in
+  let json = WR.Signaling.encode_message msg in
+  check bool "contains ice-candidate" true
+    (String.contains (String.lowercase_ascii json) 'i')
+
+(* Test routes helper *)
+let test_webrtc_routes () =
+  let routes = WR.routes () in
+  check int "route count" 2 (List.length routes)
+
+let webrtc_tests = [
+  test_case "ice states" `Quick test_webrtc_ice_states;
+  test_case "datachannel create" `Quick test_webrtc_datachannel_create;
+  test_case "datachannel options" `Quick test_webrtc_datachannel_options;
+  test_case "peerconnection create" `Quick test_webrtc_peerconnection_create;
+  test_case "peerconnection ice servers" `Quick test_webrtc_peerconnection_ice_servers;
+  test_case "peerconnection data channel" `Quick test_webrtc_peerconnection_data_channel;
+  test_case "create offer" `Quick test_webrtc_create_offer;
+  test_case "signaling encode" `Quick test_webrtc_signaling_encode;
+  test_case "signaling decode" `Quick test_webrtc_signaling_decode;
+  test_case "signaling decode error" `Quick test_webrtc_signaling_decode_error;
+  test_case "ice candidate" `Quick test_webrtc_ice_candidate;
+  test_case "routes helper" `Quick test_webrtc_routes;
+]
+
+(* ============================================================
    Main
    ============================================================ *)
 
@@ -1859,4 +1982,5 @@ let () =
     ("Health", health_tests);
     ("Metrics", metrics_tests);
     ("Shutdown", shutdown_tests);
+    ("WebRTC", webrtc_tests);
   ]

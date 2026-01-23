@@ -813,3 +813,48 @@ type shutdown_state = Shutdown.state =
   | Running
   | ShuttingDown
   | Stopped
+
+(** {1 WebRTC (Phase 11)} *)
+
+(** WebRTC peer-to-peer communication.
+
+    {b Quick Example - Signaling Server:}
+    {[
+      let () = Kirin.start ~port:8080
+        @@ Kirin.logger
+        @@ Kirin.router (
+             Kirin.WebRTC.routes ()
+             @ my_routes
+           )
+    ]}
+
+    {b Quick Example - Peer Connection:}
+    {[
+      let pc = Kirin.WebRTC.PeerConnection.create () in
+      let dc = Kirin.WebRTC.PeerConnection.create_data_channel pc ~label:"chat" () in
+
+      Kirin.WebRTC.DataChannel.on_message dc (fun msg ->
+        Printf.printf "Received: %s\n" msg);
+
+      let offer = Kirin.WebRTC.PeerConnection.create_offer pc
+    ]}
+
+    Features:
+    - PeerConnection: WebRTC connection management
+    - DataChannel: P2P data communication
+    - Signaling: WebSocket-based signaling server
+    - ICE: STUN/TURN integration
+
+    @see <Webrtc_adapter> for full API documentation
+*)
+module WebRTC = Webrtc_adapter
+
+(** ICE connection state *)
+type webrtc_ice_state = Webrtc_adapter.ice_state =
+  | New
+  | Checking
+  | Connected
+  | Completed
+  | Failed
+  | Disconnected
+  | Closed
