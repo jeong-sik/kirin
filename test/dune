@@ -33,3 +33,7 @@
 (test
  (name test_htmx)
  (libraries kirin kirin.htmx alcotest str))
+
+(test
+ (name test_trpc)
+ (libraries kirin kirin.trpc alcotest str unix))

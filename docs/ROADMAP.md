@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 19 Complete ✅ (All phases through 19)
+## Current Status: Phase 20 Complete ✅ (All phases through 20)
 
-**514 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX)
+**588 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC)
 
 ```
 lib/
@@ -87,6 +87,16 @@ lib/
 │   ├── extensions.ml  - HTMX extensions
 │   ├── oob.ml         - Out-of-Band swaps
 │   └── form.ml        - Form helpers
+│
+├── tRPC (Phase 20)
+│   ├── kirin_trpc.ml  - API facade
+│   ├── procedure.ml   - Procedure types (query/mutation/subscription)
+│   ├── trpc_router.ml - Router for organizing procedures
+│   ├── context.ml     - Request context
+│   ├── batch.ml       - Batch request handling
+│   ├── handler.ml     - Kirin route handler integration
+│   ├── subscription.ml - WebSocket subscriptions
+│   └── codegen.ml     - TypeScript/Zod/JSON Schema generation
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -354,15 +364,22 @@ Three levels of integration:
 - [x] Common patterns (infinite scroll, lazy load, search, click-to-edit)
 - [x] 38 HTMX tests
 
-### Phase 20: tRPC Integration 🔮
+### Phase 20: tRPC Integration ✅ Complete
 **Goal**: End-to-end 타입 안전 API
 
-- [ ] tRPC router adapter for Kirin
-- [ ] Procedure definition DSL (OCaml → TypeScript types)
-- [ ] Input/output validation with Zod bridge
-- [ ] Subscription support (WebSocket)
-- [ ] Batch request handling
-- [ ] OpenAPI generation from tRPC schema
+- [x] tRPC router adapter for Kirin
+- [x] Procedure definition DSL (query/mutation/subscription)
+- [x] Input validators (string, int, bool, list, optional, field)
+- [x] Output serializers (json, string, int, bool, list, option)
+- [x] Type info for TypeScript codegen
+- [x] Subscription support (SSE events, registry, WebSocket messages)
+- [x] Batch request handling (parse, execute, serialize)
+- [x] Context management (headers, bearer token extraction)
+- [x] Handler integration with Kirin routes
+- [x] TypeScript client generation
+- [x] JSON Schema generation
+- [x] Zod schema generation
+- [x] 74 tRPC tests
 
 ### Phase 21: TanStack Router 🛣️
 **Goal**: 파일 기반 타입 안전 라우팅
@@ -462,7 +479,8 @@ dune exec examples/high_performance/main.exe
 | 17 | Testing | 44 |
 | 18 | React | 58 |
 | 19 | HTMX+ | 38 |
-| **Total** | | **514** |
+| 20 | tRPC | 74 |
+| **Total** | | **588** |
 
 ---
 
