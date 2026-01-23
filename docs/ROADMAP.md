@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 13 Complete ✅ (All phases through 13)
+## Current Status: Phase 17 Complete ✅ (All phases through 17)
 
-**246 tests passing** (204 core + 22 MCP + 20 Auth)
+**418 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing)
 
 ```
 lib/
@@ -53,6 +53,18 @@ lib/
 │   ├── db.ml          - Caqti-eio connection pooling
 │   ├── migrate.ml     - Version-tracked migrations
 │   └── query.ml       - Type-safe query builder
+│
+├── API Documentation (Phase 14)
+│   └── openapi.ml     - OpenAPI 3.0 spec builder
+│
+├── Internationalization (Phase 15)
+│   └── i18n.ml        - Multi-language support
+│
+├── Validation (Phase 16)
+│   └── validation.ml  - Schema-based validation
+│
+├── Testing (Phase 17)
+│   └── testing.ml     - Test utilities and mocks
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -207,6 +219,69 @@ lib/
 
 ---
 
+### Phase 14: OpenAPI/Swagger ✅ Complete
+**Goal**: API 문서 자동 생성
+
+- [x] OpenAPI 3.0 specification builder
+- [x] Schema helpers (string, integer, number, boolean, array, object)
+- [x] Path, operation, parameter, response builders
+- [x] Component schema registry ($ref support)
+- [x] Swagger UI HTML generation
+- [x] ReDoc HTML generation
+- [x] Server configuration
+- [x] Contact/License info
+- [x] 32 OpenAPI tests
+
+---
+
+### Phase 15: Internationalization ✅ Complete
+**Goal**: 다국어 지원
+
+- [x] CLDR-compliant pluralization (en, fr, ko, ru, ar)
+- [x] Accept-Language header parsing (quality sorting)
+- [x] Translation interpolation ({{placeholder}} syntax)
+- [x] Locale detection from headers
+- [x] Fallback locale support
+- [x] Number formatting by locale
+- [x] Currency formatting (USD, EUR, KRW, etc.)
+- [x] Date formatting by locale
+- [x] 36 i18n tests
+
+---
+
+### Phase 16: Schema-based Validation ✅ Complete
+**Goal**: 요청 데이터 검증
+
+- [x] JSON Schema validators (string, int, float, bool, null)
+- [x] String constraints (min/max length, pattern, format)
+- [x] Number constraints (min/max, exclusive, multiple_of)
+- [x] Array validation (min/max items, unique items)
+- [x] Object validation (required fields, additional properties)
+- [x] Format validators (email, uuid, uri, date, datetime)
+- [x] Composition (oneOf, anyOf, allOf, enum, const)
+- [x] Query parameter coercion (string→int/bool)
+- [x] Custom validators
+- [x] Error formatting (JSON, string)
+- [x] 60 validation tests
+
+---
+
+### Phase 17: Testing Utilities ✅ Complete
+**Goal**: 테스트 도구
+
+- [x] Test request builders (GET, POST, PUT, DELETE, PATCH)
+- [x] Request headers and query params helpers
+- [x] JSON body helpers
+- [x] Bearer token authentication
+- [x] Test response inspectors (status, headers, body)
+- [x] JSON path assertions (nested, array index)
+- [x] Mock server with endpoint matching
+- [x] Call counting and verification
+- [x] Random data generators (string, email, int)
+- [x] 44 testing utility tests
+
+---
+
 ## Future Phases
 
 ---
@@ -276,7 +351,11 @@ dune exec examples/high_performance/main.exe
 | 11 | WebRTC | 12 |
 | 12 | Database | 29 |
 | 13 | Authentication | 20 |
-| **Total** | | **246** |
+| 14 | OpenAPI | 32 |
+| 15 | i18n | 36 |
+| 16 | Validation | 60 |
+| 17 | Testing | 44 |
+| **Total** | | **418** |
 
 ---
 
