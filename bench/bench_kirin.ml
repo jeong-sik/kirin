@@ -411,6 +411,148 @@ let () =
   ] in
   Bench.print_results static_results;
 
+  (* ===== React Integration Benchmarks ===== *)
+  print_endline "[7/7] Running React integration benchmarks...";
+
+  (* React fixtures *)
+  let sample_manifest : Kirin_react.Manifest.t = [
+    ("index.html", {
+      Kirin_react.Manifest.file = "assets/index-abc123.js";
+      src = "index.html";
+      is_entry = true;
+      css = ["assets/index-def456.css"; "assets/vendor-xyz789.css"];
+      assets = ["assets/logo.png"];
+      dynamic_imports = ["src/pages/About.tsx"; "src/pages/Contact.tsx"];
+      imports = ["src/utils.ts"; "src/api.ts"];
+    });
+    ("src/App.tsx", {
+      Kirin_react.Manifest.file = "assets/App-111222.js";
+      src = "src/App.tsx";
+      is_entry = false;
+      css = [];
+      assets = [];
+      dynamic_imports = [];
+      imports = ["src/components/Header.tsx"];
+    });
+  ] in
+
+  let manifest_json = `Assoc [
+    ("index.html", `Assoc [
+      ("file", `String "assets/index-abc123.js");
+      ("isEntry", `Bool true);
+      ("css", `List [`String "assets/index.css"]);
+    ]);
+    ("src/main.tsx", `Assoc [
+      ("file", `String "assets/main-xyz789.js");
+      ("imports", `List [`String "src/App.tsx"]);
+    ]);
+  ] in
+
+  let initial_data = `Assoc [
+    ("user", `Assoc [
+      ("id", `Int 123);
+      ("name", `String "Alice");
+      ("email", `String "alice@example.com");
+    ]);
+    ("posts", `List (List.init 10 (fun i ->
+      `Assoc [
+        ("id", `Int i);
+        ("title", `String (Printf.sprintf "Post %d" i));
+        ("content", `String (String.make 100 'x'));
+      ]
+    )));
+  ] in
+
+  let hydrate_options = {
+    Kirin_react.Hydrate.default_options with
+    title = "Benchmark Page";
+    meta = [("og:title", "Benchmark"); ("description", "Test page")];
+    initial_data = Some initial_data;
+    scripts = ["assets/index-abc123.js"];
+    styles = ["assets/index-def456.css"];
+  } in
+
+  let render_cache = Kirin_react.Worker.Render_cache.create () in
+  (* Pre-populate cache for hit tests *)
+  Kirin_react.Worker.Render_cache.set render_cache
+    ~url:"/cached"
+    ~props:(`Assoc [])
+    ~html:"<div>cached content</div>"
+    ~ttl_seconds:60.0;
+
+  let react_results = [
+    (* Manifest operations *)
+    run "react/manifest_parse" (fun () ->
+      Kirin_react.Manifest.parse manifest_json);
+    run "react/manifest_resolve" (fun () ->
+      ignore (Kirin_react.Manifest.resolve sample_manifest "index.html"));
+    run "react/manifest_css_for" (fun () ->
+      ignore (Kirin_react.Manifest.css_for sample_manifest "index.html"));
+    run "react/manifest_preload_hints" (fun () ->
+      ignore (Kirin_react.Manifest.preload_hints sample_manifest "index.html"));
+
+    (* Meta tag generation *)
+    run "react/meta_title" (fun () ->
+      ignore (Kirin_react.Meta.title "Test Page"));
+    run "react/meta_og_tags" (fun () ->
+      ignore (Kirin_react.Meta.og ~property:"title" ~content:"Test" ^
+              Kirin_react.Meta.og ~property:"description" ~content:"Description" ^
+              Kirin_react.Meta.og ~property:"image" ~content:"https://example.com/img.png"));
+    run "react/meta_render_pairs" (fun () ->
+      ignore (Kirin_react.Meta.render_pairs [
+        ("og:title", "Test");
+        ("og:description", "Description");
+        ("og:image", "https://example.com/img.png");
+        ("twitter:card", "summary_large_image");
+        ("twitter:title", "Test");
+      ]));
+
+    (* Data serialization (XSS-safe) *)
+    run "react/data_serialize_small" (fun () ->
+      ignore (Kirin_react.Data.serialize small_json));
+    run "react/data_serialize_medium" (fun () ->
+      ignore (Kirin_react.Data.serialize medium_json));
+    run "react/data_serialize_large" (fun () ->
+      ignore (Kirin_react.Data.serialize initial_data));
+    run "react/data_script_tag" (fun () ->
+      ignore (Kirin_react.Data.script_tag initial_data));
+
+    (* Hydration shell generation *)
+    run "react/hydrate_render_minimal" (fun () ->
+      ignore (Kirin_react.Hydrate.render Kirin_react.Hydrate.default_options));
+    run "react/hydrate_render_full" (fun () ->
+      ignore (Kirin_react.Hydrate.render hydrate_options));
+    run "react/hydrate_shell" (fun () ->
+      ignore (Kirin_react.Hydrate.shell
+        ~title:"Test"
+        ~meta:[("description", "Test page")]
+        ~initial_data:(Some initial_data)
+        ~manifest:sample_manifest
+        ~entry:"index.html"
+        ()));
+
+    (* Render cache operations *)
+    run "react/cache_get_miss" (fun () ->
+      ignore (Kirin_react.Worker.Render_cache.get render_cache ~url:"/miss" ~props:(`Assoc [])));
+    run "react/cache_get_hit" (fun () ->
+      ignore (Kirin_react.Worker.Render_cache.get render_cache ~url:"/cached" ~props:(`Assoc [])));
+    run "react/cache_set" (fun () ->
+      Kirin_react.Worker.Render_cache.set render_cache
+        ~url:(Printf.sprintf "/page%d" (Random.int 1000))
+        ~props:(`Assoc [])
+        ~html:"<div>content</div>"
+        ~ttl_seconds:60.0);
+
+    (* Assets URL resolution *)
+    run "react/assets_url" (fun () ->
+      ignore (Kirin_react.Assets.url ~manifest:sample_manifest "index.html"));
+    run "react/assets_script_tag" (fun () ->
+      ignore (Kirin_react.Assets.script_tag ~manifest:sample_manifest "index.html"));
+    run "react/assets_css_tags" (fun () ->
+      ignore (Kirin_react.Assets.css_tags ~manifest:sample_manifest "index.html"));
+  ] in
+  Bench.print_results react_results;
+
   (* ===== Summary ===== *)
   print_endline "=== Benchmark Complete ===";
   print_endline "";

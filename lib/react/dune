@@ -1,0 +1,4 @@
+(library
+ (name kirin_react)
+ (public_name kirin.react)
+ (libraries kirin yojson eio cohttp-eio uri str unix base64))

@@ -2,6 +2,7 @@
  (name bench_kirin)
  (libraries
   kirin
+  kirin.react
   yojson
   unix)
  (preprocess

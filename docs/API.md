@@ -19,6 +19,7 @@ Complete API documentation for the Kirin OCaml web framework.
 - [Compression](#compression)
 - [Rate Limiting](#rate-limiting)
 - [ETag](#etag)
+- [React Integration](#react-integration)
 
 ---
 
@@ -1482,4 +1483,143 @@ let results = Kirin.Parallel.map ~domains:8 expensive_computation items
 
 (* Use Jobs for I/O-bound background work *)
 Kirin.Jobs.submit queue (fun () -> send_email user)
+```
+
+---
+
+## React Integration
+
+The `Kirin_react` module provides three levels of React integration.
+
+### Level 1: Static Serving
+
+Serve Vite build output with SPA fallback.
+
+```ocaml
+open Kirin_react
+
+let () =
+  let routes = Vite.static_routes () @ [
+    Kirin.get "/api/users" api_users;
+  ] in
+  Kirin.start ~port:3000 @@ Kirin.router routes
+```
+
+### Level 2: Hydration
+
+Server HTML shell with `__INITIAL_DATA__` for SEO.
+
+```ocaml
+let handler req =
+  let user = fetch_current_user req in
+  let manifest = Manifest.load "dist/.vite/manifest.json" |> Result.get_ok in
+  Kirin_react.hydrate_response
+    ~title:"User Profile"
+    ~meta:[("og:title", "Profile"); ("description", "User profile page")]
+    ~initial_data:(Some (`Assoc [("user", user_to_json user)]))
+    ~manifest
+    ~entry:"index.html"
+    ()
+```
+
+### Level 3: Full SSR
+
+Server-side rendering with Node.js worker pool.
+
+```ocaml
+let () =
+  let config = {
+    Ssr.default_config with
+    bundle = "dist/server/entry-server.js";
+    workers = 4;
+    timeout = 5.0;
+  } in
+  let engine = Kirin_react.create_ssr ~config () in
+  at_exit (fun () -> Ssr.shutdown engine);
+
+  let routes = [
+    Kirin.get "/api/*" api_handler;
+    Kirin.get "/*" (Kirin_react.ssr_handler engine);
+  ] in
+  Kirin.start ~port:3000 @@ Kirin.router routes
+```
+
+### Manifest Module
+
+```ocaml
+module Manifest : sig
+  type entry = {
+    file: string;
+    src: string;
+    is_entry: bool;
+    css: string list;
+    assets: string list;
+    dynamic_imports: string list;
+    imports: string list;
+  }
+  type t = (string * entry) list
+
+  val load : string -> (t, string) result
+  val resolve : t -> string -> string option
+  val css_for : t -> string -> string list
+  val preload_hints : ?base_url:string -> t -> string -> string
+end
+```
+
+### Meta Module
+
+```ocaml
+module Meta : sig
+  val title : string -> string
+  val description : string -> string
+  val og : name:string -> content:string -> string
+  val twitter : name:string -> content:string -> string
+  val canonical : string -> string
+end
+```
+
+### SSR Configuration
+
+```ocaml
+type config = {
+  bundle: string;           (* Path to Node.js SSR bundle *)
+  workers: int;             (* Number of worker processes *)
+  timeout: float;           (* Render timeout in seconds *)
+  memory_limit_mb: int;     (* Memory limit per worker *)
+  restart_after: int;       (* Restart after N requests *)
+}
+
+val default_config : config
+(* bundle = "dist/server/entry-server.js"
+   workers = 4
+   timeout = 5.0
+   memory_limit_mb = 200
+   restart_after = 5000 *)
+```
+
+### SSR Statistics
+
+```ocaml
+type stats = {
+  total_renders: int;
+  errors: int;
+  timeouts: int;
+  avg_time_ms: float;
+  cache_size: int;
+  cache_hit_rate: float;
+  active_workers: int;
+  idle_workers: int;
+}
+
+val stats : Ssr.t -> stats
+```
+
+### Streaming SSR
+
+```ocaml
+module Streaming : sig
+  module SSE : sig
+    val response : engine:Ssr.t -> url:string -> ?props:Yojson.Safe.t -> unit -> Kirin.Response.t
+  end
+end
 ```
