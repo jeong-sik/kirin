@@ -1,6 +1,7 @@
 (library
  (name kirin_browser)
  (public_name kirin.browser)
+ (optional)  ; Only build when js_of_ocaml is available
  (libraries js_of_ocaml yojson)
  (preprocess
   (pps js_of_ocaml-ppx)))
