@@ -1,0 +1,4 @@
+(library
+ (name kirin_qwik)
+ (public_name kirin.qwik)
+ (libraries kirin yojson str unix))

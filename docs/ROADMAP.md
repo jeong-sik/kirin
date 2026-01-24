@@ -2,9 +2,9 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 23 Complete ✅ (All phases through 23)
+## Current Status: Phase 26 Complete ✅ (All phases through 26)
 
-**876 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack + 99 Solid + 99 Svelte)
+**1047 tests passing** (204 core + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack + 99 Solid + 99 Svelte + 70 Vue + 47 Angular + 54 Qwik)
 
 ```
 lib/
@@ -143,6 +143,51 @@ lib/
 │   ├── streaming.ml      - Suspense streaming SSR
 │   ├── handler.ml        - Kirin route handler integration
 │   └── codegen.ml        - TypeScript route type generation
+│
+├── Vue/Nuxt SSR (Phase 24)
+│   ├── kirin_vue.ml      - API facade (Nuxt 3-style)
+│   ├── route_def.ml      - Route definitions with Vue patterns
+│   ├── file_router.ml    - Nuxt file routing ([id], [...slug], [[optional]])
+│   ├── loader.ml         - Data loading (useFetch, useAsyncData)
+│   ├── action.ml         - Server actions (H3 event handler)
+│   ├── manifest.ml       - Route manifest generation
+│   ├── preload.ml        - Route preloading hints
+│   ├── meta.ml           - Vue Meta tag helpers (useHead)
+│   ├── data.ml           - Initial data serialization (__NUXT__)
+│   ├── hydrate.ml        - HTML shell generation
+│   ├── protocol.ml       - JSON-RPC 2.0 for SSR
+│   ├── worker.ml         - Generic worker interface
+│   ├── ssr.ml            - SSR engine with LRU caching
+│   ├── streaming.ml      - Vue 3 Suspense streaming SSR
+│   ├── handler.ml        - Kirin route handler integration
+│   └── codegen.ml        - TypeScript/Vue type generation
+│
+├── Angular Universal SSR (Phase 25)
+│   ├── kirin_angular.ml  - API facade (Angular Universal-style)
+│   ├── route_def.ml      - Route definitions with render modes (SSR/CSR/SSG)
+│   ├── file_router.ml    - Angular file routing (:id, **, matchers)
+│   ├── transfer_state.ml - HTTP Transfer Cache (ng-state)
+│   ├── hydration.ml      - Incremental hydration (v19+)
+│   ├── meta.ml           - Angular Meta tag helpers
+│   ├── protocol.ml       - JSON-RPC 2.0 for SSR
+│   ├── ssr.ml            - SSR engine with LRU caching
+│   ├── handler.ml        - Kirin route handler integration
+│   └── codegen.ml        - TypeScript/Angular type generation
+│
+├── Qwik Resumable SSR (Phase 26)
+│   ├── kirin_qwik.ml     - API facade (QwikCity-style)
+│   ├── qrl.ml            - QRL (Qwik URL) serialized function references
+│   ├── signal.ml         - Fine-grained reactive signals
+│   ├── route_def.ml      - Route definitions with resumability
+│   ├── file_router.ml    - QwikCity file routing ([id], [...slug])
+│   ├── container.ml      - Container state for resumability
+│   ├── loader.ml         - routeLoader$ implementation
+│   ├── action.ml         - routeAction$ implementation
+│   ├── meta.ml           - Qwik Meta tag helpers (useDocumentHead)
+│   ├── protocol.ml       - JSON-RPC 2.0 for SSR
+│   ├── ssr.ml            - SSR engine with resumability support
+│   ├── handler.ml        - Kirin route handler integration
+│   └── codegen.ml        - TypeScript/Qwik type generation
 │
 └── Browser (Phase 7)
     └── kirin_browser.ml - Client-side framework (js_of_ocaml)
@@ -579,14 +624,154 @@ Three integration levels (reusing React/Solid SSR architecture pattern):
 
 - [x] 99 Svelte tests
 
-### Phase 24: Vue/Nuxt SSR 🚀
+### Phase 24: Vue/Nuxt SSR ✅
 **Goal**: Vue/Nuxt SSR 지원
 
-- [ ] Vue 3 worker pool (reuse SSR architecture)
-- [ ] Nuxt-style file routing
-- [ ] useFetch and useAsyncData patterns
-- [ ] Server routes and API endpoints
-- [ ] Streaming SSR with Suspense
+- [x] Vue 3 worker pool (reuse SSR architecture)
+- [x] Nuxt-style file routing (`[id]`, `[...slug]`, `[[optional]]`)
+- [x] useFetch and useAsyncData patterns
+- [x] Server routes and API endpoints (H3 event handler)
+- [x] Streaming SSR with Suspense
+- [x] 70 Vue tests
+
+### Phase 25: Angular Universal SSR ✅
+**Goal**: Angular Universal SSR 지원
+
+Angular Universal is the official Angular SSR solution with features like Hybrid Rendering (different render modes per route), Incremental Hydration (hydrate on demand), and HTTP Transfer Cache.
+
+Key Angular v19+ Concepts:
+
+| Concept | Description |
+|---------|-------------|
+| Hybrid Rendering | SSR + SSG + CSR per route via ServerRoute config |
+| Incremental Hydration | Hydrate components on triggers (idle, viewport, interaction) |
+| HTTP Transfer Cache | `ng-state` script tag for server→client data transfer |
+
+- [x] **Route System**
+  - [x] Route definitions with render modes (SSR, CSR, SSG per route)
+  - [x] Angular file routing (`:id`, `**` wildcard, route matchers)
+  - [x] Guards and resolvers support
+  - [x] Lazy loading with loadChildren
+  - [x] Named outlets and child routes
+
+- [x] **Transfer State**
+  - [x] HTTP Transfer Cache for server-fetched data
+  - [x] `ng-state` script tag generation
+  - [x] XSS-safe JSON serialization
+  - [x] TTL and cache key management
+
+- [x] **Hydration**
+  - [x] Full hydration mode (default)
+  - [x] Incremental hydration (v19+)
+  - [x] Hydration triggers (OnIdle, OnViewport, OnInteraction, OnTimer, OnHover, Never)
+  - [x] Hydration boundary markers (`<!--nghb:id:trigger-->`)
+  - [x] Skip hydration attribute (ngSkipHydration)
+  - [x] Component state tracking (Dehydrated → Hydrating → Hydrated)
+
+- [x] **SSR Engine**
+  - [x] JSON-RPC 2.0 protocol over stdio
+  - [x] Worker pool with round-robin scheduling
+  - [x] LRU render cache with TTL
+  - [x] Memory limit monitoring (200MB threshold)
+  - [x] Graceful restart after N requests
+  - [x] Cache hit rate tracking
+
+- [x] **Handler Integration**
+  - [x] SSR, CSR, Hybrid, Prerender modes
+  - [x] Static file serving with MIME types
+  - [x] Fallback to CSR on SSR failure
+  - [x] Route-based render mode selection
+
+- [x] **Code Generation**
+  - [x] TypeScript route parameter types
+  - [x] ServerRoute configuration (app.routes.server.ts)
+  - [x] Guard and resolver templates
+  - [x] Type guard functions
+
+- [x] 47 Angular tests
+
+### Phase 26: Qwik Resumable SSR ✅
+**Goal**: Qwik's revolutionary resumability approach (near-zero JS on initial load)
+
+Qwik is fundamentally different from other frameworks - instead of hydration, it uses "resumability" where server-rendered HTML is immediately interactive. The key innovation is QRL (Qwik URL) - serialized function references that lazy-load on demand.
+
+Key Qwik Concepts:
+
+| Concept | Description |
+|---------|-------------|
+| Resumability | No hydration needed - pick up where server left off |
+| QRL | Serialized function URLs (`chunk.js#symbol`) for lazy loading |
+| Signals | Fine-grained reactive state (like SolidJS) |
+| Container | Serialized app state in `<script type="qwik/json">` |
+| $ Suffix | Convention for lazy-loaded boundaries (component$, etc.) |
+
+- [x] **QRL System**
+  - [x] QRL creation and serialization (`chunk.js#symbol[captures]`)
+  - [x] Capture variables (closure serialization)
+  - [x] Reference captures (container state indices)
+  - [x] QRL parsing from string
+  - [x] Event handler attributes (on:click, on:input, on:submit)
+  - [x] Prefetch hints generation
+
+- [x] **Signal Reactivity**
+  - [x] Signal creation and updates
+  - [x] Computed signals (derived values)
+  - [x] Resource signals (async data with pending/resolved/rejected)
+  - [x] Store (proxy-like object signals)
+  - [x] Signal context for SSR serialization
+
+- [x] **Route System**
+  - [x] Route definitions with render modes (SSR, Static, SPA)
+  - [x] QwikCity file routing ([id], [...slug], [[optional]], (group))
+  - [x] Layout support and nested routing
+  - [x] Guards and loaders integration
+
+- [x] **Container State**
+  - [x] Serializable object format (SObj)
+  - [x] Object references ($ref$)
+  - [x] Signal references ($signal$)
+  - [x] QRL references ($qrl$)
+  - [x] JSON serialization to `<script type="qwik/json">`
+  - [x] Container pause/resume for SSR
+
+- [x] **Data Loading**
+  - [x] routeLoader$ implementation
+  - [x] Data dependencies and invalidation
+  - [x] Redirect and error results
+  - [x] Context with URL, params, headers
+
+- [x] **Actions**
+  - [x] routeAction$ implementation
+  - [x] Form data parsing (text, multiple, file)
+  - [x] Validation helpers (email, required, minLength)
+  - [x] Action results (ok, fail, redirect)
+
+- [x] **Meta/Head**
+  - [x] useDocumentHead-style helpers
+  - [x] SEO optimization (title, description, og, twitter)
+  - [x] Canonical URLs and robots
+  - [x] Structured data (JSON-LD)
+
+- [x] **SSR Engine**
+  - [x] JSON-RPC 2.0 protocol over stdio
+  - [x] Worker pool with round-robin scheduling
+  - [x] LRU render cache with TTL
+  - [x] Cache hit rate tracking
+  - [x] Memory-efficient resumability output
+
+- [x] **Handler Integration**
+  - [x] SSR, Static, SPA modes
+  - [x] Static file serving with MIME types
+  - [x] Fallback to SPA on SSR failure
+  - [x] Loader and action endpoints
+
+- [x] **Code Generation**
+  - [x] TypeScript route parameter types
+  - [x] Route configuration generation
+  - [x] QRL helper functions
+  - [x] Component$ skeletons
+
+- [x] 54 Qwik tests
 
 ---
 
@@ -604,10 +789,10 @@ Three integration levels (reusing React/Solid SSR architecture pattern):
 │  └─────────────┴─────────────┴─────────────┘               │
 ├─────────────────────────────────────────────────────────────┤
 │                   Frontend Integration                       │
-│  ┌───────┬───────┬───────┬───────┬───────┬───────┐        │
-│  │ React │ Solid │Svelte │ HTMX+ │ tRPC  │TanStack│        │
-│  │  SSR  │  SSR  │  SSR  │Alpine │Adapter│ Router │        │
-│  └───────┴───────┴───────┴───────┴───────┴───────┘        │
+│  ┌──────┬──────┬──────┬──────┬───────┬──────┬──────┬──────┐│
+│  │React │Solid │Svelte│ Vue  │Angular│ Qwik │HTMX+ │ tRPC ││
+│  │ SSR  │ SSR  │ SSR  │ SSR  │  SSR  │Resume│Alpine│Adapt.││
+│  └──────┴──────┴──────┴──────┴───────┴──────┴──────┴──────┘│
 ├─────────────────────────────────────────────────────────────┤
 │                High-Performance Layer                        │
 │  ┌─────────┬─────────┬─────────┬─────────┐                 │
@@ -671,7 +856,10 @@ dune exec examples/high_performance/main.exe
 | 21 | TanStack Router | 90 |
 | 22 | Solid.js SSR | 99 |
 | 23 | Svelte SSR | 99 |
-| **Total** | | **876** |
+| 24 | Vue/Nuxt SSR | 70 |
+| 25 | Angular Universal SSR | 47 |
+| 26 | Qwik Resumable SSR | 54 |
+| **Total** | | **1047** |
 
 ---
 

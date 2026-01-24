@@ -1,0 +1,4 @@
+(library
+ (name kirin_angular)
+ (public_name kirin.angular)
+ (libraries kirin yojson str))

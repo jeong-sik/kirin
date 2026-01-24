@@ -1,0 +1,4 @@
+(library
+ (name kirin_astro)
+ (public_name kirin.astro)
+ (libraries kirin yojson str unix))

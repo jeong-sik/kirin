@@ -49,3 +49,35 @@
 (test
  (name test_svelte)
  (libraries kirin kirin.svelte alcotest str unix))
+
+(test
+ (name test_vue)
+ (libraries kirin kirin.vue alcotest str unix))
+
+(test
+ (name test_angular)
+ (libraries kirin kirin.angular alcotest str unix))
+
+(test
+ (name test_qwik)
+ (libraries kirin kirin.qwik alcotest str unix))
+
+(test
+ (name test_astro)
+ (libraries kirin kirin.astro alcotest str unix))
+
+(test
+ (name test_preact)
+ (libraries kirin kirin.preact alcotest str unix))
+
+(test
+ (name test_lit)
+ (libraries kirin kirin.lit alcotest str unix))
+
+(test
+ (name test_alpine)
+ (libraries kirin kirin.alpine alcotest str unix))
+
+(test
+ (name test_remix)
+ (libraries kirin kirin.remix alcotest str unix))

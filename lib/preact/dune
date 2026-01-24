@@ -1,0 +1,4 @@
+(library
+ (name kirin_preact)
+ (public_name kirin.preact)
+ (libraries kirin yojson str unix))

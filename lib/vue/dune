@@ -1,0 +1,4 @@
+(library
+ (name kirin_vue)
+ (public_name kirin.vue)
+ (libraries kirin yojson str unix))
