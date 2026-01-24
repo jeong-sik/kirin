@@ -25,7 +25,6 @@
   ocaml-webrtc
   caqti
   caqti-eio
-  caqti-eio.unix
   unix
   threads
   str)
