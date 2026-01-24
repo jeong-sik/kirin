@@ -52,6 +52,8 @@ Features:
   (digestif (>= "1.0"))
   (decompress (>= "1.5"))
   (bigstringaf (>= "0.9"))
+  (caqti (>= "2.1"))
+  (caqti-eio (>= "2.1"))
   (ppx_deriving (>= "5.0"))
   (ppx_deriving_yojson (>= "3.0"))
   (grpc-direct (>= "0.1.0"))
