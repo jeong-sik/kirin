@@ -1,0 +1,4 @@
+(library
+ (name kirin_svelte)
+ (public_name kirin.svelte)
+ (libraries kirin yojson unix str))

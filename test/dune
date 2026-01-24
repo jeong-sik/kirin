@@ -45,3 +45,7 @@
 (test
  (name test_solid)
  (libraries kirin kirin.solid alcotest str unix))
+
+(test
+ (name test_svelte)
+ (libraries kirin kirin.svelte alcotest str unix))
