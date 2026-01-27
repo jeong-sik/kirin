@@ -700,6 +700,16 @@ module Graphql = Graphql_adapter
 *)
 module Graphql_relay = Graphql_relay
 
+(** {1 Local-First Sync (Phase 28)} *)
+
+(** Sync engine for Local-First applications (Linear/Replicache style).
+
+    Handles Push/Pull/Poke protocol for offline-first data synchronization.
+
+    @see <Sync> for full API documentation
+*)
+module Sync = Sync
+
 (** {1 MCP Integration (Phase 8)} *)
 
 (** MCP module for AI agent integration

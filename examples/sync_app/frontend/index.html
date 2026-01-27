@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kirin Local-First Todo</title>
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 2rem; }
+        .status { padding: 0.5rem; border-radius: 4px; margin-bottom: 1rem; }
+        .status.online { background: #d1fae5; color: #065f46; }
+        .status.offline { background: #fee2e2; color: #991b1b; }
+        .todo-item { display: flex; align-items: center; padding: 0.5rem; border-bottom: 1px solid #eee; }
+        .todo-item.done span { text-decoration: line-through; color: #888; }
+        input[type="text"] { width: 100%; padding: 0.5rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <h1>Local-First Todo 🦒</h1>
+    <div id="status" class="status">Connecting...</div>
+    
+    <input type="text" id="input" placeholder="Add todo (works offline!)" onkeydown="if(event.key === 'Enter') addTodo()">
+    <div id="list"></div>
+
+    <script>
+        // --- Local-First Sync Engine (Mini Replicache) ---
+        class SyncEngine {
+            constructor(url) {
+                this.url = url;
+                this.clientID = Math.random().toString(36).slice(2);
+                this.data = new Map();
+                this.mutations = []; // Pending mutations
+                this.cookie = 0;     // Server version
+                this.listeners = new Set();
+                this.online = true;
+                
+                // Load from localStorage
+                this.load();
+                
+                // Start sync loop
+                this.syncLoop();
+                window.addEventListener('online', () => this.setOnline(true));
+                window.addEventListener('offline', () => this.setOnline(false));
+            }
+
+            subscribe(cb) { this.listeners.add(cb); cb(this.data); }
+            notify() { this.listeners.forEach(cb => cb(this.data)); this.save(); }
+
+            load() {
+                const stored = localStorage.getItem('kirin-sync');
+                if (stored) {
+                    const { data, mutations, cookie } = JSON.parse(stored);
+                    this.data = new Map(data);
+                    this.mutations = mutations;
+                    this.cookie = cookie;
+                }
+            }
+
+            save() {
+                localStorage.setItem('kirin-sync', JSON.stringify({
+                    data: Array.from(this.data.entries()),
+                    mutations: this.mutations,
+                    cookie: this.cookie
+                }));
+            }
+
+            // Optimistic Mutation
+            mutate(name, args) {
+                const id = Date.now(); // Simple ID
+                const mutation = { id, name, args };
+                this.mutations.push(mutation);
+                
+                // Apply optimistically
+                this.apply(mutation);
+                this.notify();
+                this.push(); // Try to sync immediately
+            }
+
+            apply(m) {
+                if (m.name === 'put') this.data.set(m.args.key, m.args.value);
+                if (m.name === 'del') this.data.delete(m.args.key);
+            }
+
+            setOnline(status) {
+                this.online = status;
+                document.getElementById('status').className = status ? 'status online' : 'status offline';
+                document.getElementById('status').innerText = status ? 'Online (Synced)' : 'Offline (Local Mode)';
+                if (status) this.push();
+            }
+
+            async push() {
+                if (!this.online || this.mutations.length === 0) return;
+                
+                try {
+                    const res = await fetch(`${this.url}/push`, {
+                        method: 'POST',
+                        body: JSON.stringify({ clientID: this.clientID, mutations: this.mutations })
+                    });
+                    if (res.ok) {
+                        this.mutations = []; // Clear processed mutations
+                        this.save();
+                        this.pull(); // Check for updates
+                    }
+                } catch (e) { this.setOnline(false); }
+            }
+
+            async pull() {
+                if (!this.online) return;
+                try {
+                    const res = await fetch(`${this.url}/pull`, {
+                        method: 'POST',
+                        body: JSON.stringify({ clientID: this.clientID, cookie: this.cookie })
+                    });
+                    const { cookie, patch } = await res.json();
+                    
+                    if (patch.length > 0) {
+                        this.cookie = cookie;
+                        patch.forEach(p => {
+                            if (p.op === 'put') this.data.set(p.key, p.value);
+                            if (p.op === 'del') this.data.delete(p.key);
+                        });
+                        this.notify();
+                    }
+                    
+                    // Long polling for next update
+                    this.poke(cookie);
+                } catch (e) { this.setOnline(false); }
+            }
+            
+            async poke(version) {
+                try {
+                    await fetch(`${this.url}/poke?clientID=${this.clientID}&version=${version}`);
+                    this.pull();
+                } catch (e) { setTimeout(() => this.pull(), 5000); }
+            }
+
+            async syncLoop() {
+                this.pull(); // Initial pull
+            }
+        }
+
+        // --- App Logic ---
+        const sync = new SyncEngine('http://localhost:9000');
+        
+        function render(data) {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            
+            // Sort by key (timestamp)
+            const sorted = Array.from(data.entries()).sort((a,b) => b[0].localeCompare(a[0]));
+            
+            sorted.forEach(([key, todo]) => {
+                const div = document.createElement('div');
+                div.className = `todo-item ${todo.done ? 'done' : ''}`;
+                div.innerHTML = `
+                    <input type="checkbox" ${todo.done ? 'checked' : ''} 
+                        onclick="toggleTodo('${key}', ${!todo.done})">
+                    <span style="flex:1; margin-left: 10px">${todo.text}</span>
+                    <button onclick="deleteTodo('${key}')">🗑️</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        sync.subscribe(render);
+
+        function addTodo() {
+            const input = document.getElementById('input');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            const key = new Date().toISOString();
+            sync.mutate('put', { key, value: { text, done: false } });
+            input.value = '';
+        }
+
+        function toggleTodo(key, done) {
+            const todo = sync.data.get(key);
+            sync.mutate('put', { key, value: { ...todo, done } });
+        }
+
+        function deleteTodo(key) {
+            sync.mutate('del', { key });
+        }
+    </script>
+</body>
+</html>
