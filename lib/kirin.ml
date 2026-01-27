@@ -692,6 +692,16 @@ module Grpc = Grpc
 *)
 module Graphql = Graphql_adapter
 
+(** {1 Relay Support (Phase 27)} *)
+
+(** Helpers for building Relay-compliant GraphQL APIs.
+
+    Provides Global ID, Connections, and Node interface support.
+
+    @see <Graphql_relay> for full API documentation
+*)
+module Graphql_relay = Graphql_relay
+
 (** {1 MCP Integration (Phase 8)} *)
 
 (** MCP module for AI agent integration

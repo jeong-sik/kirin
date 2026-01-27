@@ -81,3 +81,7 @@
 (test
  (name test_remix)
  (libraries kirin kirin.remix alcotest str unix))
+
+(test
+ (name test_graphql_relay)
+ (libraries kirin alcotest))

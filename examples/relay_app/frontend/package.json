@@ -1,0 +1,27 @@
+{
+  "name": "kirin-relay-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "rescript build -with-deps && vite build",
+    "res:build": "rescript build -with-deps",
+    "res:watch": "rescript build -with-deps -w",
+    "relay": "rescript-relay-compiler",
+    "relay:watch": "rescript-relay-compiler --watch"
+  },
+  "dependencies": {
+    "@rescript/react": "^0.13.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-relay": "^17.0.0",
+    "relay-runtime": "^17.0.0",
+    "rescript": "^11.1.0",
+    "rescript-relay": "^1.0.0-beta.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.1"
+  }
+}
