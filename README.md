@@ -1,8 +1,6 @@
 # Kirin
 
-> OCaml 5.x Eio-native Web Framework
-
-**Dream's DX + Axum's Architecture + Eio's Direct-style**
+OCaml 5.x Eio-native web framework.
 
 ```ocaml
 let () = Kirin.start ~port:8000
@@ -23,8 +21,8 @@ let () = Kirin.start ~port:8000
 ### Core Web Framework
 - **Direct-style async** - No Lwt monads, just functions
 - **Type-safe routing** - Path params with `:name` syntax
-- **Middleware composition** - `@@` operator for elegant chaining
-- **Sub-millisecond responses** - Built on Eio for multicore performance
+- **Middleware composition** - `@@` operator for chaining
+- **Multicore performance** - Built on Eio for performance
 - **WebSocket support** - RFC 6455 compliant
 - **Server-Sent Events** - Real-time streaming
 - **Template engine** - Mustache-like syntax with HTML escaping
@@ -35,7 +33,7 @@ let () = Kirin.start ~port:8000
 - **Compression** - Gzip and deflate support
 - **ETag caching** - Automatic 304 responses
 
-### High-Performance Components
+### Components
 - **Streaming I/O** - Large file handling without memory overflow
 - **Connection Pool** - Generic resource pooling with health checks
 - **Backpressure** - Flow control to prevent producer overwhelming consumer

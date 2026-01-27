@@ -19,7 +19,7 @@
 
 (package
  (name kirin)
- (synopsis "OCaml 5.x Eio-native web framework with Dream-like DX")
+ (synopsis "OCaml 5.x Eio-native web framework")
  (description
   "Kirin is a modern OCaml 5.x web framework built on Eio for direct-style async.
 

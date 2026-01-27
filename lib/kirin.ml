@@ -1,7 +1,5 @@
 (** Kirin - OCaml 5.x Eio-native Web Framework
 
-    Dream's DX + Axum's Architecture + Eio's Direct-style
-
     {b Features:}
     - Direct-style async (no Lwt monads)
     - Type-safe routing with path parameters
