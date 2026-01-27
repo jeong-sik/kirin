@@ -1,6 +1,8 @@
 # Kirin
 
-OCaml 5.x Eio-native web framework.
+**The OCaml 5.x Web Framework for the Direct-Style Era.**
+
+Kirin leverages **Eio** to provide a concurrency model free from monadic complexity (`>>=`). It features a **Universal SSR Architecture** that seamlessly orchestrates modern frontend frameworks (React, Vue, Svelte, etc.) alongside OCaml's robust type system.
 
 ```ocaml
 let () = Kirin.start ~port:8000
@@ -411,11 +413,11 @@ let protected_handler req =
 
 ## Philosophy
 
-1. **Bare Functions** - Handlers are `Request.t -> Response.t`
-2. **Algebraic Composition** - Routes/middleware compose with `@@`
-3. **Minimal Core** - 5 essential types: request, response, handler, middleware, route
-4. **Secure Defaults** - CORS, cookie signing, HTML escaping built-in
-5. **No Magic** - Debuggable, minimal PPX usage
+1. **Direct-Style First** - Leveraging OCaml 5 effect handlers to write concurrent code as if it were synchronous. No `Lwt.bind`.
+2. **Universal SSR** - The backend orchestrates the frontend. Support any JS framework (React, Vue, Svelte) via a unified protocol.
+3. **Algebraic Composition** - Routes/middleware compose with `@@`.
+4. **Secure Defaults** - CORS, cookie signing, HTML escaping built-in.
+5. **No Magic** - Debuggable, minimal PPX usage.
 
 ## Documentation
 
