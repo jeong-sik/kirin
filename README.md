@@ -1,8 +1,13 @@
 # Kirin
 
-**The OCaml 5.x Web Framework for the Direct-Style Era.**
+**The Shameless Copycat: Best Ideas from Dream, Axum, and Next.js—now in OCaml 5.**
 
-Kirin leverages **Eio** to provide a concurrency model free from monadic complexity (`>>=`). It features a **Universal SSR Architecture** that seamlessly orchestrates modern frontend frameworks (React, Vue, Svelte, etc.) alongside OCaml's robust type system.
+Kirin doesn't reinvent the wheel. It steals the best patterns from the industry and implement them on top of **OCaml 5's Direct-style (Eio)**. It's a curated collection of proven web architectures tailored for the multicore era.
+
+- **Dream's API** (DX)
+- **Axum's Routing** (Architecture)
+- **Next.js's SSR** (Framework integration)
+- **Relay's Data-fetching** (Protocol)
 
 ```ocaml
 let () = Kirin.start ~port:8000
@@ -413,11 +418,10 @@ let protected_handler req =
 
 ## Philosophy
 
-1. **Direct-Style First** - Leveraging OCaml 5 effect handlers to write concurrent code as if it were synchronous. No `Lwt.bind`.
-2. **Universal SSR** - The backend orchestrates the frontend. Support any JS framework (React, Vue, Svelte) via a unified protocol.
-3. **Algebraic Composition** - Routes/middleware compose with `@@`.
-4. **Secure Defaults** - CORS, cookie signing, HTML escaping built-in.
-5. **No Magic** - Debuggable, minimal PPX usage.
+1. **Curated Stealing** - Why innovate when you can adapt? We take proven patterns from Rust, JS, and OCaml communities.
+2. **Direct-Style (Eio)** - Replacing the old monadic ways with modern, direct concurrency.
+3. **Frontend Orchestration** - Integrating the JS ecosystem rather than fighting it.
+4. **Algebraic Composition** - Because `@@` is just too good to pass up.
 
 ## Documentation
 
