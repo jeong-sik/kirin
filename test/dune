@@ -85,3 +85,7 @@
 (test
  (name test_graphql_relay)
  (libraries kirin alcotest))
+
+(test
+ (name test_multicore)
+ (libraries kirin alcotest eio_main))

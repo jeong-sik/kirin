@@ -16,7 +16,9 @@ let default_config = {
 (** Convert Kirin handler to cohttp-eio handler *)
 let make_cohttp_handler (handler : Router.handler) =
   fun _socket request body ->
-    (* Read body from Eio flow *)
+    (* Read body from Eio flow 
+       TODO: Implement streaming body instead of full allocation to avoid OOM
+    *)
     let body_str = Eio.Buf_read.(parse_exn take_all) body ~max_size:(1024 * 1024 * 10) in
     (* Create Kirin request *)
     let req = Request.make ~raw:request ~body:body_str in
@@ -31,31 +33,54 @@ let make_cohttp_handler (handler : Router.handler) =
 (** Run the server with given handler *)
 let run ?(config = default_config) ~sw ~env handler =
   let net = Eio.Stdenv.net env in
-
   let addr = `Tcp (Eio.Net.Ipaddr.V4.any, config.port) in
-  (* Enable SO_REUSEPORT for Cluster Mode *)
+  (* Enable SO_REUSEPORT/ADDR to allow fast restarts and multicore sharing *)
   let socket = Eio.Net.listen net ~sw ~backlog:config.backlog ~reuse_addr:true ~reuse_port:true addr in
 
   Printf.printf "🦒 Kirin running on http://%s:%d\n%!" config.host config.port;
-  Printf.printf "Type Ctrl+C to stop\n%!";
 
   let server = Cohttp_eio.Server.make ~callback:(make_cohttp_handler handler) () in
   Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
     Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn)
   )
 
-(** Main entry point - sets up Eio and runs server *)
-let start ?(port = 8000) ?(domains = 1) handler =
-  ignore domains;
-  Printf.printf "🦒 Kirin starting on http://localhost:%d\n%!" port;
+(** Main entry point - sets up Eio and runs multicore server 
+    
+    In OCaml 5, we use Domain_manager to distribute request handling across cores.
+    Shared-socket pattern is used for optimal efficiency.
+*)
+let start ?(port = 8000) ?(domains = Domain.recommended_domain_count ()) handler =
+  Printf.printf "🦒 Kirin scaling up across %d domains (shared socket)...
+%!" domains;
   
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
+  
+  (* Start Async Logger (Phase 30) *)
+  Logger.start sw;
+  
   let net = Eio.Stdenv.net env in
+  let domain_mgr = Eio.Stdenv.domain_mgr env in
+  
   let addr = `Tcp (Eio.Net.Ipaddr.V4.any, port) in
-  let socket = Eio.Net.listen net ~sw ~backlog:128 ~reuse_addr:true addr in
+  let socket = Eio.Net.listen net ~sw ~backlog:128 ~reuse_addr:true ~reuse_port:true addr in
   
   let server = Cohttp_eio.Server.make ~callback:(make_cohttp_handler handler) () in
-  Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
-    Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn)
-  )
+  
+  let run_worker () =
+    try
+      Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
+        Logger.error "Worker error on domain %d: %s" (Domain.self () :> int) (Printexc.to_string exn)
+      )
+    with e ->
+      Logger.error "Fatal worker error: %s" (Printexc.to_string e)
+  in
+
+  (* Spawn workers on separate domains *)
+  let workers = List.init (domains - 1) (fun _ ->
+    fun () -> Eio.Domain_manager.run domain_mgr run_worker
+  ) in
+  
+  (* Run workers in parallel including the current domain *)
+  Eio.Fiber.all (List.map (fun f -> f) workers @ [run_worker]);
+  ()

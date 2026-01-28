@@ -1,6 +1,9 @@
-(** Kirin Logger - Structured JSON Logging (ELK/Datadog ready)
+(** Kirin Logger - Async Structured Logging (Lock-Freeish Architecture)
 
-    Provides structured logging with context, trace IDs, and levels.
+    Architecture:
+    - Each domain pushes logs to a shared thread-safe stream (Eio.Stream).
+    - A dedicated 'Logger Domain' pops from the stream and writes to I/O.
+    - This removes I/O latency and lock contention from worker domains.
 *)
 
 (** Log levels *)
@@ -36,10 +39,57 @@ let current_config = ref {
   output = stderr;
 }
 
-let log_mutex = Eio.Mutex.create ()
+(** Shared log queue (capacity 4096 to absorb bursts) *)
+let log_stream = Eio.Stream.create 4096
+
+(** Format timestamp ISO8601 *)
+let format_time ts = 
+  let tm = Unix.gmtime ts in
+  Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ"
+    (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+    tm.tm_hour tm.tm_min tm.tm_sec (int_of_float ((ts -. floor ts) *. 1000.))
+
+(** The actual writer loop (runs in dedicated fiber/domain) *)
+let rec run_logger () = 
+  try
+    let entry = Eio.Stream.take log_stream in
+    let json_fields = [
+      ("timestamp", `String (format_time entry.timestamp));
+      ("level", `String (string_of_level entry.level));
+      ("message", `String entry.message);
+    ] in
+    let json_fields = match entry.trace_id with 
+      | Some tid -> ("trace_id", `String tid) :: json_fields
+      | None -> json_fields
+    in
+    let json_fields = if entry.context <> [] then 
+      ("context", `Assoc entry.context) :: json_fields 
+    else json_fields in
+    
+    let json = `Assoc json_fields in
+    
+    (* I/O operation - safe here as we are in dedicated loop *)
+    Yojson.Safe.to_channel !current_config.output json;
+    output_string !current_config.output "\n";
+    flush !current_config.output;
+    
+    run_logger () 
+  with _ -> run_logger () (* Resilience: never crash the logger *)
+
+(** Start the logger background fiber *)
+let start sw = 
+  Eio.Fiber.fork ~sw run_logger
+
+(** Emit log entry (Non-blocking) *)
+let emit level message context trace_id = 
+  if level >= !current_config.min_level then
+    let ts = Unix.gettimeofday () in
+    let entry = { timestamp=ts; level; message; context; trace_id; span_id=None } in
+    (* Non-blocking push if capacity allows, otherwise backpressure *)
+    Eio.Stream.add log_stream entry
 
 (** Configure logger *)
-let configure ?min_level ?format ?output () =
+let configure ?min_level ?format ?output () = 
   let c = !current_config in
   current_config := {
     min_level = Option.value min_level ~default:c.min_level;
@@ -47,70 +97,29 @@ let configure ?min_level ?format ?output () =
     output = Option.value output ~default:c.output;
   }
 
-(** Format timestamp ISO8601 *)
-let format_time ts =
-  let tm = Unix.gmtime ts in
-  Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ"
-    (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
-    tm.tm_hour tm.tm_min tm.tm_sec (int_of_float ((ts -. floor ts) *. 1000.))
-
-(** Emit log entry *)
-let emit level message context trace_id =
-  if level >= !current_config.min_level then
-    let ts = Unix.gettimeofday () in
-    Eio.Mutex.use_rw log_mutex ~protect:true (fun () ->
-      match !current_config.format with
-      | `Json ->
-        let json_fields = [
-          ("timestamp", `String (format_time ts));
-          ("level", `String (string_of_level level));
-          ("message", `String message);
-        ] in
-        let json_fields = match trace_id with
-          | Some tid -> ("trace_id", `String tid) :: json_fields
-          | None -> json_fields
-        in
-        let json_fields = if context <> [] then
-          ("context", `Assoc context) :: json_fields
-        else json_fields in
-        
-        let json = `Assoc json_fields in
-        Yojson.Safe.to_channel !current_config.output json;
-        output_string !current_config.output "\n";
-        flush !current_config.output
-        
-      | `Text ->
-        let trace_str = match trace_id with Some t -> Printf.sprintf "[%s] " t | None -> "" in
-        let ctx_str = if context = [] then "" else
-          " " ^ (List.map (fun (k,v) -> k ^ "=" ^ Yojson.Safe.to_string v) context |> String.concat " ")
-        in
-        Printf.fprintf !current_config.output "%s %s %s%s%s\n%!"
-          (format_time ts) (string_of_level level) trace_str message ctx_str
-    )
-
 (** Helper functions *)
-let debug ?(ctx=[]) ?trace_id fmt =
+let debug ?(ctx=[]) ?trace_id fmt = 
   Printf.ksprintf (fun msg -> emit Debug msg ctx trace_id) fmt
 
-let info ?(ctx=[]) ?trace_id fmt =
+let info ?(ctx=[]) ?trace_id fmt = 
   Printf.ksprintf (fun msg -> emit Info msg ctx trace_id) fmt
 
-let warn ?(ctx=[]) ?trace_id fmt =
+let warn ?(ctx=[]) ?trace_id fmt = 
   Printf.ksprintf (fun msg -> emit Warn msg ctx trace_id) fmt
 
-let error ?(ctx=[]) ?trace_id fmt =
+let error ?(ctx=[]) ?trace_id fmt = 
   Printf.ksprintf (fun msg -> emit Error msg ctx trace_id) fmt
 
 (** Request logging middleware *)
-let middleware next req =
+let middleware next req = 
   let start = Unix.gettimeofday () in
-  let trace_id = match Request.header "x-request-id" req with
+  let trace_id = match Request.header "x-request-id" req with 
     | Some id -> id
     | None -> 
       (* Generate new trace ID if missing *)
       let id = string_of_float start |> Digestif.SHA256.digest_string |> Digestif.SHA256.to_hex in
       let id = String.sub id 0 8 in
-      id (* Note: We can't easily inject it into req in this design without mutating or wrapping req *)
+      id 
   in
   
   let method_ = Request.meth req |> Cohttp.Code.string_of_method in
