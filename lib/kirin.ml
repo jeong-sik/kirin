@@ -1045,6 +1045,9 @@ module I18n = I18n
 *)
 module Validation = Validation
 
+(** New type-safe validation handler (FastAPI/Pydantic style) *)
+let validated = Validation.validated
+
 (** {1 Testing Utilities (Phase 17)}
 
     Tools for testing Kirin applications.

@@ -5,6 +5,13 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-27
+
+### Added
+- **Pydantic-style Auto-Validation**: New `Type` DSL for combining OCaml types with validation schemas.
+- **`Kirin.validated`**: A higher-order handler that automatically parses and validates JSON request bodies into OCaml records.
+- **Validation Example App**: Demonstration of type-safe validation in `examples/validation_app`.
+
 ## [0.2.0] - 2026-01-27
 
 ### Added

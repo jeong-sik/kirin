@@ -2,7 +2,7 @@
 
 > 🦒 OCaml 5.x Eio-native Web Framework
 
-## Current Status: Phase 27 Complete ✅ (All phases through 27)
+## Current Status: Phase 29 Complete ✅ (All phases through 29)
 
 **1053 tests passing** (204 core + 6 Relay + 22 MCP + 20 Auth + 32 OpenAPI + 36 i18n + 60 Validation + 44 Testing + 58 React + 38 HTMX + 74 tRPC + 90 TanStack + 99 Solid + 99 Svelte + 70 Vue + 47 Angular + 54 Qwik + 76 Astro + 48 Preact + 40 Lit + 48 Alpine + 55 Remix)
 
