@@ -93,7 +93,7 @@ let upgrade_response req =
   | None -> Error "Missing Sec-WebSocket-Key header"
   | Some client_key ->
     let accept_key = compute_accept_key client_key in
-    let resp = Response.make ~status:`Switching_protocols ""
+    let resp = Response.make ~status:`Switching_protocols (`String "")
       |> Response.with_header "upgrade" "websocket"
       |> Response.with_header "connection" "Upgrade"
       |> Response.with_header "sec-websocket-accept" accept_key

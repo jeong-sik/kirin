@@ -175,13 +175,13 @@ module SSE = struct
         complete ();
       ] in
       let body = String.concat "" events in
-      Kirin.Response.make ~status:`OK body
+      Kirin.Response.make ~status:`OK (`String body)
       |> Kirin.Response.with_header "Content-Type" "text/event-stream"
       |> Kirin.Response.with_header "Cache-Control" "no-cache"
       |> Kirin.Response.with_header "Connection" "keep-alive"
     | Error msg ->
       let body = error msg in
-      Kirin.Response.make ~status:`Internal_server_error body
+      Kirin.Response.make ~status:`Internal_server_error (`String body)
       |> Kirin.Response.with_header "Content-Type" "text/event-stream"
 end
 

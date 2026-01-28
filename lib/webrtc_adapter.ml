@@ -501,7 +501,7 @@ let signaling_handler () =
   let server = Signaling.create_server () in
   fun req ->
     if not (Websocket.is_upgrade_request req) then
-      Response.make ~status:`Bad_request "Expected WebSocket upgrade"
+      Response.make ~status:`Bad_request (`String "Expected WebSocket upgrade")
     else
       let peer_id = Printf.sprintf "peer_%d" (Random.int 100000) in
       let room_id = Request.query "room" req |> Option.value ~default:"default" in
@@ -511,8 +511,10 @@ let signaling_handler () =
 
       (* Return upgrade response with peer info *)
       match Websocket.upgrade_response req with
-      | Error msg -> Response.make ~status:`Bad_request msg
-      | Ok resp -> Response.with_header "X-Peer-Id" peer_id resp
+      | Ok resp -> 
+        Response.with_header "X-Peer-Id" peer_id resp
+      | Error msg -> 
+        Response.make ~status:`Bad_request (`String msg)
 
 (** STUN server info endpoint *)
 let stun_servers_handler _req =

@@ -274,7 +274,7 @@ let mock_static_middleware : Kirin.middleware =
     let path = Kirin.Request.path req in
     if String.length path >= 7 && String.sub path 0 7 = "/static" then
       (* Simulate serving a cached file *)
-      Kirin.Response.make cached_content
+      Kirin.Response.make (`String cached_content)
       |> Kirin.Response.with_header "content-type" "text/html; charset=utf-8"
       |> Kirin.Response.with_header "cache-control" "public, max-age=3600"
     else
@@ -368,9 +368,9 @@ let () =
 
   (* ===== Response Construction Benchmarks ===== *)
   print_endline "[4/6] Running response benchmarks...";
-  let base_resp = Kirin.Response.make "Hello" in
+  let base_resp = Kirin.Response.make (`String "Hello") in
   let response_results = [
-    run "response/make" (fun () -> Kirin.Response.make "Hello");
+    run "response/make" (fun () -> Kirin.Response.make (`String "Hello"));
     run "response/with_header" (fun () -> Kirin.Response.with_header "X-Custom" "value" base_resp);
     run "response/with_3_headers" (fun () ->
       Kirin.Response.with_headers

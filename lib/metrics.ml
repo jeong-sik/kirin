@@ -371,13 +371,11 @@ let export t =
 (** {1 HTTP Handler} *)
 
 (** Metrics endpoint handler *)
-let handler t _req =
-  let body = export t in
-  Response.make ~status:`OK
-    ~headers:(Http.Header.of_list [
-      ("content-type", "text/plain; version=0.0.4; charset=utf-8")
-    ])
-    body
+let handler t =
+  let default_headers = Http.Header.of_list [("Content-Type", "text/plain; version=0.0.4")] in
+  fun _req ->
+    let body = export t in
+    Response.make ~status:`OK ~headers:default_headers (`String body)
 
 (** {1 Built-in HTTP Metrics} *)
 

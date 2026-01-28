@@ -104,34 +104,38 @@ let min_compress_size = 1024
 let middleware ?(min_size = min_compress_size) : (Request.t -> Response.t) -> (Request.t -> Response.t) =
   fun handler req ->
     let resp = handler req in
-    let body = Response.body resp in
-    let body_len = String.length body in
+    
+    match Response.body resp with
+    | Response.Stream _ | Response.Producer _ -> resp (* Streaming compression not yet supported *)
+    | Response.String body ->
+      let body_len = String.length body in
 
-    (* Skip if body is too small *)
-    if body_len < min_size then resp
-    else
-      (* Check if content type should be compressed *)
-      let content_type =
-        Response.header "content-type" resp
-        |> Option.value ~default:"text/plain"
-      in
-      if skip_compression_for content_type then resp
+      (* Skip if body is too small *)
+      if body_len < min_size then resp
       else
-        (* Check Accept-Encoding *)
-        match Request.header "accept-encoding" req with
-        | None -> resp
-        | Some accept_encoding ->
-          match parse_accept_encoding accept_encoding with
+        (* Check if content type should be compressed *)
+        let content_type =
+          Response.header "content-type" resp
+          |> Option.value ~default:"text/plain"
+        in
+        if skip_compression_for content_type then resp
+        else
+          (* Check Accept-Encoding *)
+          match Request.header "accept-encoding" req with
           | None -> resp
-          | Some algo ->
-            (* Compress the body *)
-            let compressed = compress algo body in
-            let compressed_len = String.length compressed in
+          | Some accept_encoding ->
+            match parse_accept_encoding accept_encoding with
+            | None -> resp
+            | Some algo ->
+              (* Compress the body *)
+              let compressed = compress algo body in
+              let compressed_len = String.length compressed in
 
-            (* Only use compression if it actually reduces size *)
-            if compressed_len >= body_len then resp
-            else
-              Response.make ~status:(Response.status resp) compressed
-              |> Response.with_headers (Http.Header.to_list (Response.headers resp))
-              |> Response.with_header "content-encoding" (content_encoding_of algo)
-              |> Response.with_header "vary" "Accept-Encoding"
+              (* Only use compression if it actually reduces size *)
+              if compressed_len >= body_len then resp
+              else
+                Response.make ~status:(Response.status resp)
+                  ~headers:(Response.headers resp)
+                  (`String compressed)
+                |> Response.with_header "content-encoding" (content_encoding_of algo)
+                |> Response.with_header "vary" "Accept-Encoding"

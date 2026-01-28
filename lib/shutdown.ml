@@ -123,12 +123,12 @@ let track_connection t handler req =
       (fun () -> handler req)
   end else
     (* Server is shutting down, reject request *)
-    Response.make ~status:`Service_unavailable
-      ~headers:(Http.Header.of_list [
-        ("connection", "close");
-        ("retry-after", "10");
-      ])
-      "Server is shutting down"
+    match state t with
+    | Running -> 
+      (* Should not happen if connection_start returned false, but handle anyway *)
+      Response.make ~status:`Service_unavailable (`String "Server is shutting down")
+    | ShuttingDown | Stopped ->
+      Response.make ~status:`Service_unavailable (`String "Server is shutting down")
 
 (** {1 Hooks} *)
 

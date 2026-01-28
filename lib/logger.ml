@@ -39,8 +39,8 @@ let current_config = ref {
   output = stderr;
 }
 
-(** Shared log queue (capacity 4096 to absorb bursts) *)
-let log_stream = Eio.Stream.create 4096
+(** Shared log queue (capacity 65536 to virtually eliminate blocking) *)
+let log_stream = Eio.Stream.create 65536
 
 (** Format timestamp ISO8601 *)
 let format_time ts = 

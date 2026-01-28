@@ -1,14 +1,24 @@
 (** Response module - HTTP response construction *)
 
+type body =
+  | String of string
+  | Stream of string Eio.Stream.t
+  | Producer of (string Eio.Stream.t -> unit)
+
 (** Response type *)
 type t = {
   status : Http.Status.t;
   headers : Http.Header.t;
-  body : string;
+  body : body;
 }
 
 (** Create a basic response *)
 let make ?(status = `OK) ?(headers = Http.Header.init ()) body =
+  let body = match body with
+    | `String s -> String s
+    | `Stream s -> Stream s
+    | `Producer p -> Producer p
+  in
   { status; headers; body }
 
 (** Get status code *)
@@ -44,33 +54,33 @@ let with_status status t =
 
 (** Plain text response *)
 let text ?(status = `OK) body =
-  make ~status body
+  make ~status (`String body)
   |> with_header "content-type" "text/plain; charset=utf-8"
 
 (** HTML response *)
 let html ?(status = `OK) ?(doctype = false) body =
   let body = if doctype then "<!DOCTYPE html>\n" ^ body else body in
-  make ~status body
+  make ~status (`String body)
   |> with_header "content-type" "text/html; charset=utf-8"
 
 (** JSON response *)
 let json ?(status = `OK) body =
   let body = Yojson.Safe.to_string body in
-  make ~status body
+  make ~status (`String body)
   |> with_header "content-type" "application/json; charset=utf-8"
 
 (** JSON from string (already serialized) *)
 let json_string ?(status = `OK) body =
-  make ~status body
+  make ~status (`String body)
   |> with_header "content-type" "application/json; charset=utf-8"
 
 (** Empty response with just status *)
 let empty status =
-  make ~status ""
+  make ~status (`String "")
 
 (** Redirect response *)
 let redirect ?(status = `Found) location =
-  make ~status ""
+  make ~status (`String "")
   |> with_header "location" location
 
 (** Permanent redirect (301) *)
@@ -88,6 +98,11 @@ let bad_request ?(body = "Bad Request") () =
 (** Internal server error response *)
 let server_error ?(body = "Internal Server Error") () =
   text ~status:`Internal_server_error body
+
+(** Stream response *)
+let stream ?(status = `OK) ?(headers = []) s =
+  make ~status (`Stream s)
+  |> with_headers headers
 
 (** HTMX-specific response with swap headers *)
 let htmx ?(status = `OK) ?target ?swap body =

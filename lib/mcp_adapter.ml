@@ -128,10 +128,14 @@ let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
   in
   let handle_sse _req =
     (* SSE endpoint for server-initiated messages *)
+    let endpoint_url = prefix ^ "/sse" in
     (* For now, just return a simple keep-alive stream *)
-    Sse.response [
-      Sse.event ~event_type:"connected" "MCP SSE connected";
-    ]
+    (* Send initial connection event *)
+    let initial_events = [
+      Sse.event "connected" "MCP SSE connected";
+      Sse.event "endpoint" endpoint_url;
+    ] in
+    Sse.response_legacy initial_events
   in
   let handle_options _req =
     Response.empty `OK

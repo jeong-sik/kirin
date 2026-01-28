@@ -228,7 +228,7 @@ let rate_limited_handler _req =
     ])
   else
     Kirin.Response.make ~status:`Too_many_requests
-      {|{"error": "Rate limited. Please slow down."}|}
+      (`String {|{"error": "Rate limited. Please slow down."}|})
     |> Kirin.with_header "Content-Type" "application/json"
     |> Kirin.with_header "Retry-After" "1"
 

@@ -72,7 +72,8 @@ let test_connection_from_list_pagination () =
   
   (* first: 2, after: "1" (index 1 -> Bob) *)
   (* Start index should be 1 + 1 = 2 (Charlie) *)
-  let args = Kirin.Graphql_relay.get_args (Some 2) (Some "1") None None in
+  (* Note: "1" encoded in base64 is "MQ==" *)
+  let args = Kirin.Graphql_relay.get_args (Some 2) (Some "MQ==") None None in
   let conn = Kirin.Graphql_relay.connection_from_list users args in
   
   check int "edges count" 2 (List.length conn.edges);

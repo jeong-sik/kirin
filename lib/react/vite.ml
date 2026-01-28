@@ -107,9 +107,12 @@ let mime_type_of path =
 (** Serve a static file *)
 let serve_file file_path =
   try
-    let content = In_channel.(with_open_bin file_path input_all) in
+    let ic = open_in_bin file_path in
+    let len = in_channel_length ic in
+    let content = really_input_string ic len in
+    close_in ic;
     let mime = mime_type_of file_path in
-    Kirin.Response.make ~status:`OK content
+    Kirin.Response.make ~status:`OK (`String content)
     |> Kirin.Response.with_header "Content-Type" mime
     |> Kirin.Response.with_header "Cache-Control" "public, max-age=31536000, immutable"
   with Sys_error _ ->

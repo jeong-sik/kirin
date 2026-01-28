@@ -108,8 +108,8 @@ let add_rate_limit_headers ~limit ~remaining ~reset_after resp =
   |> Response.with_header "x-ratelimit-reset" (Printf.sprintf "%.0f" reset_after)
 
 (** Create 429 Too Many Requests response *)
-let too_many_requests ~retry_after ~limit =
-  Response.make ~status:`Too_many_requests "Too Many Requests"
+let limit_exceeded_response ~retry_after ~limit =
+  Response.make ~status:`Too_many_requests (`String "Too Many Requests")
   |> Response.with_header "content-type" "text/plain; charset=utf-8"
   |> Response.with_header "retry-after" (Printf.sprintf "%.0f" (ceil retry_after))
   |> Response.with_header "x-ratelimit-limit" (string_of_int limit)
@@ -124,7 +124,7 @@ let middleware ?(config = default_config) ?(get_key = get_client_id) : (Request.
       let resp = handler req in
       add_rate_limit_headers ~limit ~remaining ~reset_after resp
     | `Limited { retry_after; limit } ->
-      too_many_requests ~retry_after ~limit
+      limit_exceeded_response ~retry_after ~limit
 
 (** Create a rate limiter with custom storage (for distributed systems) *)
 module type Storage = sig
@@ -162,7 +162,7 @@ let middleware_with_storage (module S : Storage) ?(config = default_config) ?(ge
         resp
     end else begin
       S.set client_id bucket;
-      too_many_requests
+      limit_exceeded_response
         ~retry_after:((1.0 -. bucket.tokens) /. config.requests_per_second)
         ~limit:config.burst_size
     end

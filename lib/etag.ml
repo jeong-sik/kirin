@@ -75,29 +75,31 @@ let any_match etags target =
 let middleware : (Request.t -> Response.t) -> (Request.t -> Response.t) =
   fun handler req ->
     let resp = handler req in
-    let body = Response.body resp in
+    
+    match Response.body resp with
+    | Response.Stream _ | Response.Producer _ -> resp (* ETag not supported for streams yet *)
+    | Response.String body ->
+      (* Only add ETag for successful responses with body *)
+      if Response.status_code resp = 200 && String.length body > 0 then
+        let etag = generate body in
+        let etag_str = to_string etag in
 
-    (* Only add ETag for successful responses with body *)
-    if Response.status_code resp = 200 && String.length body > 0 then
-      let etag = generate body in
-      let etag_str = to_string etag in
-
-      (* Check If-None-Match header *)
-      match Request.header "if-none-match" req with
-      | Some inm_value ->
-        let client_etags = parse_if_none_match inm_value in
-        if any_match client_etags etag then
-          (* Return 304 Not Modified *)
-          Response.empty `Not_modified
-          |> Response.with_header "etag" etag_str
-        else
-          (* Add ETag to response *)
+        (* Check If-None-Match header *)
+        match Request.header "if-none-match" req with
+        | Some inm_value ->
+          let client_etags = parse_if_none_match inm_value in
+          if any_match client_etags etag then
+            (* Return 304 Not Modified *)
+            Response.empty `Not_modified
+            |> Response.with_header "etag" etag_str
+          else
+            (* Add ETag to response *)
+            Response.with_header "etag" etag_str resp
+        | None ->
+          (* Just add ETag header *)
           Response.with_header "etag" etag_str resp
-      | None ->
-        (* Just add ETag header *)
-        Response.with_header "etag" etag_str resp
-    else
-      resp
+      else
+        resp
 
 (** Check precondition for If-Match (for PUT/DELETE) *)
 let check_if_match req current_etag =

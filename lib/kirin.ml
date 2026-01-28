@@ -949,6 +949,9 @@ module Migrate = Migrate
 (** Type-safe SQL query builder *)
 module Query = Query
 
+(** PostgreSQL LISTEN/NOTIFY Integration (Phase 32) *)
+module Db_events = Db_events
+
 (** {1 OpenAPI/Swagger (Phase 14)}
 
     OpenAPI 3.0 specification builder with Swagger UI and ReDoc support.
