@@ -14,7 +14,9 @@ let mime_of_ext ext =
   | ".txt" -> "text/plain; charset=utf-8"
   | _ -> "application/octet-stream"
 
-let get_mime_type = mime_of_ext
+let get_mime_type path =
+  let ext = Filename.extension path in
+  mime_of_ext ext
 
 (** Check for directory traversal attacks *)
 let contains_dot_dot path =

@@ -17,23 +17,19 @@ let default_config = {
 
 let make_cohttp_handler sw (handler : Router.handler) =
 
-  fun _socket request body ->
+      fun _socket request body ->
 
-    (* Read body from Eio flow 
+        (* Create Kirin request with raw body source (Zero-Copy) *)
 
-       TODO: Implement streaming body instead of full allocation to avoid OOM
+        (* Cohttp_eio passes body as Flow source, convert to Buf_read *)
 
-    *)
+        let body_buf = Eio.Buf_read.of_flow body ~initial_size:4096 ~max_size:max_int in
 
-    let body_str = Eio.Buf_read.(parse_exn take_all) body ~max_size:(1024 * 1024 * 10) in
+        let req = Request.make ~raw:request ~body_source:body_buf in
 
-    (* Create Kirin request *)
+        (* Call handler to get Kirin response *)
 
-    let req = Request.make ~raw:request ~body:body_str in
-
-    (* Call handler to get Kirin response *)
-
-    let resp = handler req in
+        let resp = handler req in
 
     (* Convert to cohttp-eio response *)
 

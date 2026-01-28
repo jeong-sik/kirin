@@ -143,7 +143,8 @@ let make_request ?(meth = `GET) ?(path = "/") ?(headers = []) ?(body = "") () =
   in
   let resource = path in
   let raw = Http.Request.make ~meth ~headers:raw_headers resource in
-  Kirin.Request.make ~raw ~body
+  let body_source = Eio.Flow.string_source body |> Eio.Buf_read.of_flow ~max_size:max_int in
+  Kirin.Request.make ~raw ~body_source
 
 (** Sample JSON data for serialization benchmarks *)
 let small_json = `Assoc [

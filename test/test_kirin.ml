@@ -63,9 +63,10 @@ let response_tests = [
    Router Tests (test routing logic)
    ============================================================ *)
 
-let make_test_request ?(meth=`GET) path =
-  let raw = Http.Request.make ~meth path in
-  Kirin.Request.make ~raw ~body:""
+let make_test_request ?(meth=`GET) ?(headers=[]) path =
+  let raw = Http.Request.make ~meth ~headers:(Http.Header.of_list headers) path in
+  let body_source = Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024 in
+  Kirin.Request.make ~raw ~body_source
 
 let test_router_static_match () =
   let handler _req = Kirin.text "matched" in
@@ -328,10 +329,10 @@ let test_etag_middleware_304 () =
   (* Now make request with If-None-Match *)
   match etag_value with
   | Some etag ->
-    let raw = Http.Request.make
-      ~headers:(Http.Header.of_list [("if-none-match", etag)])
-      ~meth:`GET "/" in
-    let req2 = Kirin.Request.make ~raw ~body:"" in
+    let req2 = make_test_request
+      ~headers:[("if-none-match", etag)]
+      ~meth:`GET
+      "/" in
     let resp2 = with_etag req2 in
     check int "304 status" 304 (Kirin.Response.status_code resp2)
   | None -> failwith "no etag header"
@@ -469,10 +470,9 @@ let test_compress_middleware () =
   let with_compress = Kirin.compress handler in
 
   (* Request with Accept-Encoding: gzip *)
-  let raw = Http.Request.make
-    ~headers:(Http.Header.of_list [("accept-encoding", "gzip, deflate")])
-    ~meth:`GET "/" in
-  let req = Kirin.Request.make ~raw ~body:"" in
+  let req = make_test_request
+    ~headers:[("accept-encoding", "gzip, deflate")]
+    "/" in
   let resp = with_compress req in
 
   check (option string) "content-encoding" (Some "gzip") (Kirin.Response.header "content-encoding" resp);
@@ -503,10 +503,9 @@ let test_ratelimit_middleware_allows () =
   let handler _req = Kirin.text "OK" in
   let with_limit = Kirin.rate_limit ~config handler in
 
-  let raw = Http.Request.make
-    ~headers:(Http.Header.of_list [("x-forwarded-for", "127.0.0.1")])
-    ~meth:`GET "/" in
-  let req = Kirin.Request.make ~raw ~body:"" in
+  let req = make_test_request
+    ~headers:[("x-forwarded-for", "127.0.0.1")]
+    "/" in
   let resp = with_limit req in
 
   check int "status 200" 200 (Kirin.Response.status_code resp);
@@ -524,10 +523,10 @@ let test_ratelimit_middleware_limits () =
     handler in
 
   let make_req () =
-    let raw = Http.Request.make
-      ~headers:(Http.Header.of_list [("x-forwarded-for", "192.168.1.100")])
-      ~meth:`GET "/" in
-    Kirin.Request.make ~raw ~body:""
+    make_test_request
+      ~headers:[("x-forwarded-for", "192.168.1.100")]
+      ~meth:`GET
+      "/"
   in
 
   (* First request should pass *)
@@ -565,14 +564,16 @@ let test_ws_is_upgrade_request () =
       ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==");
     ])
     ~meth:`GET "/" in
-  let req_valid = Kirin.Request.make ~raw:raw_valid ~body:"" in
+  let body_source = Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024 in
+  let req_valid = Kirin.Request.make ~raw:raw_valid ~body_source in
   check bool "is upgrade" true (Kirin.is_websocket_upgrade req_valid);
 
   (* Non-upgrade request *)
   let raw_invalid = Http.Request.make
     ~headers:(Http.Header.of_list [("content-type", "text/html")])
     ~meth:`GET "/" in
-  let req_invalid = Kirin.Request.make ~raw:raw_invalid ~body:"" in
+  let body_source = Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024 in
+  let req_invalid = Kirin.Request.make ~raw:raw_invalid ~body_source in
   check bool "not upgrade" false (Kirin.is_websocket_upgrade req_invalid)
 
 let test_ws_upgrade_response () =
@@ -583,7 +584,8 @@ let test_ws_upgrade_response () =
       ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==");
     ])
     ~meth:`GET "/" in
-  let req = Kirin.Request.make ~raw ~body:"" in
+  let body_source = Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024 in
+  let req = Kirin.Request.make ~raw ~body_source in
 
   match Kirin.websocket_upgrade req with
   | Ok resp ->
@@ -1047,65 +1049,8 @@ let graphql_tests = [
 ]
 
 (* ============================================================
-   Streaming Tests (Phase 9)
+   Streaming Tests (Phase 9) -> Moved to test_streaming.ml
    ============================================================ *)
-
-let test_stream_response () =
-  let stream = Kirin.stream (fun yield ->
-    yield "chunk1";
-    yield "chunk2";
-    yield "chunk3"
-  ) in
-  let resp = Kirin.stream_to_response stream in
-  check string "body" "chunk1chunk2chunk3" (response_body_to_string (Kirin.Response.body resp));
-  check (option string) "content-length" (Some "18") (Kirin.Response.header "content-length" resp)
-
-let test_stream_with_content_type () =
-  let stream = Kirin.stream (fun yield -> yield "data")
-    |> Kirin.Stream.with_content_type "text/csv" in
-  let resp = Kirin.stream_to_response stream in
-  check (option string) "content-type" (Some "text/csv") (Kirin.Response.header "content-type" resp)
-
-let test_stream_chunked_encoding () =
-  let chunk = Kirin.Stream.encode_chunk "Hello" in
-  check string "encoded chunk" "5\r\nHello\r\n" chunk
-
-let test_stream_final_chunk () =
-  check string "final chunk" "0\r\n\r\n" Kirin.Stream.final_chunk
-
-let test_stream_of_lines () =
-  let producer = Kirin.Stream.of_lines ["line1"; "line2"; "line3"] in
-  let buf = Buffer.create 64 in
-  producer (Buffer.add_string buf);
-  check string "lines" "line1\nline2\nline3\n" (Buffer.contents buf)
-
-let test_stream_mime_detection () =
-  (* Test mime type detection through file_response *)
-  let stream = Kirin.Stream.file_inline "/test/file.json" in
-  let headers = Kirin.Stream.headers stream in
-  check (option string) "json mime" (Some "application/json") (Cohttp.Header.get headers "content-type")
-
-let test_stream_progress_callback () =
-  let progress_called = ref false in
-  let complete_called = ref false in
-  let progress : Kirin.progress = {
-    on_progress = (fun ~bytes_sent:_ ~total_bytes:_ -> progress_called := true);
-    on_complete = (fun () -> complete_called := true);
-    on_error = (fun _ -> ());
-  } in
-  (* Just check the type compiles correctly *)
-  ignore progress;
-  check bool "progress type exists" true true
-
-let streaming_tests = [
-  test_case "stream response" `Quick test_stream_response;
-  test_case "stream content type" `Quick test_stream_with_content_type;
-  test_case "chunked encoding" `Quick test_stream_chunked_encoding;
-  test_case "final chunk" `Quick test_stream_final_chunk;
-  test_case "of_lines helper" `Quick test_stream_of_lines;
-  test_case "mime detection" `Quick test_stream_mime_detection;
-  test_case "progress callback" `Quick test_stream_progress_callback;
-]
 
 (* ============================================================
    Connection Pool Tests (Phase 9)
@@ -2289,7 +2234,7 @@ let () =
     ("TLS", tls_tests);
     ("gRPC", grpc_tests);
     ("GraphQL", graphql_tests);
-    ("Streaming", streaming_tests);
+    (* Streaming tests moved to test_streaming.ml due to Eio requirement *)
     ("Pool", pool_tests);
     ("Backpressure", backpressure_tests);
     ("Cache", cache_tests);
