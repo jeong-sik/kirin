@@ -33,7 +33,8 @@ let run ?(config = default_config) ~sw ~env handler =
   let net = Eio.Stdenv.net env in
 
   let addr = `Tcp (Eio.Net.Ipaddr.V4.any, config.port) in
-  let socket = Eio.Net.listen net ~sw ~backlog:config.backlog ~reuse_addr:true addr in
+  (* Enable SO_REUSEPORT for Cluster Mode *)
+  let socket = Eio.Net.listen net ~sw ~backlog:config.backlog ~reuse_addr:true ~reuse_port:true addr in
 
   Printf.printf "🦒 Kirin running on http://%s:%d\n%!" config.host config.port;
   Printf.printf "Type Ctrl+C to stop\n%!";
@@ -44,8 +45,17 @@ let run ?(config = default_config) ~sw ~env handler =
   )
 
 (** Main entry point - sets up Eio and runs server *)
-let start ?(port = 8000) handler =
+let start ?(port = 8000) ?(domains = 1) handler =
+  ignore domains;
+  Printf.printf "🦒 Kirin starting on http://localhost:%d\n%!" port;
+  
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let config = { default_config with port } in
-  run ~config ~sw ~env handler
+  let net = Eio.Stdenv.net env in
+  let addr = `Tcp (Eio.Net.Ipaddr.V4.any, port) in
+  let socket = Eio.Net.listen net ~sw ~backlog:128 ~reuse_addr:true addr in
+  
+  let server = Cohttp_eio.Server.make ~callback:(make_cohttp_handler handler) () in
+  Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
+    Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn)
+  )

@@ -710,6 +710,14 @@ module Graphql_relay = Graphql_relay
 *)
 module Sync = Sync
 
+(** {1 Scale-Up Architecture (Phase 30)} *)
+
+(** Multi-process cluster manager (PM2 style) *)
+module Cluster = Cluster
+
+(** Structured JSON logger (ELK/Datadog ready) *)
+module Logger = Logger
+
 (** {1 MCP Integration (Phase 8)} *)
 
 (** MCP module for AI agent integration
