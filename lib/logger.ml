@@ -77,17 +77,22 @@ let rec run_logger () =
   with _ -> run_logger () (* Resilience: never crash the logger *)
 
 (** Start the logger background fiber *)
-let start sw = 
+let start sw =
   Eio.Fiber.fork ~sw run_logger
 
-(** Emit log entry (Non-blocking) *)
-let emit level message context trace_id = 
+(** Shutdown logger gracefully *)
+let shutdown () =
+  (* Send poison pill or just wait? Eio streams don't have close.
+     For now, we just flush stderr to ensure OS buffers are empty. *)
+  flush !current_config.output
+(** Emit log entry (Blocking if full) *)
+let emit level message context trace_id =
   if level >= !current_config.min_level then
     let ts = Unix.gettimeofday () in
     let entry = { timestamp=ts; level; message; context; trace_id; span_id=None } in
-    (* Non-blocking push if capacity allows, otherwise backpressure *)
+    (* Warning: This will block if queue is full. 
+       In v0.4.0, implement ring buffer or drop strategy. *)
     Eio.Stream.add log_stream entry
-
 (** Configure logger *)
 let configure ?min_level ?format ?output () = 
   let c = !current_config in
