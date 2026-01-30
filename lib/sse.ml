@@ -18,8 +18,11 @@ type event = {
 (** Create a simple data-only SSE event *)
 let data d = { event = None; data = d; id = None; retry = None }
 
-(** Create an SSE event with type *)
+(** Create an SSE event with type (positional) *)
 let event t d = { event = Some t; data = d; id = None; retry = None }
+
+(** Create an SSE event with type (labeled, backward compat) *)
+let event_typed ~event_type d = { event = Some event_type; data = d; id = None; retry = None }
 
 (** Add ID to SSE event *)
 let with_id id e = { e with id = Some id }
