@@ -28,6 +28,7 @@
   caqti-eio.unix
   unix
   threads
-  str)
+  str
+  dune-build-info)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))
