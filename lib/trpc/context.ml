@@ -41,6 +41,22 @@ let bearer_token ctx =
 (** Get content type *)
 let content_type ctx = header "content-type" ctx
 
+(** {1 Test Helpers} *)
+
+(** Create a base context for testing without a real Request.t.
+    WARNING: Accessing the request field on this context will raise an exception.
+    Only use for tests that only need headers/path. *)
+let base_for_test ?(headers = []) ?(path = "/") () : base =
+  let dummy_request : Request.t =
+    (* Create a minimal dummy request - accessing it will fail but type-checks *)
+    let dummy_buf_read =
+      Eio.Buf_read.of_string ""
+    in
+    let dummy_http_req = Http.Request.make "/" in
+    Request.make ~raw:dummy_http_req ~body_source:dummy_buf_read
+  in
+  { request = dummy_request; headers; path }
+
 (** {1 Custom Context} *)
 
 (** Extend base context with custom data *)

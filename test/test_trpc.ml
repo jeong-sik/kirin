@@ -224,19 +224,19 @@ let test_context () =
     ()
   );
   test "header lookup" (fun () ->
-    let ctx = { Context.headers = [("Authorization", "Bearer token123")] ; request = Obj.magic (); path = "/" } in
+    let ctx = Context.base_for_test ~headers:[("Authorization", "Bearer token123")] () in
     match Context.header "authorization" ctx with
     | Some "Bearer token123" -> ()
     | _ -> failwith "expected header"
   );
   test "bearer_token extraction" (fun () ->
-    let ctx = { Context.headers = [("Authorization", "Bearer mytoken")] ; request = Obj.magic (); path = "/" } in
+    let ctx = Context.base_for_test ~headers:[("Authorization", "Bearer mytoken")] () in
     match Context.bearer_token ctx with
     | Some "mytoken" -> ()
     | _ -> failwith "expected token"
   );
   test "bearer_token missing" (fun () ->
-    let ctx = { Context.headers = [] ; request = Obj.magic (); path = "/" } in
+    let ctx = Context.base_for_test ~headers:[] () in
     match Context.bearer_token ctx with
     | None -> ()
     | _ -> failwith "expected None"
