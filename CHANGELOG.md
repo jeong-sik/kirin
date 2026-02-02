@@ -5,6 +5,27 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-02
+
+### Added
+- **Fs_compat Module**: Eio-native file I/O with blocking fallback
+  - `Fs_compat.set_fs` for global filesystem injection at startup
+  - `Fs_compat.load` / `load_binary` for reading files
+  - `Fs_compat.save` for writing files
+  - `Fs_compat.file_exists` / `is_directory` / `readdir`
+  - Prevents fiber blocking during file operations
+
+### Changed
+- **19 Modules Migrated**: All blocking file I/O converted to `Fs_compat`
+  - Core: `i18n.ml`, `tls_config.ml`, `static.ml`, `testing.ml`
+  - React: `manifest.ml`, `assets.ml`, `vite.ml`
+  - Angular: `handler.ml`
+  - Astro: `handler.ml`, `ssr.ml`
+  - Preact: `manifest.ml`
+  - Qwik: `handler.ml`, `ssr.ml`
+  - Svelte: `manifest.ml`, `codegen.ml`
+  - Vue: `manifest.ml`
+
 ## [0.3.1] - 2026-01-27
 
 ### Fixed
