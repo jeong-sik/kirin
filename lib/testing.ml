@@ -558,9 +558,6 @@ let with_temp_file ?content f =
   Fun.protect ~finally:(fun () -> Sys.remove path) (fun () ->
     (match content with
      | None -> ()
-     | Some c ->
-       let oc = open_out path in
-       output_string oc c;
-       close_out oc);
+     | Some c -> Fs_compat.save path c);
     f path
   )

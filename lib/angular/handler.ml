@@ -116,10 +116,8 @@ let handle_ssr config request =
     if config.fallback_to_csr then
       (* Fallback to CSR *)
       let index_path = Filename.concat config.dist_path config.index_html in
-      if Sys.file_exists index_path then
-        let ic = open_in index_path in
-        let content = really_input_string ic (in_channel_length ic) in
-        close_in ic;
+      if Kirin.Fs_compat.file_exists index_path then
+        let content = Kirin.Fs_compat.load index_path in
         html_response content
       else
         error_response ~status:500 ~message:"SSR engine not configured and index.html not found"
@@ -136,10 +134,8 @@ let handle_ssr config request =
     | Error msg ->
       if config.fallback_to_csr then
         let index_path = Filename.concat config.dist_path config.index_html in
-        if Sys.file_exists index_path then
-          let ic = open_in index_path in
-          let content = really_input_string ic (in_channel_length ic) in
-          close_in ic;
+        if Kirin.Fs_compat.file_exists index_path then
+          let content = Kirin.Fs_compat.load index_path in
           html_response content
         else
           error_response ~status:500 ~message:msg
@@ -149,10 +145,8 @@ let handle_ssr config request =
 (** Handle CSR request *)
 let handle_csr config =
   let index_path = Filename.concat config.dist_path config.index_html in
-  if Sys.file_exists index_path then
-    let ic = open_in index_path in
-    let content = really_input_string ic (in_channel_length ic) in
-    close_in ic;
+  if Kirin.Fs_compat.file_exists index_path then
+    let content = Kirin.Fs_compat.load index_path in
     html_response content
   else
     error_response ~status:404 ~message:"index.html not found"
@@ -161,10 +155,8 @@ let handle_csr config =
 let handle_prerender config request =
   let path = if request.path = "/" then "/index" else request.path in
   let html_path = Filename.concat config.dist_path (path ^ ".html") in
-  if Sys.file_exists html_path then
-    let ic = open_in html_path in
-    let content = really_input_string ic (in_channel_length ic) in
-    close_in ic;
+  if Kirin.Fs_compat.file_exists html_path then
+    let content = Kirin.Fs_compat.load html_path in
     html_response content
   else
     (* Fallback to SSR or CSR *)
@@ -192,10 +184,8 @@ let is_static_asset path =
 (** Serve static file *)
 let serve_static config path =
   let file_path = Filename.concat config.dist_path path in
-  if Sys.file_exists file_path && not (Sys.is_directory file_path) then
-    let ic = open_in_bin file_path in
-    let content = really_input_string ic (in_channel_length ic) in
-    close_in ic;
+  if Kirin.Fs_compat.file_exists file_path && not (Kirin.Fs_compat.is_directory file_path) then
+    let content = Kirin.Fs_compat.load_binary file_path in
     let content_type = match Filename.extension path with
       | ".js" -> "application/javascript"
       | ".css" -> "text/css"

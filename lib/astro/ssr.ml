@@ -223,9 +223,7 @@ let generate_static engine ~url ~output_path () =
   match render engine ~url () with
   | Ok html ->
     (* Write to file *)
-    let oc = open_out output_path in
-    output_string oc html;
-    close_out oc;
+    Kirin.Fs_compat.save output_path html;
     Ok output_path
   | Error msg -> Error msg
 

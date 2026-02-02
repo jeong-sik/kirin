@@ -114,10 +114,8 @@ let serve_static config path =
   let rec try_serve = function
     | [] -> None
     | file_path :: rest ->
-      if Sys.file_exists file_path && not (Sys.is_directory file_path) then
-        let ic = open_in_bin file_path in
-        let content = really_input_string ic (in_channel_length ic) in
-        close_in ic;
+      if Kirin.Fs_compat.file_exists file_path && not (Kirin.Fs_compat.is_directory file_path) then
+        let content = Kirin.Fs_compat.load_binary file_path in
         let content_type = match Filename.extension path with
           | ".js" | ".mjs" -> "application/javascript"
           | ".css" -> "text/css"
@@ -159,10 +157,8 @@ let handle_static config request =
     else if Filename.extension request.path = "" then request.path ^ ".html"
     else request.path in
   let html_path = Filename.concat config.dist_path path in
-  if Sys.file_exists html_path then
-    let ic = open_in html_path in
-    let content = really_input_string ic (in_channel_length ic) in
-    close_in ic;
+  if Kirin.Fs_compat.file_exists html_path then
+    let content = Kirin.Fs_compat.load html_path in
     html_response content
   else
     error_response ~status:404 ~message:"Page not found"

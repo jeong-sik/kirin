@@ -107,10 +107,7 @@ let mime_type_of path =
 (** Serve a static file *)
 let serve_file file_path =
   try
-    let ic = open_in_bin file_path in
-    let len = in_channel_length ic in
-    let content = really_input_string ic len in
-    close_in ic;
+    let content = Kirin.Fs_compat.load_binary file_path in
     let mime = mime_type_of file_path in
     Kirin.Response.make ~status:`OK (`String content)
     |> Kirin.Response.with_header "Content-Type" mime

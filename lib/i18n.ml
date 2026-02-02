@@ -146,9 +146,7 @@ let set_fallback ~locale ~fallback t =
 
 (** Load translations from JSON file *)
 let load_json ~locale ~path t =
-  let ic = open_in path in
-  let content = really_input_string ic (in_channel_length ic) in
-  close_in ic;
+  let content = Fs_compat.load path in
   let json = Yojson.Safe.from_string content in
   let pairs = match json with
     | `Assoc pairs ->

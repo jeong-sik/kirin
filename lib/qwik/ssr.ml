@@ -227,9 +227,7 @@ let prerender engine ~routes ~output_dir =
       let file_path = Filename.concat output_dir (path ^ ".html") in
       let dir = Filename.dirname file_path in
       ignore (Sys.command (Printf.sprintf "mkdir -p %s" dir));
-      let oc = open_out file_path in
-      output_string oc html;
-      close_out oc
+      Kirin.Fs_compat.save file_path html
     | Error msg ->
       Printf.eprintf "Failed to prerender %s: %s\n" url msg
   ) routes

@@ -163,9 +163,7 @@ type MaybePromise<T> = T | Promise<T>;
 
 (** Write generated code to file *)
 let write_to_file ~path content =
-  let oc = open_out path in
-  output_string oc content;
-  close_out oc
+  Kirin.Fs_compat.save path content
 
 (** Generate all files *)
 let generate ~manifest ~output_dir () =

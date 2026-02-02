@@ -223,6 +223,10 @@ let start_unified
   =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
+
+  (* Set global filesystem for Fs_compat (Eio-native file I/O) *)
+  Fs_compat.set_fs (Eio.Stdenv.fs env);
+
   (* Create gRPC server *)
   let grpc_config = {
     Server.default_config with

@@ -35,11 +35,7 @@ type 'a result = ('a, error) Stdlib.result
 (** Read file contents *)
 let read_file path =
   try
-    let ic = open_in path in
-    let n = in_channel_length ic in
-    let s = really_input_string ic n in
-    close_in ic;
-    Ok s
+    Ok (Fs_compat.load path)
   with
   | Sys_error msg -> Error (File_not_found msg)
 

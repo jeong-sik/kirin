@@ -134,10 +134,13 @@ let start ?(port = 8000) ?(domains = Domain.recommended_domain_count ()) handler
   
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  
+
+  (* Set global filesystem for Fs_compat (Eio-native file I/O) *)
+  Fs_compat.set_fs (Eio.Stdenv.fs env);
+
   (* Start Async Logger (Phase 30) *)
   Logger.start sw;
-  
+
   let net = Eio.Stdenv.net env in
   let domain_mgr = Eio.Stdenv.domain_mgr env in
   

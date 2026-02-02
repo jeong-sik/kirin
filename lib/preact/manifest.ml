@@ -70,7 +70,7 @@ let parse ?(base_url = "/") json =
 (** Load manifest from file *)
 let load ?(base_url = "/") path =
   try
-    let content = In_channel.with_open_text path In_channel.input_all in
+    let content = Kirin.Fs_compat.load path in
     let json = Yojson.Safe.from_string content in
     Ok (parse ~base_url json)
   with

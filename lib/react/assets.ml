@@ -123,7 +123,7 @@ let all_preloads config src =
 let inline_css ?(dir = "dist") css_path =
   let full_path = Filename.concat dir css_path in
   try
-    let content = In_channel.(with_open_text full_path input_all) in
+    let content = Kirin.Fs_compat.load full_path in
     Printf.sprintf "<style>%s</style>" content
   with Sys_error _ ->
     Printf.sprintf {|<link rel="stylesheet" href="/%s">|} css_path

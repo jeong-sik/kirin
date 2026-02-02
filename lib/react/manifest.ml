@@ -84,7 +84,7 @@ let parse_string s =
 
 let load path =
   try
-    let content = In_channel.(with_open_text path input_all) in
+    let content = Kirin.Fs_compat.load path in
     parse_string content
   with
   | Sys_error msg -> Error ("File error: " ^ msg)

@@ -238,9 +238,7 @@ let from_json json =
 
 (** Load manifest from file *)
 let load_file path =
-  let ic = open_in path in
-  let content = really_input_string ic (in_channel_length ic) in
-  close_in ic;
+  let content = Kirin.Fs_compat.load path in
   from_json (Yojson.Safe.from_string content)
 
 (** From discovered routes *)

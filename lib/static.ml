@@ -40,12 +40,10 @@ let static prefix ~dir =
         |> Response.with_header "content-type" "text/plain"
       else
         let file_path = Filename.concat dir relative_path in
-        if Sys.file_exists file_path && not (Sys.is_directory file_path) then
-          let ic = open_in_bin file_path in
-          let len = in_channel_length ic in
-          let content = really_input_string ic len in
-          close_in ic;
-          
+        if Fs_compat.file_exists file_path && not (Fs_compat.is_directory file_path) then
+          let content = Fs_compat.load_binary file_path in
+          let len = String.length content in
+
           let ext = Filename.extension file_path in
           let mime = mime_of_ext ext in
           
