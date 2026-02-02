@@ -644,6 +644,7 @@ module Router = Router
 module Middleware = Middleware
 module Static = Static
 module Fs_compat = Fs_compat
+module Time_compat = Time_compat
 module Cookie = Cookie
 module Etag = Etag
 module Multipart = Multipart

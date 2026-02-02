@@ -138,6 +138,9 @@ let start ?(port = 8000) ?(domains = Domain.recommended_domain_count ()) handler
   (* Set global filesystem for Fs_compat (Eio-native file I/O) *)
   Fs_compat.set_fs (Eio.Stdenv.fs env);
 
+  (* Set global clock for Time_compat (Eio-native timestamps) *)
+  Time_compat.set_clock (Eio.Stdenv.clock env);
+
   (* Start Async Logger (Phase 30) *)
   Logger.start sw;
 
