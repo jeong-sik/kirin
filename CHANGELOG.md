@@ -127,3 +127,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **10 example applications**
 
 [0.1.0]: https://github.com/jeong-sik/kirin/releases/tag/v0.1.0
+
+## [0.5.1] - 2026-02-02
+
+### Added
+- **Time_compat Module**: Eio-native timestamp API with Unix fallback
+  - `Time_compat.set_clock` for global clock injection at startup
+  - `Time_compat.now ()` replaces `Unix.gettimeofday ()` 
+  - Prevents domain blocking in async context
