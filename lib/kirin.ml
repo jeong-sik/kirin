@@ -384,8 +384,11 @@ let sse_with_retry = Sse.with_retry
 (** Encode SSE event to string *)
 let sse_encode = Sse.encode
 
-(** Create SSE response with events *)
-let sse_response = Sse.response
+(** Create SSE response from a list of events (convenience) *)
+let sse_response = Sse.response_legacy
+
+(** Create SSE response from an Eio.Stream of events (real streaming) *)
+let sse_stream_response = Sse.response
 
 (** SSE endpoint handler *)
 let sse_handler = Sse.handler
