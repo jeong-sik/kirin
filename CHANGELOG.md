@@ -5,6 +5,21 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-02-04
+
+### Fixed
+- **Cache Module**: Replaced `Stdlib.Mutex` with `Eio.Mutex` to prevent fiber blocking during cache operations.
+- **SSE Module**: Implemented real streaming via `Producer` pattern instead of buffering entire response. Added `response_legacy` for backward compatibility with list-based API.
+
+### Changed
+- **`Kirin.sse_response`**: Now points to `Sse.response_legacy` for backward compatibility.
+- **`Kirin.sse_stream_response`**: New function for real-time SSE streaming from `Eio.Stream`.
+
+## [0.5.1] - 2026-02-02
+
+### Fixed
+- **Time_compat**: Added Eio-native timestamps module.
+
 ## [0.5.0] - 2026-02-02
 
 ### Added
