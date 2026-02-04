@@ -90,33 +90,26 @@ module Broadcaster = struct
     )
 end
 
-(** Create SSE response from a stream *)
-let response _stream =
-  let headers = [
+(** Create SSE response from an event stream.
+    Reads events from the Eio stream, encodes them to SSE wire format,
+    and yields the encoded strings via the Producer pattern. *)
+let response stream =
+  let headers = Http.Header.of_list [
     ("Content-Type", "text/event-stream");
     ("Cache-Control", "no-cache");
     ("Connection", "keep-alive");
-    ("X-Accel-Buffering", "no"); (* For Nginx *)
+    ("X-Accel-Buffering", "no");
   ] in
-  
-  (* Body stream is raw Eio stream of strings *)
-  let _body_stream = Eio.Stream.create 16 in
-  
-  (* TODO: We need a way to pump 'stream' (events) to 'body_stream' (strings) asynchronously.
-     For now, we return the event stream directly wrapped in Response.Stream, 
-     and the server handler will need to encode it. 
-     
-     Hack: Wrap the event stream in a string stream by encoding on-the-fly?
-     No, types mismatch.
-     
-     Simplification: Just return the raw stream and let the server handle it 
-     (assuming server knows how to handle event stream... which it doesn't).
-     
-     OK, let's just make an empty body for now to pass compilation.
-     Real SSE needs 'sw' passed to handler.
-  *)
-  
-  Response.make ~status:`OK ~headers:(Http.Header.of_list headers) (`String "")
+  let stream_producer body_stream =
+    let rec loop () =
+      let evt = Eio.Stream.take stream in
+      Eio.Stream.add body_stream (encode evt);
+      loop ()
+    in
+    (try loop () with _ -> ());
+    Eio.Stream.add body_stream ""
+  in
+  Response.make ~status:`OK ~headers (`Producer stream_producer)
 (** Keep-alive ping *)
 let ping = ": ping\n\n"
 
@@ -145,10 +138,13 @@ let handler broadcaster _req =
 
 (** Legacy response for list of events (Phase 32 compat) *)
 
+(** Create an SSE response from a finite list of events.
+    Encodes all events to a single string body (not streaming). *)
 let response_legacy events =
-
-  let stream = Eio.Stream.create (List.length events + 1) in
-
-  List.iter (fun evt -> Eio.Stream.add stream evt) events;
-
-  response stream
+  let buf = Buffer.create 256 in
+  List.iter (fun evt -> Buffer.add_string buf (encode evt)) events;
+  let headers = Http.Header.of_list [
+    ("Content-Type", "text/event-stream");
+    ("Cache-Control", "no-cache");
+  ] in
+  Response.make ~status:`OK ~headers (`String (Buffer.contents buf))

@@ -73,7 +73,7 @@ type ('k, 'v) t = {
   mutable access_order : 'k list;  (* Most recent first *)
   config : config;
   mutable stats : stats;
-  mutex : Mutex.t;
+  mutex : Eio.Mutex.t;
 }
 
 (** {1 Configuration} *)
@@ -90,8 +90,7 @@ let default_config = {
 let now () = Unix.gettimeofday ()
 
 let with_lock mutex f =
-  Mutex.lock mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
+  Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
 
 (** Move key to front of access order *)
 let touch_key key access_order =
@@ -125,7 +124,7 @@ let create ?(max_size = 1000) ?default_ttl ?(cleanup_interval = 60.0) () =
     access_order = [];
     config;
     stats;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
 (** {1 Cache Operations} *)
