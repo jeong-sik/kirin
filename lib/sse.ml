@@ -30,24 +30,26 @@ let with_id id e = { e with id = Some id }
 (** Add retry interval to SSE event *)
 let with_retry ms e = { e with retry = Some ms }
 
-(** Encode SSE event to string *)
-let encode e = 
+(** Encode SSE event to string.
+    Field order: event, data, id, retry (common convention, matches MDN examples) *)
+let encode e =
   let buf = Buffer.create 64 in
+  (* 1. event type *)
   (match e.event with
    | Some t -> Buffer.add_string buf ("event: " ^ t ^ "\n")
    | None -> ());
-  (match e.id with
-   | Some id -> Buffer.add_string buf ("id: " ^ id ^ "\n")
-   | None -> ());
-  (match e.retry with
-   | Some ms -> Buffer.add_string buf ("retry: " ^ string_of_int ms ^ "\n")
-   | None -> ());
-  
-  (* Handle multi-line data *)
+  (* 2. data (handles multi-line) *)
   String.split_on_char '\n' e.data
   |> List.iter (fun line ->
        Buffer.add_string buf ("data: " ^ line ^ "\n"));
-  
+  (* 3. id *)
+  (match e.id with
+   | Some id -> Buffer.add_string buf ("id: " ^ id ^ "\n")
+   | None -> ());
+  (* 4. retry *)
+  (match e.retry with
+   | Some ms -> Buffer.add_string buf ("retry: " ^ string_of_int ms ^ "\n")
+   | None -> ());
   Buffer.add_string buf "\n";
   Buffer.contents buf
 

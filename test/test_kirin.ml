@@ -1276,9 +1276,13 @@ let backpressure_tests = [
 
 (* ============================================================
    Cache Tests (Phase 9)
+   Note: Cache uses Eio.Mutex, so tests must run inside Eio runtime
    ============================================================ *)
 
 module C = Kirin.Cache
+
+(* Helper to run cache tests in Eio runtime *)
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
 
 let test_cache_create () =
   let cache = C.create ~max_size:100 () in
@@ -1378,17 +1382,17 @@ let test_cache_make_key () =
   check string "make_key" "user:123:profile" key
 
 let cache_tests = [
-  test_case "cache create" `Quick test_cache_create;
-  test_case "cache set get" `Quick test_cache_set_get;
-  test_case "cache remove" `Quick test_cache_remove;
-  test_case "cache lru eviction" `Quick test_cache_lru_eviction;
-  test_case "cache ttl" `Quick test_cache_ttl;
-  test_case "cache stats" `Quick test_cache_stats;
-  test_case "cache hit rate" `Quick test_cache_hit_rate;
-  test_case "cache get_or_set" `Quick test_cache_get_or_set;
-  test_case "cache clear" `Quick test_cache_clear;
-  test_case "cache cleanup" `Quick test_cache_cleanup;
-  test_case "cache make_key" `Quick test_cache_make_key;
+  test_case "cache create" `Quick (with_eio test_cache_create);
+  test_case "cache set get" `Quick (with_eio test_cache_set_get);
+  test_case "cache remove" `Quick (with_eio test_cache_remove);
+  test_case "cache lru eviction" `Quick (with_eio test_cache_lru_eviction);
+  test_case "cache ttl" `Quick (with_eio test_cache_ttl);
+  test_case "cache stats" `Quick (with_eio test_cache_stats);
+  test_case "cache hit rate" `Quick (with_eio test_cache_hit_rate);
+  test_case "cache get_or_set" `Quick (with_eio test_cache_get_or_set);
+  test_case "cache clear" `Quick (with_eio test_cache_clear);
+  test_case "cache cleanup" `Quick (with_eio test_cache_cleanup);
+  test_case "cache make_key" `Quick test_cache_make_key;  (* no Eio needed *)
 ]
 
 (* ============================================================
