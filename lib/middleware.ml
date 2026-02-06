@@ -22,7 +22,7 @@ let ( >> ) = compose
 
 (** Logger middleware - logs request and response *)
 let logger : t = fun handler req ->
-  let start_time = Unix.gettimeofday () in
+  let start_time = Time_compat.now () in
   let meth = Http.Method.to_string (Request.meth req) in
   let path = Request.path req in
   Printf.eprintf "[%s] %s %s\n%!"
@@ -32,10 +32,10 @@ let logger : t = fun handler req ->
 
   let response = handler req in
 
-  let elapsed = Unix.gettimeofday () -. start_time in
+  let elapsed = Time_compat.now () -. start_time in
   let status = Http.Status.to_int (Response.status response) in
   Printf.eprintf "[%s] %s %s -> %d (%.3fms)\n%!"
-    (let tm = Unix.localtime (Unix.gettimeofday ()) in
+    (let tm = Unix.localtime (Time_compat.now ()) in
      Printf.sprintf "%02d:%02d:%02d" tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec)
     meth path status (elapsed *. 1000.0);
 
@@ -107,7 +107,7 @@ let with_headers hs : t = fun handler req ->
 
 (** Timing header middleware *)
 let timing : t = fun handler req ->
-  let start = Unix.gettimeofday () in
+  let start = Time_compat.now () in
   let resp = handler req in
-  let elapsed = Unix.gettimeofday () -. start in
+  let elapsed = Time_compat.now () -. start in
   Response.with_header "X-Response-Time" (Printf.sprintf "%.3fms" (elapsed *. 1000.0)) resp

@@ -553,7 +553,7 @@ type cache_stats = Cache.stats = {
 
     {[
       let queue = Kirin.Jobs.create ~workers:4 () in
-      Kirin.Jobs.start queue;
+      Kirin.Jobs.start ~sw queue;
 
       let job_id = Kirin.Jobs.submit queue (fun () ->
         send_email user "Welcome!") in

@@ -101,55 +101,89 @@ let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) pat
     |> fun h -> Http.Header.add h "transfer-encoding" "chunked" 
   in 
   
-  let stream_producer stream = 
-    let chunk_size = min chunk_size max_chunk_size in 
-    let fd = Unix.openfile path [Unix.O_RDONLY] 0 in 
-    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-      let buffer = Bytes.create chunk_size in 
-      let rec loop () = 
-        let n = Unix.read fd buffer 0 chunk_size in 
-        if n > 0 then begin 
-          let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
-          loop ()
-        end 
-      in 
-      loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+  let stream_producer stream =
+    let chunk_size = min chunk_size max_chunk_size in
+    (* Use Eio-native file I/O when available, fallback to Unix for non-Eio contexts *)
+    (match Fs_compat.get_fs () with
+    | Some fs ->
+      let p = Eio.Path.(fs / path) in
+      Eio.Path.with_open_in p (fun flow ->
+        let buf = Cstruct.create chunk_size in
+        let rec loop () =
+          match Eio.Flow.single_read flow buf with
+          | n ->
+            let chunk = Cstruct.to_string ~off:0 ~len:n buf in
+            Eio.Stream.add stream chunk;
+            loop ()
+          | exception End_of_file -> ()
+        in
+        loop ()
+      )
+    | None ->
+      let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+      Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+        let buffer = Bytes.create chunk_size in
+        let rec loop () =
+          let n = Unix.read fd buffer 0 chunk_size in
+          if n > 0 then begin
+            let chunk = Bytes.sub_string buffer 0 n in
+            Eio.Stream.add stream chunk;
+            loop ()
+          end
+        in
+        loop ()
+      ));
+    Eio.Stream.add stream "" (* End marker *)
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** Create an inline file response *)
-let file_inline ?content_type ?(chunk_size = default_chunk_size) path = 
-  let content_type = match content_type with 
-    | Some ct -> ct 
-    | None -> mime_of_filename path 
-  in 
-  let headers = Http.Header.init () 
-    |> fun h -> Http.Header.add h "content-type" content_type 
-    |> fun h -> Http.Header.add h "transfer-encoding" "chunked" 
-  in 
-  
-  let stream_producer stream = 
-    let chunk_size = min chunk_size max_chunk_size in 
-    let fd = Unix.openfile path [Unix.O_RDONLY] 0 in 
-    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-      let buffer = Bytes.create chunk_size in 
-      let rec loop () = 
-        let n = Unix.read fd buffer 0 chunk_size in 
-        if n > 0 then begin 
-          let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
-          loop ()
-        end 
-      in 
-      loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+let file_inline ?content_type ?(chunk_size = default_chunk_size) path =
+  let content_type = match content_type with
+    | Some ct -> ct
+    | None -> mime_of_filename path
+  in
+  let headers = Http.Header.init ()
+    |> fun h -> Http.Header.add h "content-type" content_type
+    |> fun h -> Http.Header.add h "transfer-encoding" "chunked"
+  in
+
+  let stream_producer stream =
+    let chunk_size = min chunk_size max_chunk_size in
+    (* Use Eio-native file I/O when available, fallback to Unix for non-Eio contexts *)
+    (match Fs_compat.get_fs () with
+    | Some fs ->
+      let p = Eio.Path.(fs / path) in
+      Eio.Path.with_open_in p (fun flow ->
+        let buf = Cstruct.create chunk_size in
+        let rec loop () =
+          match Eio.Flow.single_read flow buf with
+          | n ->
+            let chunk = Cstruct.to_string ~off:0 ~len:n buf in
+            Eio.Stream.add stream chunk;
+            loop ()
+          | exception End_of_file -> ()
+        in
+        loop ()
+      )
+    | None ->
+      let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+      Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+        let buffer = Bytes.create chunk_size in
+        let rec loop () =
+          let n = Unix.read fd buffer 0 chunk_size in
+          if n > 0 then begin
+            let chunk = Bytes.sub_string buffer 0 n in
+            Eio.Stream.add stream chunk;
+            loop ()
+          end
+        in
+        loop ()
+      ));
+    Eio.Stream.add stream "" (* End marker *)
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** {1 Chunked Encoding} *)
@@ -205,33 +239,63 @@ let read_with_progress ~(request : Request.t) ~chunk_size ~(progress : progress_
 
 (** {1 File Upload Handling} *)
 
-let save_upload ~(request : Request.t) ~dest_path ?(chunk_size = default_chunk_size) () = 
-  let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in 
-  let total = ref 0 in 
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-    read_chunks ~request ~chunk_size (fun chunk -> 
-      let len = String.length chunk in 
-      let written = Unix.write_substring fd chunk 0 len in 
-      total := !total + written
-    );
-    !total
-  )
+let save_upload ~(request : Request.t) ~dest_path ?(chunk_size = default_chunk_size) () =
+  let body = Request.body request in
+  (* Use Eio-native file I/O when available *)
+  match Fs_compat.get_fs () with
+  | Some fs ->
+    let p = Eio.Path.(fs / dest_path) in
+    Eio.Path.with_open_out ~create:(`Or_truncate 0o644) p (fun sink ->
+      let total = ref 0 in
+      read_chunks ~request ~chunk_size (fun chunk ->
+        Eio.Flow.copy_string chunk sink;
+        total := !total + String.length chunk
+      );
+      !total
+    )
+  | None ->
+    let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in
+    let total = ref 0 in
+    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+      read_chunks ~request ~chunk_size (fun chunk ->
+        let len = String.length chunk in
+        let written = Unix.write_substring fd chunk 0 len in
+        total := !total + written
+      );
+      ignore body;
+      !total
+    )
 
-let save_upload_with_progress ~(request : Request.t) ~dest_path 
-    ?(chunk_size = default_chunk_size) ~(progress : progress_callback) () = 
-  let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in 
-  let total = ref 0 in 
-  let body_size = String.length (Request.body request) in 
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-    read_chunks ~request ~chunk_size (fun chunk -> 
-      let len = String.length chunk in 
-      let written = Unix.write_substring fd chunk 0 len in 
-      total := !total + written;
-      progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size)
-    );
-    progress.on_complete ();
-    !total
-  )
+let save_upload_with_progress ~(request : Request.t) ~dest_path
+    ?(chunk_size = default_chunk_size) ~(progress : progress_callback) () =
+  let body_size = String.length (Request.body request) in
+  (* Use Eio-native file I/O when available *)
+  match Fs_compat.get_fs () with
+  | Some fs ->
+    let p = Eio.Path.(fs / dest_path) in
+    Eio.Path.with_open_out ~create:(`Or_truncate 0o644) p (fun sink ->
+      let total = ref 0 in
+      read_chunks ~request ~chunk_size (fun chunk ->
+        Eio.Flow.copy_string chunk sink;
+        total := !total + String.length chunk;
+        progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size)
+      );
+      progress.on_complete ();
+      !total
+    )
+  | None ->
+    let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in
+    let total = ref 0 in
+    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+      read_chunks ~request ~chunk_size (fun chunk ->
+        let len = String.length chunk in
+        let written = Unix.write_substring fd chunk 0 len in
+        total := !total + written;
+        progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size)
+      );
+      progress.on_complete ();
+      !total
+    )
 
 (** {1 Utilities} *)
 

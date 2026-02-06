@@ -3,6 +3,10 @@
     OCaml 5 Domain-based parallel computation for CPU-bound tasks.
     True parallelism without GIL limitations.
 
+    When an Eio domain manager is set (via {!set_domain_mgr}),
+    uses {!Eio.Domain_manager.run} for cooperative integration with the
+    Eio event loop. Falls back to raw {!Domain.spawn} otherwise.
+
     {b Features:}
     - Parallel map/iter over collections
     - Configurable domain pool
@@ -34,6 +38,18 @@ type 'a result =
   | Ok of 'a
   | Error of exn
 
+(** {1 Eio Domain Manager Integration} *)
+
+(** Global domain manager - set at Eio_main.run startup for cooperative scheduling *)
+let global_domain_mgr : [`Generic] Eio.Domain_manager.t option ref = ref None
+
+(** Set the global Eio domain manager. Call once at server startup.
+    @param mgr The domain manager from [Eio.Stdenv.domain_mgr env] *)
+let set_domain_mgr mgr = global_domain_mgr := Some mgr
+
+(** Get the current domain manager, if set *)
+let get_domain_mgr () = !global_domain_mgr
+
 (** {1 Basic Parallel Operations} *)
 
 (** Get recommended domain count based on available CPUs *)
@@ -43,6 +59,7 @@ let recommended_domains () =
 (** Parallel map over a list.
 
     Divides work across multiple domains for true parallelism.
+    Uses Eio.Domain_manager when available for cooperative scheduling.
 
     @param domains Number of domains to use (default: CPU count - 1)
 *)
@@ -54,6 +71,7 @@ let map ?(domains = recommended_domains ()) f items =
     let n = Array.length items_array in
     let results = Array.make n None in
     let chunk_size = max 1 ((n + domains - 1) / domains) in
+    let num_chunks = min domains ((n + chunk_size - 1) / chunk_size) in
 
     let process_chunk start_idx =
       let end_idx = min n (start_idx + chunk_size) in
@@ -62,13 +80,19 @@ let map ?(domains = recommended_domains ()) f items =
       done
     in
 
-    (* Spawn domains for parallel processing *)
-    let spawned = Array.init (min domains ((n + chunk_size - 1) / chunk_size)) (fun i ->
-      Domain.spawn (fun () -> process_chunk (i * chunk_size))
-    ) in
-
-    (* Wait for all domains to complete *)
-    Array.iter Domain.join spawned;
+    (match !global_domain_mgr with
+    | Some domain_mgr ->
+      (* Eio-integrated: cooperative Domain_manager.run *)
+      Eio.Fiber.all (List.init num_chunks (fun i ->
+        fun () -> Eio.Domain_manager.run domain_mgr (fun () ->
+          process_chunk (i * chunk_size))
+      ))
+    | None ->
+      (* Fallback: raw Domain.spawn for non-Eio contexts *)
+      let spawned = Array.init num_chunks (fun i ->
+        Domain.spawn (fun () -> process_chunk (i * chunk_size))
+      ) in
+      Array.iter Domain.join spawned);
 
     (* Collect results *)
     Array.to_list (Array.map (fun r ->
@@ -88,6 +112,7 @@ let iter ?(domains = recommended_domains ()) f items =
     let items_array = Array.of_list items in
     let n = Array.length items_array in
     let chunk_size = max 1 ((n + domains - 1) / domains) in
+    let num_chunks = min domains ((n + chunk_size - 1) / chunk_size) in
 
     let process_chunk start_idx =
       let end_idx = min n (start_idx + chunk_size) in
@@ -96,11 +121,17 @@ let iter ?(domains = recommended_domains ()) f items =
       done
     in
 
-    let spawned = Array.init (min domains ((n + chunk_size - 1) / chunk_size)) (fun i ->
-      Domain.spawn (fun () -> process_chunk (i * chunk_size))
-    ) in
-
-    Array.iter Domain.join spawned
+    match !global_domain_mgr with
+    | Some domain_mgr ->
+      Eio.Fiber.all (List.init num_chunks (fun i ->
+        fun () -> Eio.Domain_manager.run domain_mgr (fun () ->
+          process_chunk (i * chunk_size))
+      ))
+    | None ->
+      let spawned = Array.init num_chunks (fun i ->
+        Domain.spawn (fun () -> process_chunk (i * chunk_size))
+      ) in
+      Array.iter Domain.join spawned
 
 (** Parallel filter.
 
@@ -137,11 +168,17 @@ let reduce ?(domains = recommended_domains ()) combine init items =
       partial_results.(chunk_idx) <- !acc
     in
 
-    let spawned = Array.init num_chunks (fun i ->
-      Domain.spawn (fun () -> process_chunk i)
-    ) in
-
-    Array.iter Domain.join spawned;
+    (match !global_domain_mgr with
+    | Some domain_mgr ->
+      Eio.Fiber.all (List.init num_chunks (fun i ->
+        fun () -> Eio.Domain_manager.run domain_mgr (fun () ->
+          process_chunk i)
+      ))
+    | None ->
+      let spawned = Array.init num_chunks (fun i ->
+        Domain.spawn (fun () -> process_chunk i)
+      ) in
+      Array.iter Domain.join spawned);
 
     (* Combine partial results *)
     Array.fold_left combine init partial_results
@@ -163,19 +200,41 @@ let mapi ?(domains = recommended_domains ()) f items =
 
 (** Run two computations in parallel and return both results *)
 let both f g =
-  let d = Domain.spawn g in
-  let result_f = f () in
-  let result_g = Domain.join d in
-  (result_f, result_g)
+  match !global_domain_mgr with
+  | Some domain_mgr ->
+    let result_g = ref None in
+    Eio.Fiber.all [
+      (fun () -> result_g := Some (Eio.Domain_manager.run domain_mgr g));
+      (fun () -> ());
+    ];
+    let result_f = f () in
+    (result_f, Option.get !result_g)
+  | None ->
+    let d = Domain.spawn g in
+    let result_f = f () in
+    let result_g = Domain.join d in
+    (result_f, result_g)
 
 (** Run three computations in parallel *)
 let triple f g h =
-  let d1 = Domain.spawn g in
-  let d2 = Domain.spawn h in
-  let result_f = f () in
-  let result_g = Domain.join d1 in
-  let result_h = Domain.join d2 in
-  (result_f, result_g, result_h)
+  match !global_domain_mgr with
+  | Some domain_mgr ->
+    let result_g = ref None in
+    let result_h = ref None in
+    Eio.Fiber.all [
+      (fun () -> result_g := Some (Eio.Domain_manager.run domain_mgr g));
+      (fun () -> result_h := Some (Eio.Domain_manager.run domain_mgr h));
+      (fun () -> ());
+    ];
+    let result_f = f () in
+    (result_f, Option.get !result_g, Option.get !result_h)
+  | None ->
+    let d1 = Domain.spawn g in
+    let d2 = Domain.spawn h in
+    let result_f = f () in
+    let result_g = Domain.join d1 in
+    let result_h = Domain.join d2 in
+    (result_f, result_g, result_h)
 
 (** Run a list of computations in parallel *)
 let all tasks =
@@ -183,9 +242,17 @@ let all tasks =
   | [] -> []
   | [t] -> [t ()]
   | tasks ->
-    let spawned = List.map (fun t -> Domain.spawn t) (List.tl tasks) in
-    let first_result = (List.hd tasks) () in
-    first_result :: List.map Domain.join spawned
+    match !global_domain_mgr with
+    | Some domain_mgr ->
+      let results = Array.make (List.length tasks) None in
+      Eio.Fiber.all (List.mapi (fun i t ->
+        fun () -> results.(i) <- Some (Eio.Domain_manager.run domain_mgr t)
+      ) tasks);
+      Array.to_list (Array.map Option.get results)
+    | None ->
+      let spawned = List.map (fun t -> Domain.spawn t) (List.tl tasks) in
+      let first_result = (List.hd tasks) () in
+      first_result :: List.map Domain.join spawned
 
 (** Run computations and return first to complete (racing) *)
 let race tasks =
@@ -248,9 +315,9 @@ end
 
 (** Time a parallel operation *)
 let timed f =
-  let start = Unix.gettimeofday () in
+  let start = Time_compat.now () in
   let result = f () in
-  let elapsed = Unix.gettimeofday () -. start in
+  let elapsed = Time_compat.now () -. start in
   (result, elapsed)
 
 (** Run with specified domain count *)

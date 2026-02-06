@@ -115,7 +115,7 @@ let run ?(config = default_config) ~sw ~env handler =
     In OCaml 5, we use Domain_manager to distribute request handling across cores.
     Shared-socket pattern is used for optimal efficiency.
 *)
-let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) ?(domains = Domain.recommended_domain_count ()) handler =
+let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) ?(domains = Domain.recommended_domain_count ()) ?(on_start = fun ~sw:_ -> ()) handler =
   Printf.printf "🦒 Kirin scaling up across %d domains (shared socket)...\n%!" domains;
 
   let config = { default_config with
@@ -144,8 +144,11 @@ let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) 
   (* Enable SO_REUSEPORT/ADDR to allow fast restarts and multicore sharing *)
   let socket = Eio.Net.listen net ~sw ~backlog:config.backlog ~reuse_addr:true ~reuse_port:true addr in
 
-  (* Ensure socket is closed when switch finishes *)
-  Eio.Switch.on_release sw (fun () -> Eio.Net.close socket);
+  (* Set global domain manager for Parallel module (Eio-native domain spawning) *)
+  Parallel.set_domain_mgr domain_mgr;
+
+  (* User-provided startup callback (e.g., starting job queues) *)
+  on_start ~sw;
 
   let server = Cohttp_eio.Server.make ~callback:(make_cohttp_handler ~clock ~config sw handler) () in
 

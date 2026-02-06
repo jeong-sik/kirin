@@ -3,9 +3,11 @@
     Simple job queue for background task processing.
     Useful for offloading slow operations from request handlers.
 
+    Uses Eio fibers for worker concurrency (cooperative, non-blocking).
+
     {b Features:}
     - Async job submission
-    - Configurable worker pool
+    - Configurable worker pool (Eio fibers)
     - Job status tracking
     - Retry with exponential backoff
     - Priority queues
@@ -13,7 +15,7 @@
     {b Example - Basic Usage:}
     {[
       let queue = Jobs.create ~workers:4 () in
-      Jobs.start queue;
+      Jobs.start ~sw queue;
 
       (* Submit a job *)
       let job_id = Jobs.submit queue (fun () ->
@@ -90,8 +92,8 @@ type 'a t = {
   mutable running : bool;
   mutable stats : stats;
   mutable next_id : int;
-  mutex : Mutex.t;
-  condition : Condition.t;
+  mutex : Eio.Mutex.t;
+  condition : Eio.Condition.t;
 }
 
 (** {1 Configuration} *)
@@ -105,11 +107,10 @@ let default_config = {
 
 (** {1 Helpers} *)
 
-let now () = Unix.gettimeofday ()
+let now () = Time_compat.now ()
 
 let with_lock mutex f =
-  Mutex.lock mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
+  Eio.Mutex.use_rw ~protect:true mutex f
 
 let generate_id t =
   let id = t.next_id in
@@ -126,7 +127,7 @@ let priority_to_int = function
 
 (** Create a new job queue.
 
-    @param workers Number of worker threads (default: 4)
+    @param workers Number of worker fibers (default: 4)
     @param max_queue_size Maximum pending jobs (default: 10000)
     @param default_max_retries Default retry count (default: 3)
 *)
@@ -151,8 +152,8 @@ let create
     running = false;
     stats;
     next_id = 1;
-    mutex = Mutex.create ();
-    condition = Condition.create ();
+    mutex = Eio.Mutex.create ();
+    condition = Eio.Condition.create ();
   }
 
 (** {1 Job Submission} *)
@@ -198,7 +199,7 @@ let submit ?priority ?max_retries t task =
       total_submitted = t.stats.total_submitted + 1;
       queue_size = t.stats.queue_size + 1;
     };
-    Condition.signal t.condition;
+    Eio.Condition.broadcast t.condition;
     job.id
   )
 
@@ -222,13 +223,14 @@ let is_complete t job_id =
   | Completed _ | Failed _ -> true
   | Pending | Running -> false
 
-(** Wait for job to complete (polling) *)
+(** Wait for job to complete (cooperative polling) *)
 let wait t job_id =
   let rec loop () =
     if is_complete t job_id then
       status t job_id
     else begin
-      Unix.sleepf 0.01;
+      (* Cooperative sleep - yields to Eio scheduler *)
+      Time_compat.sleep 0.01;
       loop ()
     end
   in
@@ -300,27 +302,29 @@ let process_job t job =
       end
     )
 
-(** Worker loop *)
+(** Worker loop - runs as an Eio fiber *)
 let worker_loop t =
   while t.running do
     match take_job t with
     | Some job -> process_job t job
     | None ->
-      (* Wait for new job *)
+      (* Wait for new job - cooperative Eio condition wait *)
       with_lock t.mutex (fun () ->
         if t.running && List.length t.jobs = 0 then
-          Condition.wait t.condition t.mutex
+          Eio.Condition.await t.condition t.mutex
       )
   done
 
-(** Start the job queue (runs workers in background threads) *)
-let start t =
+(** Start the job queue (runs workers as Eio fibers).
+
+    @param sw Eio switch for fiber lifecycle management
+*)
+let start ~sw t =
   with_lock t.mutex (fun () ->
     if not t.running then begin
       t.running <- true;
       for _ = 1 to t.config.workers do
-        let _ = Thread.create worker_loop t in
-        ()
+        Eio.Fiber.fork ~sw (fun () -> worker_loop t)
       done
     end
   )
@@ -329,7 +333,7 @@ let start t =
 let stop t =
   with_lock t.mutex (fun () ->
     t.running <- false;
-    Condition.broadcast t.condition
+    Eio.Condition.broadcast t.condition
   )
 
 (** Check if queue is running *)
@@ -391,10 +395,11 @@ let submit_and_wait ?priority ?max_retries t task =
   let job_id = submit ?priority ?max_retries t task in
   wait t job_id
 
-(** Create a simple one-shot queue, run job, stop *)
-let run_once task =
+(** Create a simple one-shot queue, run job, stop.
+    Note: requires an active Eio switch context. *)
+let run_once ~sw task =
   let t = create ~workers:1 () in
-  start t;
+  start ~sw t;
   let job_id = submit t task in
   let result = wait t job_id in
   stop t;

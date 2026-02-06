@@ -80,8 +80,8 @@ type 'a t = {
   mutable in_use : int;
   mutable waiting : int;
   mutable stats : stats;
-  mutex : Mutex.t;
-  condition : Condition.t;
+  mutex : Eio.Mutex.t;
+  condition : Eio.Condition.t;
 }
 
 (** Pool errors *)
@@ -151,18 +151,17 @@ let create
     in_use = 0;
     waiting = 0;
     stats;
-    mutex = Mutex.create ();
-    condition = Condition.create ();
+    mutex = Eio.Mutex.create ();
+    condition = Eio.Condition.create ();
   }
 
 (** {1 Internal Helpers} *)
 
-let now () = Unix.gettimeofday ()
+let now () = Time_compat.now ()
 
-(** Run a function with the mutex locked *)
+(** Run a function with the Eio mutex locked (cooperative, non-blocking) *)
 let with_lock mutex f =
-  Mutex.lock mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
+  Eio.Mutex.use_rw ~protect:true mutex f
 
 (** Create a new pooled connection *)
 let create_pooled pool =
@@ -265,12 +264,11 @@ let acquire pool =
     match try_acquire () with
     | Some pooled -> pooled
     | None ->
-      (* Wait for a connection to be released *)
+      (* Wait for a connection to be released - cooperative Eio wait *)
       with_lock pool.mutex (fun () ->
         pool.waiting <- pool.waiting + 1
       );
-      (* Simple polling wait - in production, use proper condition variable *)
-      Unix.sleepf 0.01;
+      Time_compat.sleep 0.01;
       with_lock pool.mutex (fun () ->
         pool.waiting <- pool.waiting - 1
       );
@@ -295,8 +293,8 @@ let release pool pooled =
       update_stats pool (fun s -> { s with total_connections = s.total_connections - 1 });
     end;
 
-    (* Signal waiting threads *)
-    Condition.broadcast pool.condition
+    (* Signal waiting fibers *)
+    Eio.Condition.broadcast pool.condition
   )
 
 (** Use a connection from the pool with automatic release.

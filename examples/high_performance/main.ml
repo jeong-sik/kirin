@@ -320,12 +320,10 @@ GET <a href="/fork-join">/fork-join</a></pre>
 (* ============================================================ *)
 
 let () =
-  (* Start job queue *)
-  Kirin.Jobs.start job_queue;
-
   Printf.printf "Starting Kirin High-Performance Demo on http://localhost:8000\n%!";
 
   Kirin.start ~port:8000
+    ~on_start:(fun ~sw -> Kirin.Jobs.start ~sw job_queue)
   @@ Kirin.logger
   @@ Kirin.timing
   @@ Kirin.router [
