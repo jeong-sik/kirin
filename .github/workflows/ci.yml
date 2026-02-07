@@ -25,6 +25,12 @@ jobs:
       with:
         ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
+    - name: Pin internal opam deps (not published on opam-repository)
+      run: |
+        opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
+
     - name: Install dependencies
       run: |
         opam install . --deps-only --with-test --with-doc -y
@@ -64,6 +70,12 @@ jobs:
       uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: '5.2'
+
+    - name: Pin internal opam deps (not published on opam-repository)
+      run: |
+        opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
 
     - name: Install dependencies
       run: opam install . --deps-only -y
