@@ -93,3 +93,7 @@
 (test
  (name test_streaming)
  (libraries kirin alcotest eio_main))
+
+(test
+ (name test_fs_compat)
+ (libraries kirin alcotest unix))

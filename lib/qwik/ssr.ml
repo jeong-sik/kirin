@@ -225,8 +225,6 @@ let prerender engine ~routes ~output_dir =
     | Ok html ->
       let path = if url = "/" then "/index" else url in
       let file_path = Filename.concat output_dir (path ^ ".html") in
-      let dir = Filename.dirname file_path in
-      ignore (Sys.command (Printf.sprintf "mkdir -p %s" dir));
       Kirin.Fs_compat.save file_path html
     | Error msg ->
       Printf.eprintf "Failed to prerender %s: %s\n" url msg
