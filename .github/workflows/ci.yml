@@ -36,13 +36,13 @@ jobs:
         opam install . --deps-only --with-test --with-doc -y
 
     - name: Build
-      run: opam exec -- dune build
+      run: opam exec -- dune build -p kirin @install
 
     - name: Run tests
-      run: opam exec -- dune runtest
+      run: opam exec -- dune runtest -p kirin
 
     - name: Build documentation
-      run: opam exec -- dune build @doc
+      run: opam exec -- dune build -p kirin @doc
       continue-on-error: true
 
   lint:
