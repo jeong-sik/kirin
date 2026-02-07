@@ -25,6 +25,23 @@ let set_fs fs = global_fs := Some fs
 (** Get the current filesystem path, if set *)
 let get_fs () = !global_fs
 
+(** mkdir -p for paths on the host filesystem.
+
+    We intentionally avoid shelling out to `mkdir -p` to prevent command
+    injection and to keep behavior consistent across Eio/non-Eio call sites. *)
+let mkdir_p path =
+  let rec go p =
+    if p = "." || p = "/" then ()
+    else if Sys.file_exists p then (
+      if Sys.is_directory p then ()
+      else invalid_arg (Printf.sprintf "Fs_compat.mkdir_p: %S exists and is not a directory" p))
+    else (
+      go (Filename.dirname p);
+      try Unix.mkdir p 0o755 with
+      | Unix.Unix_error (Unix.EEXIST, _, _) -> ())
+  in
+  go path
+
 (** Load entire file contents as string.
     Uses Eio.Path.load when fs is set, falls back to In_channel. *)
 let load path =
@@ -48,6 +65,8 @@ let load_binary path =
 (** Save string content to file (creates parent dirs if needed).
     Uses Eio.Path.save when fs is set, falls back to Out_channel. *)
 let save ?(append=false) path content =
+  let dir = Filename.dirname path in
+  if dir <> "." then mkdir_p dir;
   match !global_fs with
   | Some fs ->
     let p = Eio.Path.(fs / path) in
