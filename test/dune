@@ -97,3 +97,8 @@
 (test
  (name test_fs_compat)
  (libraries kirin alcotest unix))
+
+(test
+ (name test_no_shell_node_worker)
+ (deps ../lib/react/node_worker.ml)
+ (action (run %{exe:test_no_shell_node_worker.exe} %{dep:../lib/react/node_worker.ml})))
