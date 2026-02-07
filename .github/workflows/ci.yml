@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  # Mitigate transient opam download failures (e.g. occasional 5xx from upstream).
+  OPAMRETRIES: 5
+
 jobs:
   build:
     strategy:
