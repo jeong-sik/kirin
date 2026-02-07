@@ -1,9 +1,9 @@
-(** Kirin Logger - Async Structured Logging (Lock-Freeish Architecture)
+(** Kirin Logger - Async Structured Logging (Domain-safe)
 
     Architecture:
-    - Each domain pushes logs to a shared thread-safe stream (Eio.Stream).
-    - A dedicated 'Logger Domain' pops from the stream and writes to I/O.
-    - This removes I/O latency and lock contention from worker domains.
+    - Any domain can emit logs (no Eio effect handlers required).
+    - A dedicated logger domain pops entries from a bounded queue and writes to I/O.
+    - This removes I/O latency from request/worker domains.
 *)
 
 (** Log levels *)
@@ -39,8 +39,19 @@ let current_config = ref {
   output = stderr;
 }
 
-(** Shared log queue (capacity 65536 to virtually eliminate blocking) *)
-let log_stream = Eio.Stream.create 65536
+(** Shared log queue (bounded to avoid unbounded memory growth). *)
+let max_queue_size = 65536
+
+let queue_mutex = Mutex.create ()
+let queue_cond = Condition.create ()
+let queue : entry Queue.t = Queue.create ()
+
+let output_mutex = Mutex.create ()
+
+let running = ref false
+let logger_domain : unit Domain.t option ref = ref None
+
+let dropped_count = ref 0
 
 (** Format timestamp ISO8601 *)
 let format_time ts = 
@@ -49,50 +60,140 @@ let format_time ts =
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec (int_of_float ((ts -. floor ts) *. 1000.))
 
-(** The actual writer loop (runs in dedicated fiber/domain) *)
-let rec run_logger () = 
-  try
-    let entry = Eio.Stream.take log_stream in
-    let json_fields = [
-      ("timestamp", `String (format_time entry.timestamp));
-      ("level", `String (string_of_level entry.level));
-      ("message", `String entry.message);
-    ] in
-    let json_fields = match entry.trace_id with 
-      | Some tid -> ("trace_id", `String tid) :: json_fields
-      | None -> json_fields
-    in
-    let json_fields = if entry.context <> [] then 
-      ("context", `Assoc entry.context) :: json_fields 
-    else json_fields in
-    
-    let json = `Assoc json_fields in
-    
-    (* I/O operation - safe here as we are in dedicated loop *)
-    Yojson.Safe.to_channel !current_config.output json;
-    output_string !current_config.output "\n";
-    flush !current_config.output;
-    
-    run_logger () 
-  with _ -> run_logger () (* Resilience: never crash the logger *)
+let write_entry (entry : entry) =
+  Mutex.lock output_mutex;
+  Fun.protect
+    ~finally:(fun () -> Mutex.unlock output_mutex)
+    (fun () ->
+      let cfg = !current_config in
+      match cfg.format with
+      | `Json ->
+        let json_fields = [
+          ("timestamp", `String (format_time entry.timestamp));
+          ("level", `String (string_of_level entry.level));
+          ("message", `String entry.message);
+        ] in
+        let json_fields = match entry.trace_id with
+          | Some tid -> ("trace_id", `String tid) :: json_fields
+          | None -> json_fields
+        in
+        let json_fields = match entry.span_id with
+          | Some sid -> ("span_id", `String sid) :: json_fields
+          | None -> json_fields
+        in
+        let json_fields =
+          if entry.context <> [] then ("context", `Assoc entry.context) :: json_fields
+          else json_fields
+        in
+        Yojson.Safe.to_channel cfg.output (`Assoc json_fields);
+        output_string cfg.output "\n";
+        flush cfg.output
+      | `Text ->
+        output_string cfg.output (format_time entry.timestamp);
+        output_string cfg.output " ";
+        output_string cfg.output (string_of_level entry.level);
+        output_string cfg.output " ";
+        output_string cfg.output entry.message;
+        (match entry.trace_id with
+        | None -> ()
+        | Some tid ->
+          output_string cfg.output " trace_id=";
+          output_string cfg.output tid);
+        (match entry.span_id with
+        | None -> ()
+        | Some sid ->
+          output_string cfg.output " span_id=";
+          output_string cfg.output sid);
+        if entry.context <> [] then (
+          output_string cfg.output " context=";
+          Yojson.Safe.to_channel cfg.output (`Assoc entry.context)
+        );
+        output_string cfg.output "\n";
+        flush cfg.output
+    )
 
-(** Start the logger background fiber *)
-let start sw =
-  Eio.Fiber.fork ~sw run_logger
+let take_entry () : entry option =
+  Mutex.lock queue_mutex;
+  Fun.protect
+    ~finally:(fun () -> Mutex.unlock queue_mutex)
+    (fun () ->
+      while Queue.is_empty queue && !running do
+        Condition.wait queue_cond queue_mutex
+      done;
+      if Queue.is_empty queue then None else Some (Queue.take queue)
+    )
+
+(** The actual writer loop (runs in dedicated domain). *)
+let rec run_logger () =
+  match take_entry () with
+  | None -> ()
+  | Some entry ->
+    (try write_entry entry with _ -> ());
+    run_logger ()
 
 (** Shutdown logger gracefully *)
 let shutdown () =
-  (* Send poison pill or just wait? Eio streams don't have close.
-     For now, we just flush stderr to ensure OS buffers are empty. *)
-  flush !current_config.output
+  let d_opt =
+    Mutex.lock queue_mutex;
+    if !running then running := false;
+    Condition.broadcast queue_cond;
+    let d = !logger_domain in
+    logger_domain := None;
+    Mutex.unlock queue_mutex;
+    d
+  in
+  Option.iter Domain.join d_opt;
+  Mutex.lock output_mutex;
+  Fun.protect ~finally:(fun () -> Mutex.unlock output_mutex) (fun () ->
+    flush !current_config.output
+  )
+
+(** Start the logger background fiber *)
+let start sw =
+  Mutex.lock queue_mutex;
+  let should_start =
+    if !running then false
+    else (
+      running := true;
+      true
+    )
+  in
+  if should_start then (
+    let d = Domain.spawn run_logger in
+    logger_domain := Some d
+  );
+  Mutex.unlock queue_mutex;
+
+  (* Ensure we always stop the logger when the surrounding switch ends. *)
+  Eio.Switch.on_release sw shutdown
 (** Emit log entry (Blocking if full) *)
 let emit level message context trace_id =
   if level >= !current_config.min_level then
     let ts = Unix.gettimeofday () in
     let entry = { timestamp=ts; level; message; context; trace_id; span_id=None } in
-    (* Warning: This will block if queue is full. 
-       In v0.4.0, implement ring buffer or drop strategy. *)
-    Eio.Stream.add log_stream entry
+    let enqueued =
+      Mutex.lock queue_mutex;
+      Fun.protect
+        ~finally:(fun () -> Mutex.unlock queue_mutex)
+        (fun () ->
+          if !running then (
+            if Queue.length queue >= max_queue_size then (
+              incr dropped_count;
+              false
+            ) else (
+              Queue.add entry queue;
+              Condition.signal queue_cond;
+              true
+            )
+          ) else
+            false
+        )
+    in
+    if not enqueued then (
+      (* Fallback: if the async logger isn't running (or queue is full), write
+         synchronously rather than blocking or growing memory. *)
+      (try write_entry entry with _ -> ())
+    )
 (** Configure logger *)
 let configure ?min_level ?format ?output () = 
   let c = !current_config in

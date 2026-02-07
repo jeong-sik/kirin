@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  # Mitigate transient opam download failures (e.g. occasional 5xx from upstream).
+  OPAMRETRIES: 5
+
 jobs:
   build:
     strategy:
@@ -25,18 +29,24 @@ jobs:
       with:
         ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
+    - name: Pin internal opam deps (not published on opam-repository)
+      run: |
+        opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
+
     - name: Install dependencies
       run: |
         opam install . --deps-only --with-test --with-doc -y
 
     - name: Build
-      run: opam exec -- dune build
+      run: opam exec -- dune build -p kirin @install
 
     - name: Run tests
-      run: opam exec -- dune runtest
+      run: opam exec -- dune runtest -p kirin
 
     - name: Build documentation
-      run: opam exec -- dune build @doc
+      run: opam exec -- dune build -p kirin @doc
       continue-on-error: true
 
   lint:
@@ -56,6 +66,8 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     needs: build
+    # Best-effort only: avoid flaking PRs on transient opam download errors.
+    if: github.event_name != 'pull_request'
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -64,6 +76,12 @@ jobs:
       uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: '5.2'
+
+    - name: Pin internal opam deps (not published on opam-repository)
+      run: |
+        opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
+        opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
 
     - name: Install dependencies
       run: opam install . --deps-only -y
