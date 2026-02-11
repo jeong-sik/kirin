@@ -1054,7 +1054,10 @@ let graphql_tests = [
 
 (* ============================================================
    Connection Pool Tests (Phase 9)
+   Note: Pool/Backpressure use Eio.Mutex, need Eio runtime
    ============================================================ *)
+
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
 
 let test_pool_create () =
   let counter = ref 0 in
@@ -1144,13 +1147,13 @@ let test_pool_error_to_string () =
     (Kirin.Pool.error_to_string Kirin.Pool.Pool_exhausted)
 
 let pool_tests = [
-  test_case "pool create" `Quick test_pool_create;
-  test_case "acquire release" `Quick test_pool_acquire_release;
-  test_case "pool use" `Quick test_pool_use;
-  test_case "pool stats" `Quick test_pool_stats;
-  test_case "pool validate" `Quick test_pool_validate;
-  test_case "pool shutdown" `Quick test_pool_shutdown;
-  test_case "error to string" `Quick test_pool_error_to_string;
+  test_case "pool create" `Quick (with_eio test_pool_create);
+  test_case "acquire release" `Quick (with_eio test_pool_acquire_release);
+  test_case "pool use" `Quick (with_eio test_pool_use);
+  test_case "pool stats" `Quick (with_eio test_pool_stats);
+  test_case "pool validate" `Quick (with_eio test_pool_validate);
+  test_case "pool shutdown" `Quick (with_eio test_pool_shutdown);
+  test_case "error to string" `Quick (with_eio test_pool_error_to_string);
 ]
 
 (* ============================================================
@@ -1260,18 +1263,18 @@ let test_window_update_size () =
   check int "capped at max" 500 (BP.Window.current_size win)
 
 let backpressure_tests = [
-  test_case "buffer create" `Quick test_buffer_create;
-  test_case "buffer push pop" `Quick test_buffer_push_pop;
-  test_case "buffer try_pop" `Quick test_buffer_try_pop;
-  test_case "buffer drop oldest" `Quick test_buffer_drop_oldest;
-  test_case "channel create" `Quick test_channel_create;
-  test_case "channel send recv" `Quick test_channel_send_recv;
-  test_case "channel close" `Quick test_channel_close;
-  test_case "rate limiter create" `Quick test_rate_limiter_create;
-  test_case "rate limiter acquire" `Quick test_rate_limiter_acquire;
-  test_case "window create" `Quick test_window_create;
-  test_case "window reserve release" `Quick test_window_reserve_release;
-  test_case "window update size" `Quick test_window_update_size;
+  test_case "buffer create" `Quick (with_eio test_buffer_create);
+  test_case "buffer push pop" `Quick (with_eio test_buffer_push_pop);
+  test_case "buffer try_pop" `Quick (with_eio test_buffer_try_pop);
+  test_case "buffer drop oldest" `Quick (with_eio test_buffer_drop_oldest);
+  test_case "channel create" `Quick (with_eio test_channel_create);
+  test_case "channel send recv" `Quick (with_eio test_channel_send_recv);
+  test_case "channel close" `Quick (with_eio test_channel_close);
+  test_case "rate limiter create" `Quick (with_eio test_rate_limiter_create);
+  test_case "rate limiter acquire" `Quick (with_eio test_rate_limiter_acquire);
+  test_case "window create" `Quick (with_eio test_window_create);
+  test_case "window reserve release" `Quick (with_eio test_window_reserve_release);
+  test_case "window update size" `Quick (with_eio test_window_update_size);
 ]
 
 (* ============================================================
