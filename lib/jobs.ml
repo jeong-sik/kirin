@@ -1,58 +1,48 @@
-(** Kirin Background Jobs
+(** Kirin Background Jobs — Eio-native
 
-    Simple job queue for background task processing.
-    Useful for offloading slow operations from request handlers.
+    Job queue using Eio fibers for concurrent task processing.
+    Workers run as lightweight fibers within a shared Eio switch.
 
     {b Features:}
-    - Async job submission
-    - Configurable worker pool
-    - Job status tracking
-    - Retry with exponential backoff
+    - Fiber-based worker pool (no OS threads)
+    - Eio.Mutex for fiber-safe state access
+    - Eio.Condition for non-blocking wait
     - Priority queues
+    - Retry with exponential backoff
 
-    {b Example - Basic Usage:}
+    {b Example:}
     {[
-      let queue = Jobs.create ~workers:4 () in
-      Jobs.start queue;
+      Eio_main.run @@ fun env ->
+      Eio.Switch.run @@ fun sw ->
+      let clock = Eio.Stdenv.clock env in
+      let queue = Jobs.create ~sw ~clock ~workers:4 () in
 
-      (* Submit a job *)
       let job_id = Jobs.submit queue (fun () ->
         send_email user "Welcome!") in
 
-      (* Check status *)
-      match Jobs.status queue job_id with
+      match Jobs.wait queue job_id with
       | Jobs.Completed result -> Printf.printf "Done: %s\n" result
-      | Jobs.Running -> Printf.printf "Still running\n"
       | Jobs.Failed exn -> Printf.printf "Failed: %s\n" (Printexc.to_string exn)
-    ]}
-
-    {b Example - With Priority:}
-    {[
-      Jobs.submit ~priority:High queue critical_task;
-      Jobs.submit ~priority:Low queue cleanup_task;
+      | _ -> ()
     ]}
 *)
 
 (** {1 Types} *)
 
-(** Job priority *)
 type priority =
-  | Critical  (** Highest priority, processed first *)
+  | Critical
   | High
   | Normal
-  | Low       (** Lowest priority *)
+  | Low
 
-(** Job status *)
 type 'a status =
   | Pending
   | Running
   | Completed of 'a
   | Failed of exn
 
-(** Job identifier *)
 type job_id = string
 
-(** Internal job representation *)
 type 'a job = {
   id : job_id;
   task : unit -> 'a;
@@ -65,7 +55,6 @@ type 'a job = {
   mutable completed_at : float option;
 }
 
-(** Job queue configuration *)
 type config = {
   workers : int;
   max_queue_size : int;
@@ -73,7 +62,6 @@ type config = {
   retry_delay : float;
 }
 
-(** Queue statistics *)
 type stats = {
   total_submitted : int;
   total_completed : int;
@@ -82,16 +70,18 @@ type stats = {
   queue_size : int;
 }
 
-(** Job queue *)
+(** Job queue — carries Eio resources for fiber-safe operation *)
 type 'a t = {
   config : config;
+  clock : float Eio.Time.clock_ty Eio.Resource.t;
   mutable jobs : 'a job list;
   mutable results : (job_id, 'a status) Hashtbl.t;
   mutable running : bool;
   mutable stats : stats;
   mutable next_id : int;
-  mutex : Mutex.t;
-  condition : Condition.t;
+  mutex : Eio.Mutex.t;
+  job_available : Eio.Condition.t;
+  job_completed : Eio.Condition.t;
 }
 
 (** {1 Configuration} *)
@@ -105,55 +95,146 @@ let default_config = {
 
 (** {1 Helpers} *)
 
-let now () = Unix.gettimeofday ()
-
-let with_lock mutex f =
-  Mutex.lock mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
-
-let generate_id t =
-  let id = t.next_id in
-  t.next_id <- id + 1;
-  Printf.sprintf "job_%d_%d" id (int_of_float (now () *. 1000.0))
-
 let priority_to_int = function
   | Critical -> 0
   | High -> 1
   | Normal -> 2
   | Low -> 3
 
+let insert_by_priority job jobs =
+  let rec go = function
+    | [] -> [job]
+    | j :: rest when priority_to_int job.priority < priority_to_int j.priority ->
+      job :: j :: rest
+    | j :: rest -> j :: go rest
+  in
+  go jobs
+
+(** {1 Internal — Worker} *)
+
+(** Take next job from the queue. Must be called under [t.mutex]. *)
+let take_job t =
+  match t.jobs with
+  | [] -> None
+  | job :: rest ->
+    t.jobs <- rest;
+    job.status <- Running;
+    job.started_at <- Some (Eio.Time.now t.clock);
+    Hashtbl.replace t.results job.id Running;
+    t.stats <- {
+      t.stats with
+      currently_running = t.stats.currently_running + 1;
+      queue_size = t.stats.queue_size - 1;
+    };
+    Some job
+
+(** Process a single job, updating state under mutex on completion. *)
+let process_job t job =
+  let result =
+    try Ok (job.task ())
+    with exn -> Error exn
+  in
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+    match result with
+    | Ok value ->
+      job.status <- Completed value;
+      job.completed_at <- Some (Eio.Time.now t.clock);
+      Hashtbl.replace t.results job.id (Completed value);
+      t.stats <- {
+        t.stats with
+        total_completed = t.stats.total_completed + 1;
+        currently_running = t.stats.currently_running - 1;
+      };
+      Eio.Condition.broadcast t.job_completed
+    | Error exn ->
+      job.retries <- job.retries + 1;
+      if job.retries < job.max_retries then begin
+        job.status <- Pending;
+        Hashtbl.replace t.results job.id Pending;
+        t.jobs <- insert_by_priority job t.jobs;
+        t.stats <- {
+          t.stats with
+          currently_running = t.stats.currently_running - 1;
+          queue_size = t.stats.queue_size + 1;
+        };
+        Eio.Condition.broadcast t.job_available
+      end else begin
+        job.status <- Failed exn;
+        job.completed_at <- Some (Eio.Time.now t.clock);
+        Hashtbl.replace t.results job.id (Failed exn);
+        t.stats <- {
+          t.stats with
+          total_failed = t.stats.total_failed + 1;
+          currently_running = t.stats.currently_running - 1;
+        };
+        Eio.Condition.broadcast t.job_completed
+      end
+  )
+
+(** Worker fiber loop: take jobs and process them until stopped. *)
+let worker_loop t =
+  while t.running do
+    let job_opt =
+      Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        match take_job t with
+        | Some _ as r -> r
+        | None ->
+          if t.running then
+            Eio.Condition.await t.job_available t.mutex;
+          if t.running then take_job t
+          else None
+      )
+    in
+    match job_opt with
+    | Some job -> process_job t job
+    | None -> ()
+  done
+
 (** {1 Queue Creation} *)
 
-(** Create a new job queue.
+(** Create and start a job queue.
 
-    @param workers Number of worker threads (default: 4)
+    Workers are forked as Eio fibers under [sw].
+    The queue stops when the switch is cancelled or {!stop} is called.
+
+    @param sw Eio switch that owns worker fibers
+    @param clock Eio clock for timestamps and sleep
+    @param workers Number of worker fibers (default: 4)
     @param max_queue_size Maximum pending jobs (default: 10000)
     @param default_max_retries Default retry count (default: 3)
+    @param retry_delay Base delay between retries in seconds (default: 1.0)
 *)
 let create
+    ~sw
+    ~clock
     ?(workers = 4)
     ?(max_queue_size = 10000)
     ?(default_max_retries = 3)
     ?(retry_delay = 1.0)
     () =
   let config = { workers; max_queue_size; default_max_retries; retry_delay } in
-  let stats = {
-    total_submitted = 0;
-    total_completed = 0;
-    total_failed = 0;
-    currently_running = 0;
-    queue_size = 0;
-  } in
-  {
+  let t = {
     config;
+    clock;
     jobs = [];
     results = Hashtbl.create 1000;
-    running = false;
-    stats;
+    running = true;
+    stats = {
+      total_submitted = 0;
+      total_completed = 0;
+      total_failed = 0;
+      currently_running = 0;
+      queue_size = 0;
+    };
     next_id = 1;
-    mutex = Mutex.create ();
-    condition = Condition.create ();
-  }
+    mutex = Eio.Mutex.create ();
+    job_available = Eio.Condition.create ();
+    job_completed = Eio.Condition.create ();
+  } in
+  for _ = 1 to config.workers do
+    Eio.Fiber.fork ~sw (fun () -> worker_loop t)
+  done;
+  t
 
 (** {1 Job Submission} *)
 
@@ -166,200 +247,106 @@ let create
 let submit ?priority ?max_retries t task =
   let priority = Option.value ~default:Normal priority in
   let max_retries = Option.value ~default:t.config.default_max_retries max_retries in
-
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     if List.length t.jobs >= t.config.max_queue_size then
       failwith "Job queue full";
-
+    let id =
+      let n = t.next_id in
+      t.next_id <- n + 1;
+      Printf.sprintf "job_%d_%d" n (int_of_float (Eio.Time.now t.clock *. 1000.0))
+    in
     let job = {
-      id = generate_id t;
+      id;
       task;
       priority;
       status = Pending;
       retries = 0;
       max_retries;
-      created_at = now ();
+      created_at = Eio.Time.now t.clock;
       started_at = None;
       completed_at = None;
     } in
-
-    (* Insert in priority order *)
-    let rec insert jobs =
-      match jobs with
-      | [] -> [job]
-      | j :: rest when priority_to_int job.priority < priority_to_int j.priority ->
-        job :: j :: rest
-      | j :: rest -> j :: insert rest
-    in
-    t.jobs <- insert t.jobs;
+    t.jobs <- insert_by_priority job t.jobs;
     Hashtbl.replace t.results job.id Pending;
     t.stats <- {
       t.stats with
       total_submitted = t.stats.total_submitted + 1;
       queue_size = t.stats.queue_size + 1;
     };
-    Condition.signal t.condition;
+    Eio.Condition.broadcast t.job_available;
     job.id
   )
 
-(** Submit multiple jobs at once *)
 let submit_all ?priority ?max_retries t tasks =
   List.map (submit ?priority ?max_retries t) tasks
 
 (** {1 Job Status} *)
 
-(** Get job status *)
 let status t job_id =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_ro t.mutex (fun () ->
     match Hashtbl.find_opt t.results job_id with
     | Some s -> s
     | None -> failwith ("Unknown job: " ^ job_id)
   )
 
-(** Check if job is complete *)
 let is_complete t job_id =
   match status t job_id with
   | Completed _ | Failed _ -> true
   | Pending | Running -> false
 
-(** Wait for job to complete (polling) *)
+(** Wait for a job to complete. Suspends the current fiber without blocking
+    OS threads. *)
 let wait t job_id =
   let rec loop () =
-    if is_complete t job_id then
-      status t job_id
-    else begin
-      Unix.sleepf 0.01;
+    let st =
+      Eio.Mutex.use_ro t.mutex (fun () ->
+        Hashtbl.find_opt t.results job_id
+      )
+    in
+    match st with
+    | Some (Completed _ as s) | Some (Failed _ as s) -> s
+    | Some Pending | Some Running ->
+      Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        Eio.Condition.await t.job_completed t.mutex
+      );
       loop ()
-    end
+    | None -> failwith ("Unknown job: " ^ job_id)
   in
   loop ()
 
 (** {1 Queue Control} *)
 
-(** Get next job to process *)
-let take_job t =
-  with_lock t.mutex (fun () ->
-    match t.jobs with
-    | [] -> None
-    | job :: rest ->
-      t.jobs <- rest;
-      job.status <- Running;
-      job.started_at <- Some (now ());
-      Hashtbl.replace t.results job.id Running;
-      t.stats <- {
-        t.stats with
-        currently_running = t.stats.currently_running + 1;
-        queue_size = t.stats.queue_size - 1;
-      };
-      Some job
-  )
-
-(** Process a single job *)
-let process_job t job =
-  try
-    let result = job.task () in
-    with_lock t.mutex (fun () ->
-      job.status <- Completed result;
-      job.completed_at <- Some (now ());
-      Hashtbl.replace t.results job.id (Completed result);
-      t.stats <- {
-        t.stats with
-        total_completed = t.stats.total_completed + 1;
-        currently_running = t.stats.currently_running - 1;
-      }
-    )
-  with exn ->
-    with_lock t.mutex (fun () ->
-      job.retries <- job.retries + 1;
-      if job.retries < job.max_retries then begin
-        (* Re-queue for retry *)
-        job.status <- Pending;
-        Hashtbl.replace t.results job.id Pending;
-        let rec insert jobs =
-          match jobs with
-          | [] -> [job]
-          | j :: rest when priority_to_int job.priority < priority_to_int j.priority ->
-            job :: j :: rest
-          | j :: rest -> j :: insert rest
-        in
-        t.jobs <- insert t.jobs;
-        t.stats <- {
-          t.stats with
-          currently_running = t.stats.currently_running - 1;
-          queue_size = t.stats.queue_size + 1;
-        }
-      end else begin
-        job.status <- Failed exn;
-        job.completed_at <- Some (now ());
-        Hashtbl.replace t.results job.id (Failed exn);
-        t.stats <- {
-          t.stats with
-          total_failed = t.stats.total_failed + 1;
-          currently_running = t.stats.currently_running - 1;
-        }
-      end
-    )
-
-(** Worker loop *)
-let worker_loop t =
-  while t.running do
-    match take_job t with
-    | Some job -> process_job t job
-    | None ->
-      (* Wait for new job *)
-      with_lock t.mutex (fun () ->
-        if t.running && List.length t.jobs = 0 then
-          Condition.wait t.condition t.mutex
-      )
-  done
-
-(** Start the job queue (runs workers in background threads) *)
-let start t =
-  with_lock t.mutex (fun () ->
-    if not t.running then begin
-      t.running <- true;
-      for _ = 1 to t.config.workers do
-        let _ = Thread.create worker_loop t in
-        ()
-      done
-    end
-  )
-
-(** Stop the job queue *)
 let stop t =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     t.running <- false;
-    Condition.broadcast t.condition
+    Eio.Condition.broadcast t.job_available;
+    Eio.Condition.broadcast t.job_completed
   )
 
-(** Check if queue is running *)
-let is_running t = t.running
+let is_running t =
+  Eio.Mutex.use_ro t.mutex (fun () -> t.running)
 
 (** {1 Statistics} *)
 
-(** Get queue statistics *)
 let stats t =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_ro t.mutex (fun () ->
     { t.stats with queue_size = List.length t.jobs }
   )
 
-(** Get pending job count *)
 let pending_count t =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_ro t.mutex (fun () ->
     List.length t.jobs
   )
 
-(** Get running job count *)
 let running_count t =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_ro t.mutex (fun () ->
     t.stats.currently_running
   )
 
 (** {1 Utilities} *)
 
-(** Cancel a pending job *)
 let cancel t job_id =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     let was_pending = List.exists (fun j -> j.id = job_id) t.jobs in
     if was_pending then begin
       t.jobs <- List.filter (fun j -> j.id <> job_id) t.jobs;
@@ -370,9 +357,8 @@ let cancel t job_id =
       false
   )
 
-(** Clear all pending jobs *)
 let clear t =
-  with_lock t.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     let count = List.length t.jobs in
     List.iter (fun j -> Hashtbl.remove t.results j.id) t.jobs;
     t.jobs <- [];
@@ -380,22 +366,25 @@ let clear t =
     count
   )
 
-(** Run a task immediately (synchronous) *)
 let run_sync task =
   task ()
 
-(** {1 Convenience Functions} *)
+(** {1 Convenience} *)
 
-(** Submit and wait for result *)
 let submit_and_wait ?priority ?max_retries t task =
   let job_id = submit ?priority ?max_retries t task in
   wait t job_id
 
-(** Create a simple one-shot queue, run job, stop *)
-let run_once task =
-  let t = create ~workers:1 () in
-  start t;
-  let job_id = submit t task in
-  let result = wait t job_id in
-  stop t;
-  result
+(** Create a one-shot queue within an Eio switch, run a single job, return
+    the result. *)
+let run_once ~clock task =
+  let result = ref None in
+  Eio.Switch.run (fun sw ->
+    let t = create ~sw ~clock ~workers:1 () in
+    let job_id = submit t (fun () -> task ()) in
+    result := Some (wait t job_id);
+    stop t
+  );
+  match !result with
+  | Some r -> r
+  | None -> failwith "run_once: unreachable"

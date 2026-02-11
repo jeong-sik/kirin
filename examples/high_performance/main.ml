@@ -101,15 +101,15 @@ let cache_stats_handler _req =
 (* 3. Background Jobs                                           *)
 (* ============================================================ *)
 
-let job_queue : string Kirin.Jobs.t = Kirin.Jobs.create ~workers:2 ()
+(* job_queue is created inside the Eio runtime scope (see main) *)
 
 (* Simulate email sending *)
 let send_email to_addr subject =
   Printf.printf "[EMAIL] Sending to %s: %s\n%!" to_addr subject;
-  Unix.sleepf 0.5;  (* Simulate SMTP latency *)
+  Unix.sleepf 0.5;  (* Simulate SMTP latency — blocks the worker fiber *)
   Printf.sprintf "Email sent to %s at %f" to_addr (Unix.gettimeofday ())
 
-let submit_job_handler req =
+let submit_job_handler job_queue req =
   let email = Kirin.query_opt "email" req |> Option.value ~default:"test@example.com" in
   let job_id = Kirin.Jobs.submit ~priority:Kirin.Jobs.Normal job_queue (fun () ->
     send_email email "Welcome to Kirin!"
@@ -119,7 +119,7 @@ let submit_job_handler req =
     ("status", `String "queued");
   ])
 
-let job_status_handler req =
+let job_status_handler job_queue req =
   let job_id = Kirin.param "id" req in
   let status = try Kirin.Jobs.status job_queue job_id with _ -> Kirin.Jobs.Failed (Failure "Unknown job") in
   let status_str = match status with
@@ -133,7 +133,7 @@ let job_status_handler req =
     ("status", `String status_str);
   ])
 
-let job_stats_handler _req =
+let job_stats_handler job_queue _req =
   let stats = Kirin.Jobs.stats job_queue in
   Kirin.json (`Assoc [
     ("total_submitted", `Int stats.total_submitted);
@@ -320,12 +320,17 @@ GET <a href="/fork-join">/fork-join</a></pre>
 (* ============================================================ *)
 
 let () =
-  (* Start job queue *)
-  Kirin.Jobs.start job_queue;
-
   Printf.printf "Starting Kirin High-Performance Demo on http://localhost:8000\n%!";
 
-  Kirin.start ~port:8000
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+
+  let clock = Eio.Stdenv.clock env in
+
+  (* Create job queue within Eio runtime scope *)
+  let job_queue = Kirin.Jobs.create ~sw ~clock ~workers:2 () in
+
+  Kirin.run ~sw ~env
   @@ Kirin.logger
   @@ Kirin.timing
   @@ Kirin.router [
@@ -339,11 +344,11 @@ let () =
        Kirin.get "/users/:id" cached_user_handler;
        Kirin.get "/cache/stats" cache_stats_handler;
 
-       (* Jobs *)
-       Kirin.post "/jobs" submit_job_handler;
-       Kirin.get "/jobs" submit_job_handler;  (* Allow GET for easy testing *)
-       Kirin.get "/jobs/status/:id" job_status_handler;
-       Kirin.get "/jobs/stats" job_stats_handler;
+       (* Jobs — partially applied with job_queue *)
+       Kirin.post "/jobs" (submit_job_handler job_queue);
+       Kirin.get "/jobs" (submit_job_handler job_queue);
+       Kirin.get "/jobs/status/:id" (job_status_handler job_queue);
+       Kirin.get "/jobs/stats" (job_stats_handler job_queue);
 
        (* Parallel *)
        Kirin.get "/parallel" parallel_handler;

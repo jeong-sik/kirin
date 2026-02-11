@@ -549,19 +549,21 @@ type cache_stats = Cache.stats = {
 
 (** {1 Background Jobs (Phase 9)} *)
 
-(** Background job queue for async task processing.
+(** Background job queue using Eio fibers.
 
     {[
-      let queue = Kirin.Jobs.create ~workers:4 () in
-      Kirin.Jobs.start queue;
+      Eio_main.run @@ fun env ->
+      Eio.Switch.run @@ fun sw ->
+      let clock = Eio.Stdenv.clock env in
+      let queue = Kirin.Jobs.create ~sw ~clock ~workers:4 () in
 
       let job_id = Kirin.Jobs.submit queue (fun () ->
         send_email user "Welcome!") in
 
-      match Kirin.Jobs.status queue job_id with
+      match Kirin.Jobs.wait queue job_id with
       | Kirin.Jobs.Completed _ -> "Done"
-      | Kirin.Jobs.Running -> "Working..."
-      | _ -> "Pending or failed"
+      | Kirin.Jobs.Failed _ -> "Failed"
+      | _ -> "Pending or running"
     ]}
 *)
 module Jobs = Jobs

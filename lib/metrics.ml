@@ -47,7 +47,7 @@ module Counter = struct
     help : string;
     label_names : string list;
     values : (label list, float) Hashtbl.t;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let create ~name ~help ?(labels = []) () = {
@@ -55,12 +55,11 @@ module Counter = struct
     help;
     label_names = labels;
     values = Hashtbl.create 64;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let with_lock t f =
-    Mutex.lock t.mutex;
-    Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+    Eio.Mutex.use_rw ~protect:true t.mutex f
 
   let inc ?(by = 1.0) ?(labels = []) t =
     with_lock t (fun () ->
@@ -84,7 +83,7 @@ module Gauge = struct
     help : string;
     label_names : string list;
     values : (label list, float) Hashtbl.t;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let create ~name ~help ?(labels = []) () = {
@@ -92,12 +91,11 @@ module Gauge = struct
     help;
     label_names = labels;
     values = Hashtbl.create 64;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let with_lock t f =
-    Mutex.lock t.mutex;
-    Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+    Eio.Mutex.use_rw ~protect:true t.mutex f
 
   let set ?(labels = []) t value =
     with_lock t (fun () -> Hashtbl.replace t.values labels value)
@@ -139,7 +137,7 @@ module Histogram = struct
     label_names : string list;
     bucket_bounds : float array;
     values : (label list, data) Hashtbl.t;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let default_buckets = [| 0.005; 0.01; 0.025; 0.05; 0.1; 0.25; 0.5; 1.0; 2.5; 5.0; 10.0 |]
@@ -150,12 +148,11 @@ module Histogram = struct
     label_names = labels;
     bucket_bounds = buckets;
     values = Hashtbl.create 64;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let with_lock t f =
-    Mutex.lock t.mutex;
-    Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+    Eio.Mutex.use_rw ~protect:true t.mutex f
 
   let make_data buckets =
     {
@@ -182,9 +179,9 @@ module Histogram = struct
     )
 
   let time ?(labels = []) t f =
-    let start = Unix.gettimeofday () in
+    let start = Time_compat.now () in
     let result = f () in
-    let elapsed = Unix.gettimeofday () -. start in
+    let elapsed = Time_compat.now () -. start in
     observe ~labels t elapsed;
     result
 end
@@ -199,7 +196,7 @@ module Summary = struct
     mutable sum : float;
     mutable count : int;
     max_samples : int;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let create ~name ~help ?(labels = []) ?(max_samples = 1000) () = {
@@ -210,12 +207,11 @@ module Summary = struct
     sum = 0.0;
     count = 0;
     max_samples;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let with_lock t f =
-    Mutex.lock t.mutex;
-    Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+    Eio.Mutex.use_rw ~protect:true t.mutex f
 
   let observe t value =
     with_lock t (fun () ->
@@ -246,17 +242,16 @@ type metric =
 
 type t = {
   metrics : (string, metric) Hashtbl.t;
-  mutex : Mutex.t;
+  mutex : Eio.Mutex.t;
 }
 
 let create () = {
   metrics = Hashtbl.create 64;
-  mutex = Mutex.create ();
+  mutex = Eio.Mutex.create ();
 }
 
 let with_lock t f =
-  Mutex.lock t.mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+  Eio.Mutex.use_rw ~protect:true t.mutex f
 
 (** Register a counter *)
 let counter t name ~help ?(labels = []) () =
@@ -407,12 +402,12 @@ let middleware http_metrics handler req =
   (* Increment in-flight *)
   Gauge.inc http_metrics.requests_in_flight;
 
-  let start = Unix.gettimeofday () in
+  let start = Time_compat.now () in
   let resp = try handler req with exn ->
     Gauge.dec http_metrics.requests_in_flight;
     raise exn
   in
-  let elapsed = Unix.gettimeofday () -. start in
+  let elapsed = Time_compat.now () -. start in
 
   (* Decrement in-flight *)
   Gauge.dec http_metrics.requests_in_flight;
