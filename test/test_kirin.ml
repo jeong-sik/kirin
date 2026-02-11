@@ -1665,7 +1665,12 @@ let health_tests = [
 
 (* ============================================================
    Phase 10: Prometheus Metrics
+   Note: Metrics/Shutdown/WebRTC use Eio.Mutex internally,
+   re-shadow with_eio back to simple version (Jobs section
+   redefined it with ~sw ~clock labeled args)
    ============================================================ *)
+
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
 
 module M = Kirin.Metrics
 
@@ -1735,13 +1740,13 @@ let test_metrics_export () =
     |> fun s -> String.length s > 0)
 
 let metrics_tests = [
-  test_case "metrics counter" `Quick test_metrics_counter;
-  test_case "metrics counter labels" `Quick test_metrics_counter_labels;
-  test_case "metrics gauge" `Quick test_metrics_gauge;
-  test_case "metrics histogram" `Quick test_metrics_histogram;
-  test_case "metrics histogram time" `Quick test_metrics_histogram_time;
-  test_case "metrics summary" `Quick test_metrics_summary;
-  test_case "metrics export" `Quick test_metrics_export;
+  test_case "metrics counter" `Quick (with_eio test_metrics_counter);
+  test_case "metrics counter labels" `Quick (with_eio test_metrics_counter_labels);
+  test_case "metrics gauge" `Quick (with_eio test_metrics_gauge);
+  test_case "metrics histogram" `Quick (with_eio test_metrics_histogram);
+  test_case "metrics histogram time" `Quick (with_eio test_metrics_histogram_time);
+  test_case "metrics summary" `Quick (with_eio test_metrics_summary);
+  test_case "metrics export" `Quick (with_eio test_metrics_export);
 ]
 
 (* ============================================================
@@ -1777,11 +1782,13 @@ let test_shutdown_connection_tracking () =
   check int "no active connections" 0 (S.active_connections shutdown)
 
 let test_shutdown_reject_during_shutdown () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
   let shutdown = S.create ~timeout:0.1 () in
-  (* Initiate shutdown in a separate thread *)
-  let _ = Thread.create (fun () -> S.initiate shutdown) () in
+  (* Initiate shutdown in a fiber (Thread.create lacks Eio effect handler) *)
+  Eio.Fiber.fork ~sw (fun () -> S.initiate shutdown);
   (* Wait a bit for shutdown to start *)
-  Unix.sleepf 0.05;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.05;
   (* Now connection_start should return false if shutdown started *)
   (* This is timing-dependent so just check it doesn't crash *)
   let _ = S.connection_start shutdown in
@@ -1797,12 +1804,12 @@ let test_shutdown_status_json () =
   | _ -> fail "expected JSON object"
 
 let shutdown_tests = [
-  test_case "shutdown create" `Quick test_shutdown_create;
-  test_case "shutdown custom timeout" `Quick test_shutdown_custom_timeout;
-  test_case "shutdown hooks" `Quick test_shutdown_hooks;
-  test_case "shutdown connection tracking" `Quick test_shutdown_connection_tracking;
+  test_case "shutdown create" `Quick (with_eio test_shutdown_create);
+  test_case "shutdown custom timeout" `Quick (with_eio test_shutdown_custom_timeout);
+  test_case "shutdown hooks" `Quick (with_eio test_shutdown_hooks);
+  test_case "shutdown connection tracking" `Quick (with_eio test_shutdown_connection_tracking);
   test_case "shutdown reject during" `Quick test_shutdown_reject_during_shutdown;
-  test_case "shutdown status json" `Quick test_shutdown_status_json;
+  test_case "shutdown status json" `Quick (with_eio test_shutdown_status_json);
 ]
 
 (* ============================================================
@@ -1914,18 +1921,18 @@ let test_webrtc_routes () =
   check int "route count" 2 (List.length routes)
 
 let webrtc_tests = [
-  test_case "ice states" `Quick test_webrtc_ice_states;
-  test_case "datachannel create" `Quick test_webrtc_datachannel_create;
-  test_case "datachannel options" `Quick test_webrtc_datachannel_options;
-  test_case "peerconnection create" `Quick test_webrtc_peerconnection_create;
-  test_case "peerconnection ice servers" `Quick test_webrtc_peerconnection_ice_servers;
-  test_case "peerconnection data channel" `Quick test_webrtc_peerconnection_data_channel;
-  test_case "create offer" `Quick test_webrtc_create_offer;
-  test_case "signaling encode" `Quick test_webrtc_signaling_encode;
-  test_case "signaling decode" `Quick test_webrtc_signaling_decode;
-  test_case "signaling decode error" `Quick test_webrtc_signaling_decode_error;
-  test_case "ice candidate" `Quick test_webrtc_ice_candidate;
-  test_case "routes helper" `Quick test_webrtc_routes;
+  test_case "ice states" `Quick (with_eio test_webrtc_ice_states);
+  test_case "datachannel create" `Quick (with_eio test_webrtc_datachannel_create);
+  test_case "datachannel options" `Quick (with_eio test_webrtc_datachannel_options);
+  test_case "peerconnection create" `Quick (with_eio test_webrtc_peerconnection_create);
+  test_case "peerconnection ice servers" `Quick (with_eio test_webrtc_peerconnection_ice_servers);
+  test_case "peerconnection data channel" `Quick (with_eio test_webrtc_peerconnection_data_channel);
+  test_case "create offer" `Quick (with_eio test_webrtc_create_offer);
+  test_case "signaling encode" `Quick (with_eio test_webrtc_signaling_encode);
+  test_case "signaling decode" `Quick (with_eio test_webrtc_signaling_decode);
+  test_case "signaling decode error" `Quick (with_eio test_webrtc_signaling_decode_error);
+  test_case "ice candidate" `Quick (with_eio test_webrtc_ice_candidate);
+  test_case "routes helper" `Quick (with_eio test_webrtc_routes);
 ]
 
 (* ============================================================
