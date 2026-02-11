@@ -106,6 +106,8 @@ let password_tests = [
 
 (** {1 Session Tests} *)
 
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
+
 let test_session_create () =
   let store = Kirin_auth.Session.create_memory_store () in
   let id = Kirin_auth.Session.create store () in
@@ -127,9 +129,9 @@ let test_session_destroy () =
     (Kirin_auth.Session.get store id "key")
 
 let session_tests = [
-  test_case "create" `Quick test_session_create;
-  test_case "set/get" `Quick test_session_set_get;
-  test_case "destroy" `Quick test_session_destroy;
+  test_case "create" `Quick (with_eio test_session_create);
+  test_case "set/get" `Quick (with_eio test_session_set_get);
+  test_case "destroy" `Quick (with_eio test_session_destroy);
 ]
 
 (** {1 CSRF Tests} *)
