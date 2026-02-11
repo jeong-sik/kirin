@@ -53,7 +53,7 @@ let bytes_to_hex s =
 (** Generate secure random session ID using SHA256 of timestamp + random *)
 let generate_id () =
   (* Use timestamp + random for entropy *)
-  let now = Unix.gettimeofday () in
+  let now = Kirin.Time_compat.now () in
   let rand = Random.int 1_000_000_000 in
   let entropy = Printf.sprintf "%.6f-%d-%d" now rand (Unix.getpid ()) in
   let hash = Digestif.SHA256.digest_string entropy in
@@ -67,11 +67,10 @@ let default_cookie_name = "kirin_session"
 (** Create in-memory session store *)
 let create_memory_store ?(max_age = 86400.0) () =
   let sessions : (string, entry) Hashtbl.t = Hashtbl.create 256 in
-  let mutex = Mutex.create () in
+  let mutex = Eio.Mutex.create () in
 
   let with_lock f =
-    Mutex.lock mutex;
-    Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
+    Eio.Mutex.use_rw ~protect:true mutex f
   in
 
   let get id =
@@ -79,7 +78,7 @@ let create_memory_store ?(max_age = 86400.0) () =
       match Hashtbl.find_opt sessions id with
       | None -> None
       | Some entry ->
-          let now = Unix.gettimeofday () in
+          let now = Kirin.Time_compat.now () in
           (* Check expiration *)
           match entry.expires_at with
           | Some exp when exp < now ->
@@ -100,7 +99,7 @@ let create_memory_store ?(max_age = 86400.0) () =
 
   let cleanup () =
     with_lock (fun () ->
-      let now = Unix.gettimeofday () in
+      let now = Kirin.Time_compat.now () in
       let to_remove = ref [] in
       Hashtbl.iter (fun id entry ->
         match entry.expires_at with
@@ -120,7 +119,7 @@ let create_memory_store ?(max_age = 86400.0) () =
 (** Create new session *)
 let create store ?expires_in () =
   let id = generate_id () in
-  let now = Unix.gettimeofday () in
+  let now = Kirin.Time_compat.now () in
   let expires_at = Option.map (fun d -> now +. d) expires_in in
   let entry = {
     data = Hashtbl.create 16;

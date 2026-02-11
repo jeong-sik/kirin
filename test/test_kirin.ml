@@ -1054,7 +1054,10 @@ let graphql_tests = [
 
 (* ============================================================
    Connection Pool Tests (Phase 9)
+   Note: Pool/Backpressure use Eio.Mutex, need Eio runtime
    ============================================================ *)
+
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
 
 let test_pool_create () =
   let counter = ref 0 in
@@ -1144,13 +1147,13 @@ let test_pool_error_to_string () =
     (Kirin.Pool.error_to_string Kirin.Pool.Pool_exhausted)
 
 let pool_tests = [
-  test_case "pool create" `Quick test_pool_create;
-  test_case "acquire release" `Quick test_pool_acquire_release;
-  test_case "pool use" `Quick test_pool_use;
-  test_case "pool stats" `Quick test_pool_stats;
-  test_case "pool validate" `Quick test_pool_validate;
-  test_case "pool shutdown" `Quick test_pool_shutdown;
-  test_case "error to string" `Quick test_pool_error_to_string;
+  test_case "pool create" `Quick (with_eio test_pool_create);
+  test_case "acquire release" `Quick (with_eio test_pool_acquire_release);
+  test_case "pool use" `Quick (with_eio test_pool_use);
+  test_case "pool stats" `Quick (with_eio test_pool_stats);
+  test_case "pool validate" `Quick (with_eio test_pool_validate);
+  test_case "pool shutdown" `Quick (with_eio test_pool_shutdown);
+  test_case "error to string" `Quick (with_eio test_pool_error_to_string);
 ]
 
 (* ============================================================
@@ -1260,18 +1263,18 @@ let test_window_update_size () =
   check int "capped at max" 500 (BP.Window.current_size win)
 
 let backpressure_tests = [
-  test_case "buffer create" `Quick test_buffer_create;
-  test_case "buffer push pop" `Quick test_buffer_push_pop;
-  test_case "buffer try_pop" `Quick test_buffer_try_pop;
-  test_case "buffer drop oldest" `Quick test_buffer_drop_oldest;
-  test_case "channel create" `Quick test_channel_create;
-  test_case "channel send recv" `Quick test_channel_send_recv;
-  test_case "channel close" `Quick test_channel_close;
-  test_case "rate limiter create" `Quick test_rate_limiter_create;
-  test_case "rate limiter acquire" `Quick test_rate_limiter_acquire;
-  test_case "window create" `Quick test_window_create;
-  test_case "window reserve release" `Quick test_window_reserve_release;
-  test_case "window update size" `Quick test_window_update_size;
+  test_case "buffer create" `Quick (with_eio test_buffer_create);
+  test_case "buffer push pop" `Quick (with_eio test_buffer_push_pop);
+  test_case "buffer try_pop" `Quick (with_eio test_buffer_try_pop);
+  test_case "buffer drop oldest" `Quick (with_eio test_buffer_drop_oldest);
+  test_case "channel create" `Quick (with_eio test_channel_create);
+  test_case "channel send recv" `Quick (with_eio test_channel_send_recv);
+  test_case "channel close" `Quick (with_eio test_channel_close);
+  test_case "rate limiter create" `Quick (with_eio test_rate_limiter_create);
+  test_case "rate limiter acquire" `Quick (with_eio test_rate_limiter_acquire);
+  test_case "window create" `Quick (with_eio test_window_create);
+  test_case "window reserve release" `Quick (with_eio test_window_reserve_release);
+  test_case "window update size" `Quick (with_eio test_window_update_size);
 ]
 
 (* ============================================================
@@ -1396,69 +1399,98 @@ let cache_tests = [
 ]
 
 (* ============================================================
-   Jobs Tests (Phase 9)
+   Jobs Tests (Phase 9) — Eio-native
    ============================================================ *)
 
 module J = Kirin.Jobs
 
+(** Run test body inside Eio runtime with switch and clock *)
+let with_eio f =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  f ~sw ~clock
+
 let test_jobs_create () =
-  let queue = J.create ~workers:2 () in
-  check bool "not running" false (J.is_running queue);
-  check int "pending" 0 (J.pending_count queue)
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
+  check bool "running" true (J.is_running queue);
+  check int "pending" 0 (J.pending_count queue);
+  J.stop queue
 
 let test_jobs_submit () =
-  let queue = J.create ~workers:2 () in
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
   let job_id = J.submit queue (fun () -> "result") in
   check bool "has job id" true (String.length job_id > 0);
-  check int "pending" 1 (J.pending_count queue)
+  J.stop queue
+
+let test_jobs_submit_and_wait () =
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
+  let result = J.submit_and_wait queue (fun () -> "hello") in
+  (match result with
+   | J.Completed v -> check string "completed" "hello" v
+   | J.Failed e -> fail ("Failed: " ^ Printexc.to_string e)
+   | _ -> fail "Unexpected status");
+  J.stop queue
 
 let test_jobs_run_sync () =
   let result = J.run_sync (fun () -> 42) in
   check int "sync result" 42 result
 
 let test_jobs_run_once () =
-  let result = J.run_once (fun () -> "done") in
+  with_eio @@ fun ~sw:_ ~clock ->
+  let result = J.run_once ~clock (fun () -> "done") in
   match result with
   | J.Completed v -> check string "completed" "done" v
   | J.Failed e -> fail ("Failed: " ^ Printexc.to_string e)
   | _ -> fail "Unexpected status"
 
 let test_jobs_stats () =
-  let queue = J.create ~workers:2 () in
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
   let _ = J.submit queue (fun () -> 1) in
   let _ = J.submit queue (fun () -> 2) in
   let stats = J.stats queue in
   check int "submitted" 2 stats.total_submitted;
-  check int "queue size" 2 stats.queue_size
+  J.stop queue
 
 let test_jobs_cancel () =
-  let queue = J.create ~workers:1 () in
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:1 () in
   let job_id = J.submit queue (fun () -> "result") in
   let cancelled = J.cancel queue job_id in
   check bool "cancelled" true cancelled;
-  check int "pending after cancel" 0 (J.pending_count queue)
+  check int "pending after cancel" 0 (J.pending_count queue);
+  J.stop queue
 
 let test_jobs_clear () =
-  let queue = J.create ~workers:1 () in
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:1 () in
   let _ = J.submit queue (fun () -> 1) in
   let _ = J.submit queue (fun () -> 2) in
   let _ = J.submit queue (fun () -> 3) in
   let cleared = J.clear queue in
   check int "cleared count" 3 cleared;
-  check int "pending after clear" 0 (J.pending_count queue)
+  check int "pending after clear" 0 (J.pending_count queue);
+  J.stop queue
 
 let test_jobs_priority () =
-  let queue = J.create ~workers:1 () in
+  with_eio @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:1 () in
   let _ = J.submit ~priority:J.Low queue (fun () -> "low") in
   let _ = J.submit ~priority:J.Critical queue (fun () -> "critical") in
   let _ = J.submit ~priority:J.Normal queue (fun () -> "normal") in
   (* Jobs should be ordered: Critical, Normal, Low *)
   let stats = J.stats queue in
-  check int "all queued" 3 stats.queue_size
+  check int "all queued" 3 stats.queue_size;
+  J.stop queue
 
 let jobs_tests = [
   test_case "jobs create" `Quick test_jobs_create;
   test_case "jobs submit" `Quick test_jobs_submit;
+  test_case "jobs submit and wait" `Quick test_jobs_submit_and_wait;
   test_case "jobs run_sync" `Quick test_jobs_run_sync;
   test_case "jobs run_once" `Quick test_jobs_run_once;
   test_case "jobs stats" `Quick test_jobs_stats;
@@ -1636,7 +1668,12 @@ let health_tests = [
 
 (* ============================================================
    Phase 10: Prometheus Metrics
+   Note: Metrics/Shutdown/WebRTC use Eio.Mutex internally,
+   re-shadow with_eio back to simple version (Jobs section
+   redefined it with ~sw ~clock labeled args)
    ============================================================ *)
+
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
 
 module M = Kirin.Metrics
 
@@ -1706,13 +1743,13 @@ let test_metrics_export () =
     |> fun s -> String.length s > 0)
 
 let metrics_tests = [
-  test_case "metrics counter" `Quick test_metrics_counter;
-  test_case "metrics counter labels" `Quick test_metrics_counter_labels;
-  test_case "metrics gauge" `Quick test_metrics_gauge;
-  test_case "metrics histogram" `Quick test_metrics_histogram;
-  test_case "metrics histogram time" `Quick test_metrics_histogram_time;
-  test_case "metrics summary" `Quick test_metrics_summary;
-  test_case "metrics export" `Quick test_metrics_export;
+  test_case "metrics counter" `Quick (with_eio test_metrics_counter);
+  test_case "metrics counter labels" `Quick (with_eio test_metrics_counter_labels);
+  test_case "metrics gauge" `Quick (with_eio test_metrics_gauge);
+  test_case "metrics histogram" `Quick (with_eio test_metrics_histogram);
+  test_case "metrics histogram time" `Quick (with_eio test_metrics_histogram_time);
+  test_case "metrics summary" `Quick (with_eio test_metrics_summary);
+  test_case "metrics export" `Quick (with_eio test_metrics_export);
 ]
 
 (* ============================================================
@@ -1748,11 +1785,13 @@ let test_shutdown_connection_tracking () =
   check int "no active connections" 0 (S.active_connections shutdown)
 
 let test_shutdown_reject_during_shutdown () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
   let shutdown = S.create ~timeout:0.1 () in
-  (* Initiate shutdown in a separate thread *)
-  let _ = Thread.create (fun () -> S.initiate shutdown) () in
+  (* Initiate shutdown in a fiber (Thread.create lacks Eio effect handler) *)
+  Eio.Fiber.fork ~sw (fun () -> S.initiate shutdown);
   (* Wait a bit for shutdown to start *)
-  Unix.sleepf 0.05;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.05;
   (* Now connection_start should return false if shutdown started *)
   (* This is timing-dependent so just check it doesn't crash *)
   let _ = S.connection_start shutdown in
@@ -1768,12 +1807,12 @@ let test_shutdown_status_json () =
   | _ -> fail "expected JSON object"
 
 let shutdown_tests = [
-  test_case "shutdown create" `Quick test_shutdown_create;
-  test_case "shutdown custom timeout" `Quick test_shutdown_custom_timeout;
-  test_case "shutdown hooks" `Quick test_shutdown_hooks;
-  test_case "shutdown connection tracking" `Quick test_shutdown_connection_tracking;
+  test_case "shutdown create" `Quick (with_eio test_shutdown_create);
+  test_case "shutdown custom timeout" `Quick (with_eio test_shutdown_custom_timeout);
+  test_case "shutdown hooks" `Quick (with_eio test_shutdown_hooks);
+  test_case "shutdown connection tracking" `Quick (with_eio test_shutdown_connection_tracking);
   test_case "shutdown reject during" `Quick test_shutdown_reject_during_shutdown;
-  test_case "shutdown status json" `Quick test_shutdown_status_json;
+  test_case "shutdown status json" `Quick (with_eio test_shutdown_status_json);
 ]
 
 (* ============================================================
@@ -1885,18 +1924,18 @@ let test_webrtc_routes () =
   check int "route count" 2 (List.length routes)
 
 let webrtc_tests = [
-  test_case "ice states" `Quick test_webrtc_ice_states;
-  test_case "datachannel create" `Quick test_webrtc_datachannel_create;
-  test_case "datachannel options" `Quick test_webrtc_datachannel_options;
-  test_case "peerconnection create" `Quick test_webrtc_peerconnection_create;
-  test_case "peerconnection ice servers" `Quick test_webrtc_peerconnection_ice_servers;
-  test_case "peerconnection data channel" `Quick test_webrtc_peerconnection_data_channel;
-  test_case "create offer" `Quick test_webrtc_create_offer;
-  test_case "signaling encode" `Quick test_webrtc_signaling_encode;
-  test_case "signaling decode" `Quick test_webrtc_signaling_decode;
-  test_case "signaling decode error" `Quick test_webrtc_signaling_decode_error;
-  test_case "ice candidate" `Quick test_webrtc_ice_candidate;
-  test_case "routes helper" `Quick test_webrtc_routes;
+  test_case "ice states" `Quick (with_eio test_webrtc_ice_states);
+  test_case "datachannel create" `Quick (with_eio test_webrtc_datachannel_create);
+  test_case "datachannel options" `Quick (with_eio test_webrtc_datachannel_options);
+  test_case "peerconnection create" `Quick (with_eio test_webrtc_peerconnection_create);
+  test_case "peerconnection ice servers" `Quick (with_eio test_webrtc_peerconnection_ice_servers);
+  test_case "peerconnection data channel" `Quick (with_eio test_webrtc_peerconnection_data_channel);
+  test_case "create offer" `Quick (with_eio test_webrtc_create_offer);
+  test_case "signaling encode" `Quick (with_eio test_webrtc_signaling_encode);
+  test_case "signaling decode" `Quick (with_eio test_webrtc_signaling_decode);
+  test_case "signaling decode error" `Quick (with_eio test_webrtc_signaling_decode_error);
+  test_case "ice candidate" `Quick (with_eio test_webrtc_ice_candidate);
+  test_case "routes helper" `Quick (with_eio test_webrtc_routes);
 ]
 
 (* ============================================================

@@ -1,10 +1,10 @@
 (test
  (name test_kirin)
- (libraries kirin alcotest grpc-direct-core))
+ (libraries kirin alcotest grpc-direct-core eio_main))
 
 (test
  (name test_auth)
- (libraries kirin kirin.auth alcotest str unix))
+ (libraries kirin kirin.auth alcotest str unix eio_main))
 
 (test
  (name test_mcp)

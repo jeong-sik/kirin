@@ -47,17 +47,16 @@ type t = {
   mutable state : state;
   mutable hooks : hook list;
   mutable active_connections : int;
-  mutex : Mutex.t;
-  condition : Condition.t;
+  mutex : Eio.Mutex.t;
+  condition : Eio.Condition.t;
 }
 
 (** {1 Helpers} *)
 
-let now () = Unix.gettimeofday ()
+let now () = Time_compat.now ()
 
 let with_lock t f =
-  Mutex.lock t.mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock t.mutex) f
+  Eio.Mutex.use_rw ~protect:true t.mutex f
 
 (** {1 Creation} *)
 
@@ -73,8 +72,8 @@ let create ?(timeout = 30.0) ?(force_after = 60.0) () = {
   state = Running;
   hooks = [];
   active_connections = 0;
-  mutex = Mutex.create ();
-  condition = Condition.create ();
+  mutex = Eio.Mutex.create ();
+  condition = Eio.Condition.create ();
 }
 
 (** {1 State Management} *)
@@ -108,7 +107,7 @@ let connection_end t =
   with_lock t (fun () ->
     t.active_connections <- max 0 (t.active_connections - 1);
     if t.active_connections = 0 then
-      Condition.broadcast t.condition
+      Eio.Condition.broadcast t.condition
   )
 
 (** Get active connection count *)
@@ -152,15 +151,9 @@ let run_hooks t =
 (** Wait for connections to drain *)
 let wait_for_drain t =
   let deadline = now () +. t.config.timeout in
-  with_lock t (fun () ->
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     while t.active_connections > 0 && now () < deadline do
-      let remaining = deadline -. now () in
-      if remaining > 0.0 then begin
-        (* Wait with timeout - simplified polling *)
-        Mutex.unlock t.mutex;
-        Unix.sleepf (min 0.1 remaining);
-        Mutex.lock t.mutex
-      end
+      Eio.Condition.await t.condition t.mutex
     done;
     t.active_connections = 0
   )

@@ -117,7 +117,7 @@ module DataChannel = struct
     mutable on_message : (string -> unit) option;
     mutable on_close : (unit -> unit) option;
     mutable on_error : (string -> unit) option;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let create ~label ?(options = default_datachannel_options) () = {
@@ -128,7 +128,7 @@ module DataChannel = struct
     on_message = None;
     on_close = None;
     on_error = None;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let label t = t.label
@@ -138,24 +138,20 @@ module DataChannel = struct
   let is_open t = t.state = Open
 
   let on_open t callback =
-    Mutex.lock t.mutex;
-    t.on_open <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_open <- Some callback)
 
   let on_message t callback =
-    Mutex.lock t.mutex;
-    t.on_message <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_message <- Some callback)
 
   let on_close t callback =
-    Mutex.lock t.mutex;
-    t.on_close <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_close <- Some callback)
 
   let on_error t callback =
-    Mutex.lock t.mutex;
-    t.on_error <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_error <- Some callback)
 
   let send t _data =
     if t.state <> Open then
@@ -171,14 +167,12 @@ module DataChannel = struct
       Ok ()
 
   let close t =
-    Mutex.lock t.mutex;
-    t.state <- Closing;
-    Mutex.unlock t.mutex;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.state <- Closing);
     (* TODO: Send DCEP close message *)
-    Mutex.lock t.mutex;
-    t.state <- DCClosed;
-    (match t.on_close with Some f -> f () | None -> ());
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.state <- DCClosed;
+      (match t.on_close with Some f -> f () | None -> ()))
 end
 
 (** {1 PeerConnection} *)
@@ -194,7 +188,7 @@ module PeerConnection = struct
     mutable on_ice_candidate : (ice_candidate -> unit) option;
     mutable on_ice_state_change : (ice_state -> unit) option;
     mutable on_data_channel : (DataChannel.t -> unit) option;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
     (* Internal WebRTC state from ocaml-webrtc *)
     mutable ice_ufrag : string;
     mutable ice_pwd : string;
@@ -220,7 +214,7 @@ module PeerConnection = struct
       on_ice_candidate = None;
       on_ice_state_change = None;
       on_data_channel = None;
-      mutex = Mutex.create ();
+      mutex = Eio.Mutex.create ();
       ice_ufrag = generate_ufrag ();
       ice_pwd = generate_pwd ();
     }
@@ -232,26 +226,22 @@ module PeerConnection = struct
   let remote_description t = t.remote_description
 
   let on_ice_candidate t callback =
-    Mutex.lock t.mutex;
-    t.on_ice_candidate <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_ice_candidate <- Some callback)
 
   let on_ice_state_change t callback =
-    Mutex.lock t.mutex;
-    t.on_ice_state_change <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_ice_state_change <- Some callback)
 
   let on_data_channel t callback =
-    Mutex.lock t.mutex;
-    t.on_data_channel <- Some callback;
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.on_data_channel <- Some callback)
 
   (** Create a data channel *)
   let create_data_channel t ~label ?options () =
     let dc = DataChannel.create ~label ?options () in
-    Mutex.lock t.mutex;
-    t.data_channels <- dc :: t.data_channels;
-    Mutex.unlock t.mutex;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.data_channels <- dc :: t.data_channels);
     dc
 
   (** Generate SDP offer using ocaml-webrtc's SDP module *)
@@ -271,9 +261,8 @@ module PeerConnection = struct
       sdp_type = Offer;
       sdp = Webrtc.Sdp.to_string sdp;
     } in
-    Mutex.lock t.mutex;
-    t.local_description <- Some desc;
-    Mutex.unlock t.mutex;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.local_description <- Some desc);
     desc
 
   (** Generate SDP answer *)
@@ -299,44 +288,39 @@ module PeerConnection = struct
           sdp_type = Answer;
           sdp = Webrtc.Sdp.to_string sdp;
         } in
-        Mutex.lock t.mutex;
-        t.local_description <- Some desc;
-        Mutex.unlock t.mutex;
+        Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+          t.local_description <- Some desc);
         Ok desc
 
   (** Set local description *)
   let set_local_description t desc =
-    Mutex.lock t.mutex;
-    t.local_description <- Some desc;
-    Mutex.unlock t.mutex;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.local_description <- Some desc);
     Ok ()
 
   (** Set remote description *)
   let set_remote_description t desc =
     match Webrtc.Sdp.parse desc.sdp with
     | Ok _parsed_sdp ->
-      Mutex.lock t.mutex;
-      t.remote_description <- Some desc;
-      Mutex.unlock t.mutex;
+      Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+        t.remote_description <- Some desc);
       Ok ()
     | Error e ->
       Error (Printf.sprintf "Invalid SDP: %s" e)
 
   (** Add ICE candidate *)
   let add_ice_candidate t candidate =
-    Mutex.lock t.mutex;
-    t.ice_candidates <- candidate :: t.ice_candidates;
-    Mutex.unlock t.mutex;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.ice_candidates <- candidate :: t.ice_candidates);
     Ok ()
 
   (** Close the connection *)
   let close t =
-    Mutex.lock t.mutex;
-    t.ice_state <- Closed;
-    List.iter (fun dc -> DataChannel.close dc) t.data_channels;
-    t.data_channels <- [];
-    (match t.on_ice_state_change with Some f -> f Closed | None -> ());
-    Mutex.unlock t.mutex
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      t.ice_state <- Closed;
+      List.iter (fun dc -> DataChannel.close dc) t.data_channels;
+      t.data_channels <- [];
+      (match t.on_ice_state_change with Some f -> f Closed | None -> ()))
 end
 
 (** {1 Signaling} *)
@@ -437,57 +421,51 @@ module Signaling = struct
   type room = {
     id : string;
     peers : (string, unit) Hashtbl.t;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   type server = {
     rooms : (string, room) Hashtbl.t;
-    mutex : Mutex.t;
+    mutex : Eio.Mutex.t;
   }
 
   let create_server () = {
     rooms = Hashtbl.create 16;
-    mutex = Mutex.create ();
+    mutex = Eio.Mutex.create ();
   }
 
   let get_or_create_room server room_id =
-    Mutex.lock server.mutex;
-    let room = match Hashtbl.find_opt server.rooms room_id with
+    Eio.Mutex.use_rw ~protect:true server.mutex (fun () ->
+      match Hashtbl.find_opt server.rooms room_id with
       | Some r -> r
       | None ->
         let r = {
           id = room_id;
           peers = Hashtbl.create 8;
-          mutex = Mutex.create ();
+          mutex = Eio.Mutex.create ();
         } in
         Hashtbl.replace server.rooms room_id r;
         r
-    in
-    Mutex.unlock server.mutex;
-    room
+    )
 
   let join_room server ~room_id ~peer_id =
     let room = get_or_create_room server room_id in
-    Mutex.lock room.mutex;
-    Hashtbl.replace room.peers peer_id ();
-    Mutex.unlock room.mutex
+    Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
+      Hashtbl.replace room.peers peer_id ())
 
   let leave_room server ~room_id ~peer_id =
     match Hashtbl.find_opt server.rooms room_id with
     | None -> ()
     | Some room ->
-      Mutex.lock room.mutex;
-      Hashtbl.remove room.peers peer_id;
-      Mutex.unlock room.mutex
+      Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
+        Hashtbl.remove room.peers peer_id)
 
   let get_peers server room_id =
     match Hashtbl.find_opt server.rooms room_id with
     | None -> []
     | Some room ->
-      Mutex.lock room.mutex;
-      let peers = Hashtbl.fold (fun id _ acc -> id :: acc) room.peers [] in
-      Mutex.unlock room.mutex;
-      peers
+      Eio.Mutex.use_ro room.mutex (fun () ->
+        Hashtbl.fold (fun id _ acc -> id :: acc) room.peers [])
 end
 
 (** {1 HTTP/WebSocket Handlers} *)

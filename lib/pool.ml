@@ -80,8 +80,8 @@ type 'a t = {
   mutable in_use : int;
   mutable waiting : int;
   mutable stats : stats;
-  mutex : Mutex.t;
-  condition : Condition.t;
+  mutex : Eio.Mutex.t;
+  condition : Eio.Condition.t;
 }
 
 (** Pool errors *)
@@ -151,18 +151,17 @@ let create
     in_use = 0;
     waiting = 0;
     stats;
-    mutex = Mutex.create ();
-    condition = Condition.create ();
+    mutex = Eio.Mutex.create ();
+    condition = Eio.Condition.create ();
   }
 
 (** {1 Internal Helpers} *)
 
-let now () = Unix.gettimeofday ()
+let now () = Time_compat.now ()
 
 (** Run a function with the mutex locked *)
 let with_lock mutex f =
-  Mutex.lock mutex;
-  Fun.protect ~finally:(fun () -> Mutex.unlock mutex) f
+  Eio.Mutex.use_rw ~protect:true mutex f
 
 (** Create a new pooled connection *)
 let create_pooled pool =
@@ -196,7 +195,7 @@ let update_stats pool f =
 
 (** Get current pool statistics *)
 let stats pool =
-  with_lock pool.mutex (fun () ->
+  Eio.Mutex.use_ro pool.mutex (fun () ->
     { pool.stats with
       active_connections = pool.in_use;
       idle_connections = List.length pool.connections;
@@ -206,7 +205,7 @@ let stats pool =
 
 (** Get pool size info *)
 let size pool =
-  with_lock pool.mutex (fun () ->
+  Eio.Mutex.use_ro pool.mutex (fun () ->
     (pool.in_use, List.length pool.connections, pool.config.max_size)
   )
 
@@ -266,12 +265,9 @@ let acquire pool =
     | Some pooled -> pooled
     | None ->
       (* Wait for a connection to be released *)
-      with_lock pool.mutex (fun () ->
-        pool.waiting <- pool.waiting + 1
-      );
-      (* Simple polling wait - in production, use proper condition variable *)
-      Unix.sleepf 0.01;
-      with_lock pool.mutex (fun () ->
+      Eio.Mutex.use_rw ~protect:true pool.mutex (fun () ->
+        pool.waiting <- pool.waiting + 1;
+        Eio.Condition.await pool.condition pool.mutex;
         pool.waiting <- pool.waiting - 1
       );
       wait_for_connection ()
@@ -296,7 +292,7 @@ let release pool pooled =
     end;
 
     (* Signal waiting threads *)
-    Condition.broadcast pool.condition
+    Eio.Condition.broadcast pool.condition
   )
 
 (** Use a connection from the pool with automatic release.
@@ -400,18 +396,18 @@ let connection_info pooled =
 
 (** Check if pool has available connections *)
 let has_available pool =
-  with_lock pool.mutex (fun () ->
+  Eio.Mutex.use_ro pool.mutex (fun () ->
     List.length pool.connections > 0 || pool.in_use < pool.config.max_size
   )
 
 (** Get number of idle connections *)
 let idle_count pool =
-  with_lock pool.mutex (fun () ->
+  Eio.Mutex.use_ro pool.mutex (fun () ->
     List.length pool.connections
   )
 
 (** Get number of active connections *)
 let active_count pool =
-  with_lock pool.mutex (fun () ->
+  Eio.Mutex.use_ro pool.mutex (fun () ->
     pool.in_use
   )
