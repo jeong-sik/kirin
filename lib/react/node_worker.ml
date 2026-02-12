@@ -20,7 +20,7 @@ let reap_pid pid =
       | 0, _status ->
           if Unix.gettimeofday () >= deadline then false
           else (
-            Unix.sleepf 0.05;
+            Kirin.Time_compat.sleep 0.05;
             loop ())
       | _pid, _status -> true
     in

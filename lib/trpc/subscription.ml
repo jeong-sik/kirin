@@ -194,7 +194,7 @@ let interval ~ms ~f =
   let rec loop () =
     if !running then begin
       f ();
-      Unix.sleepf delay;
+      Kirin.Time_compat.sleep delay;
       loop ()
     end
   in
@@ -205,6 +205,6 @@ let of_list ~delay_ms items emit =
   let delay = float_of_int delay_ms /. 1000.0 in
   List.iter (fun item ->
     emit (Data item);
-    Unix.sleepf delay
+    Kirin.Time_compat.sleep delay
   ) items;
   emit Complete

@@ -1330,7 +1330,7 @@ let test_cache_ttl () =
   let cache = C.create ~max_size:10 ~default_ttl:0.05 () in
   C.set cache "key" "value";
   check (option string) "get before expire" (Some "value") (C.get cache "key");
-  Unix.sleepf 0.06;
+  Kirin.Time_compat.sleep 0.06;
   check (option string) "get after expire" None (C.get cache "key")
 
 let test_cache_stats () =
@@ -1375,7 +1375,7 @@ let test_cache_cleanup () =
   let cache = C.create ~max_size:10 ~default_ttl:0.03 () in
   C.set cache "a" "1";
   C.set cache "b" "2";
-  Unix.sleepf 0.05;
+  Kirin.Time_compat.sleep 0.05;
   let expired = C.cleanup cache in
   check int "expired count" 2 expired;
   check int "size after cleanup" 0 (C.size cache)
@@ -1719,7 +1719,7 @@ let test_metrics_histogram_time () =
   let registry = M.create () in
   let hist = M.histogram registry "duration" ~help:"Duration" () in
   let result = M.Histogram.time hist (fun () ->
-    Unix.sleepf 0.01;
+    Kirin.Time_compat.sleep 0.01;
     42
   ) in
   check int "timed result" 42 result

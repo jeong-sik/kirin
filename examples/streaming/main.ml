@@ -49,7 +49,7 @@ let stream_handler _req =
     for i = 1 to 50 do
       yield (Printf.sprintf "[%d] Processing chunk %d of 50\n" (int_of_float (Unix.time ())) i);
       (* Small delay simulation *)
-      Unix.sleepf 0.02
+      Time_compat.sleep 0.02
     done;
 
     yield "\nStream complete!\n"

@@ -23,7 +23,7 @@ module FakeDb = struct
 
   let connect () =
     incr next_id;
-    Unix.sleepf 0.01;  (* Simulate connection overhead *)
+    Kirin.Time_compat.sleep 0.01;  (* Simulate connection overhead *)
     { id = !next_id; created_at = Unix.gettimeofday () }
 
   let close _conn = ()
@@ -34,7 +34,7 @@ module FakeDb = struct
 
   let query conn sql =
     Printf.printf "[DB:%d] Executing: %s\n%!" conn.id sql;
-    Unix.sleepf 0.05;  (* Simulate query time *)
+    Kirin.Time_compat.sleep 0.05;  (* Simulate query time *)
     `Assoc [
       ("connection_id", `Int conn.id);
       ("query", `String sql);
@@ -69,7 +69,7 @@ let user_cache : (string, Yojson.Safe.t) Kirin.Cache.t =
 (* Expensive computation (simulated) *)
 let fetch_user_from_db id =
   Printf.printf "[Cache MISS] Fetching user %s from database\n%!" id;
-  Unix.sleepf 0.1;  (* Simulate slow DB query *)
+  Kirin.Time_compat.sleep 0.1;  (* Simulate slow DB query *)
   `Assoc [
     ("id", `String id);
     ("name", `String ("User " ^ id));
@@ -106,7 +106,7 @@ let cache_stats_handler _req =
 (* Simulate email sending *)
 let send_email to_addr subject =
   Printf.printf "[EMAIL] Sending to %s: %s\n%!" to_addr subject;
-  Unix.sleepf 0.5;  (* Simulate SMTP latency — blocks the worker fiber *)
+  Kirin.Time_compat.sleep 0.5;  (* Simulate SMTP latency *)
   Printf.sprintf "Email sent to %s at %f" to_addr (Unix.gettimeofday ())
 
 let submit_job_handler job_queue req =
@@ -194,13 +194,13 @@ let parallel_handler req =
 let fork_join_handler _req =
   let (a, b, c) = Kirin.Parallel.triple
     (fun () ->
-      Unix.sleepf 0.1;
+      Kirin.Time_compat.sleep 0.1;
       `String "Task A complete")
     (fun () ->
-      Unix.sleepf 0.1;
+      Kirin.Time_compat.sleep 0.1;
       `String "Task B complete")
     (fun () ->
-      Unix.sleepf 0.1;
+      Kirin.Time_compat.sleep 0.1;
       `String "Task C complete")
   in
   Kirin.json (`Assoc [
