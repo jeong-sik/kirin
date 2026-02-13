@@ -51,11 +51,8 @@ let generate ~secret ~session_id ?(ttl = default_ttl) () =
   let timestamp = Unix.gettimeofday () in
   let expires = timestamp +. ttl in
 
-  (* Random nonce using SHA256 of entropy *)
-  let rand = Random.int 1_000_000_000 in
-  let entropy = Printf.sprintf "csrf-%.6f-%d-%d" timestamp rand (Unix.getpid ()) in
-  let nonce_hash = Digestif.SHA256.digest_string entropy in
-  let nonce_hex = string_to_hex (String.sub (Digestif.SHA256.to_raw_string nonce_hash) 0 16) in
+  (* CSPRNG nonce for anti-replay token component *)
+  let nonce_hex = string_to_hex (Secure_random.random_string 16) in
 
   (* Data to sign: session_id|expires|nonce *)
   let data = Printf.sprintf "%s|%.0f|%s" session_id expires nonce_hex in

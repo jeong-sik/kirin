@@ -50,14 +50,9 @@ let bytes_to_hex s =
   ) s;
   Bytes.to_string hex
 
-(** Generate secure random session ID using SHA256 of timestamp + random *)
+(** Generate secure random session ID from CSPRNG bytes *)
 let generate_id () =
-  (* Use timestamp + random for entropy *)
-  let now = Kirin.Time_compat.now () in
-  let rand = Random.int 1_000_000_000 in
-  let entropy = Printf.sprintf "%.6f-%d-%d" now rand (Unix.getpid ()) in
-  let hash = Digestif.SHA256.digest_string entropy in
-  bytes_to_hex (Digestif.SHA256.to_raw_string hash)
+  bytes_to_hex (Secure_random.random_string 32)
 
 (** Default session cookie name *)
 let default_cookie_name = "kirin_session"
