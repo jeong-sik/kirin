@@ -111,13 +111,8 @@ end
 
 (** Generate state parameter for CSRF protection *)
 let generate_state () =
-  let now = Unix.gettimeofday () in
-  let rand = Random.int 1_000_000_000 in
-  let entropy = Printf.sprintf "state-%.6f-%d-%d" now rand (Unix.getpid ()) in
-  let hash = Digestif.SHA256.digest_string entropy in
-  (* Convert to URL-safe base64 *)
-  Base64.encode_string ~pad:false ~alphabet:Base64.uri_safe_alphabet
-    (Digestif.SHA256.to_raw_string hash)
+  (* 32 random bytes -> 43-char base64url (no padding) *)
+  Secure_random.random_base64url 32
 
 (** Build authorization URL *)
 let authorization_url ?(scope = []) ?(state = generate_state ())
@@ -217,12 +212,8 @@ let parse_user_info (provider : provider) json =
 
 (** Generate PKCE code verifier *)
 let generate_code_verifier () =
-  let now = Unix.gettimeofday () in
-  let rand = Random.int 1_000_000_000 in
-  let entropy = Printf.sprintf "pkce-%.6f-%d-%d" now rand (Unix.getpid ()) in
-  let hash = Digestif.SHA256.digest_string entropy in
-  Base64.encode_string ~pad:false ~alphabet:Base64.uri_safe_alphabet
-    (Digestif.SHA256.to_raw_string hash)
+  (* 48 random bytes -> 64-char base64url verifier (within PKCE limits). *)
+  Secure_random.random_base64url 48
 
 (** Generate PKCE code challenge (S256 method) *)
 let generate_code_challenge verifier =
