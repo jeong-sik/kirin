@@ -1,4 +1,5 @@
 (library
  (name kirin_htmx)
  (public_name kirin.htmx)
- (libraries kirin yojson))
+ (libraries kirin yojson)
+ (instrumentation (backend bisect_ppx)))

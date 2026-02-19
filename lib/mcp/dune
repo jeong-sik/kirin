@@ -1,4 +1,5 @@
 (library
  (name kirin_mcp)
  (public_name kirin.mcp)
- (libraries yojson eio))
+ (libraries yojson eio)
+ (instrumentation (backend bisect_ppx)))

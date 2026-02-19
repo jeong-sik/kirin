@@ -1,4 +1,5 @@
 (library
  (name kirin_trpc)
  (public_name kirin.trpc)
- (libraries kirin yojson uri unix))
+ (libraries kirin yojson uri unix)
+ (instrumentation (backend bisect_ppx)))
