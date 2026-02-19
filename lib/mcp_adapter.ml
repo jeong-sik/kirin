@@ -84,11 +84,61 @@ let tool_of_json_handler ~name ~description ~(schema : Yojson.Safe.t)
   } in
   (tool, handler)
 
+(** {1 Streamable HTTP Helpers} *)
+
+(** Header name for MCP session ID (2025-11-25 spec) *)
+let session_header = "mcp-session-id"
+
+(** Check if JSON-RPC body contains an initialize request.
+    The body may be a single request or a batch (array). *)
+let is_initialize_request json =
+  match json with
+  | `Assoc fields ->
+    (match List.assoc_opt "method" fields with
+     | Some (`String m) -> m = Protocol.Method.initialize
+     | _ -> false)
+  | `List items ->
+    List.exists (fun item ->
+      match item with
+      | `Assoc fields ->
+        (match List.assoc_opt "method" fields with
+         | Some (`String m) -> m = Protocol.Method.initialize
+         | _ -> false)
+      | _ -> false
+    ) items
+  | _ -> false
+
+(** Validate Mcp-Session-Id header against session state.
+    Returns None on success, Some error_response on failure. *)
+let validate_session req server =
+  let session = Server.session server in
+  match Session.session_id session with
+  | None ->
+    (* No session yet — only initialize is allowed (caller checks) *)
+    None
+  | Some expected_id ->
+    match Request.header session_header req with
+    | Some id when id = expected_id -> None
+    | Some _ ->
+      Some (Response.json ~status:`Not_found
+        (`Assoc ["error", `String "Session not found"]))
+    | None ->
+      Some (Response.bad_request ~body:"Missing Mcp-Session-Id header" ())
+
+(** Add Mcp-Session-Id header to response if session has one *)
+let with_session_header server resp =
+  let session = Server.session server in
+  match Session.session_id session with
+  | Some id -> Response.with_header session_header id resp
+  | None -> resp
+
 (** Create Kirin routes for MCP server (Streamable HTTP transport, 2025-11-25)
 
     Returns routes for:
-    - POST /mcp - Handle JSON-RPC requests (immediate or streaming response)
-    - GET /mcp/sse - SSE endpoint for server-to-client messages
+    - POST /mcp - Handle JSON-RPC requests with session ID management
+    - GET /mcp - SSE stream for server-initiated notifications
+    - DELETE /mcp - Session termination
+    - OPTIONS /mcp - CORS preflight
 
     {[
       let mcp = Server.create () in
@@ -101,19 +151,40 @@ let tool_of_json_handler ~name ~description ~(schema : Yojson.Safe.t)
     ]}
 *)
 let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
+  let broadcaster = Sse.Broadcaster.create () in
+
   let handle_post req =
     let body = Request.body req in
     try
       let json = Yojson.Safe.from_string body in
-      let msg = Jsonrpc.decode json in
-      match Server.handle_message server msg with
-      | Some (Jsonrpc.Response resp) ->
-        let json = Jsonrpc.encode_response resp in
-        Response.json json
-      | Some _ ->
-        Response.json (`Assoc [])
-      | None ->
-        Response.empty `Accepted
+      let is_init = is_initialize_request json in
+      (* Validate session ID for non-initialize requests *)
+      if not is_init then
+        match validate_session req server with
+        | Some err -> err
+        | None ->
+          let msg = Jsonrpc.decode json in
+          (match Server.handle_message server msg with
+           | Some (Jsonrpc.Response resp) ->
+             Response.json (Jsonrpc.encode_response resp)
+             |> with_session_header server
+           | Some _ ->
+             Response.json (`Assoc [])
+             |> with_session_header server
+           | None ->
+             Response.empty `Accepted
+             |> with_session_header server)
+      else
+        let msg = Jsonrpc.decode json in
+        match Server.handle_message server msg with
+        | Some (Jsonrpc.Response resp) ->
+          Response.json (Jsonrpc.encode_response resp)
+          |> with_session_header server
+        | Some _ ->
+          Response.json (`Assoc [])
+          |> with_session_header server
+        | None ->
+          Response.empty `Accepted
     with
     | Yojson.Json_error msg ->
       let error = Jsonrpc.make_error
@@ -128,26 +199,39 @@ let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
       let resp = Jsonrpc.error_response ~id:Jsonrpc.Null error in
       Response.json (Jsonrpc.encode_response resp)
   in
-  let handle_sse _req =
-    (* SSE endpoint for server-initiated messages *)
-    let endpoint_url = prefix ^ "/sse" in
-    (* For now, just return a simple keep-alive stream *)
-    (* Send initial connection event *)
-    let initial_events = [
-      Sse.event "connected" "MCP SSE connected";
-      Sse.event "endpoint" endpoint_url;
-    ] in
-    Sse.response_legacy initial_events
+
+  let handle_get req =
+    (* SSE endpoint for server-initiated notifications *)
+    match validate_session req server with
+    | Some err -> err
+    | None -> Sse.handler broadcaster req
   in
+
+  let handle_delete req =
+    match validate_session req server with
+    | Some err -> err
+    | None ->
+      let session = Server.session server in
+      Session.begin_shutdown session;
+      Session.complete_shutdown session;
+      Response.empty `OK
+      |> with_session_header server
+  in
+
   let handle_options _req =
     Response.empty `OK
     |> Response.with_header "Access-Control-Allow-Origin" "*"
-    |> Response.with_header "Access-Control-Allow-Methods" "GET, POST, OPTIONS"
-    |> Response.with_header "Access-Control-Allow-Headers" "Content-Type"
+    |> Response.with_header "Access-Control-Allow-Methods"
+         "GET, POST, DELETE, OPTIONS"
+    |> Response.with_header "Access-Control-Allow-Headers"
+         "Content-Type, Accept, Mcp-Session-Id"
+    |> Response.with_header "Access-Control-Expose-Headers"
+         "Mcp-Session-Id"
   in
   [
     Router.post prefix handle_post;
-    Router.get (prefix ^ "/sse") handle_sse;
+    Router.get prefix handle_get;
+    Router.delete prefix handle_delete;
     Router.options prefix handle_options;
   ]
 

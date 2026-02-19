@@ -653,6 +653,66 @@ let capabilities_tests = [
   test_case "empty" `Quick test_capabilities_empty;
 ]
 
+(** {1 Adapter (Streamable HTTP) Tests} *)
+
+module A = Kirin.Mcp
+
+let test_adapter_session_header () =
+  check string "header name" "mcp-session-id" A.session_header
+
+let test_adapter_is_init_single () =
+  let json = `Assoc [
+    ("jsonrpc", `String "2.0");
+    ("id", `Int 1);
+    ("method", `String P.Method.initialize);
+    ("params", `Assoc []);
+  ] in
+  check bool "single initialize request" true
+    (A.is_initialize_request json)
+
+let test_adapter_is_init_batch () =
+  let init_req = `Assoc [
+    ("jsonrpc", `String "2.0");
+    ("id", `Int 1);
+    ("method", `String P.Method.initialize);
+  ] in
+  let ping_req = `Assoc [
+    ("jsonrpc", `String "2.0");
+    ("id", `Int 2);
+    ("method", `String P.Method.ping);
+  ] in
+  check bool "batch containing initialize" true
+    (A.is_initialize_request (`List [init_req; ping_req]));
+  check bool "batch without initialize" false
+    (A.is_initialize_request (`List [ping_req]))
+
+let test_adapter_is_init_non_init () =
+  let json = `Assoc [
+    ("jsonrpc", `String "2.0");
+    ("id", `Int 1);
+    ("method", `String P.Method.tools_list);
+  ] in
+  check bool "tools/list is not initialize" false
+    (A.is_initialize_request json)
+
+let test_adapter_is_init_malformed () =
+  check bool "null is not initialize" false
+    (A.is_initialize_request `Null);
+  check bool "string is not initialize" false
+    (A.is_initialize_request (`String "hello"));
+  check bool "object without method" false
+    (A.is_initialize_request (`Assoc [("id", `Int 1)]));
+  check bool "empty batch" false
+    (A.is_initialize_request (`List []))
+
+let adapter_tests = [
+  test_case "session header constant" `Quick test_adapter_session_header;
+  test_case "is_initialize single" `Quick test_adapter_is_init_single;
+  test_case "is_initialize batch" `Quick test_adapter_is_init_batch;
+  test_case "is_initialize non-init" `Quick test_adapter_is_init_non_init;
+  test_case "is_initialize malformed" `Quick test_adapter_is_init_malformed;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -667,4 +727,5 @@ let () =
     ("Icons", icon_tests);
     ("Meta", meta_tests);
     ("Capabilities", capabilities_tests);
+    ("Adapter", adapter_tests);
   ]
