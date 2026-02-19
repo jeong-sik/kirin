@@ -110,7 +110,7 @@ let encode_response (resp : response) =
   let with_result = match resp.result, resp.error with
     | Some r, None -> base @ ["result", r]
     | None, Some e -> base @ ["error", error_to_json e]
-    | Some r, Some _ -> base @ ["result", r]  (* Result takes precedence *)
+    | Some _, Some e -> base @ ["error", error_to_json e]  (* Error takes precedence per JSON-RPC 2.0 *)
     | None, None -> base @ ["result", `Null]
   in
   `Assoc with_result
