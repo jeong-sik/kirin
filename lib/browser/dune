@@ -4,4 +4,5 @@
  (optional)  ; Only build when js_of_ocaml is available
  (libraries js_of_ocaml yojson)
  (preprocess
-  (pps js_of_ocaml-ppx)))
+  (pps js_of_ocaml-ppx))
+ (instrumentation (backend bisect_ppx)))

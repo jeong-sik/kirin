@@ -8,4 +8,5 @@
   base64          ; Base64 encoding
   yojson          ; JSON handling
   uri             ; URL encoding for OAuth2
-  eio))
+  eio)
+ (instrumentation (backend bisect_ppx)))

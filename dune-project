@@ -61,6 +61,7 @@ Features:
   (ocaml-webrtc (>= "0.1.0"))
   (graphql (>= "0.14.0"))
   (graphql_parser (>= "0.14.0"))
+  (bisect_ppx (and (>= 2.8) :with-dev-setup))
   (alcotest :with-test)
   (odoc :with-doc))
  (tags
