@@ -1,4 +1,3 @@
 (executable
  (name main)
- (public_name agent_hub)
  (libraries kirin yojson uuidm digestif unix))
