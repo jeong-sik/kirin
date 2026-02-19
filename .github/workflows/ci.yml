@@ -70,6 +70,7 @@ jobs:
     if: github.event_name != 'pull_request'
     # Keep the CI signal green on main even if upstream opam downloads flake.
     continue-on-error: true
+    timeout-minutes: 15
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
