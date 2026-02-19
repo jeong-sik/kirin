@@ -39,16 +39,29 @@ type task = {
 type registry = {
   tasks : (string, task) Hashtbl.t;
   mutable next_id : int;
+  mutable on_state_change : (task -> unit) option;
 }
 
 (** {1 Constructor} *)
 
-(** Create a new task registry *)
-let create_registry () =
+(** Create a new task registry.
+    [?on_state_change] is called after every task state transition. *)
+let create_registry ?on_state_change () =
   {
     tasks = Hashtbl.create 16;
     next_id = 1;
+    on_state_change;
   }
+
+(** Set or replace the on_state_change callback *)
+let set_on_state_change registry f =
+  registry.on_state_change <- Some f
+
+(** Internal: fire the state change callback if set *)
+let notify registry task =
+  match registry.on_state_change with
+  | Some f -> f task
+  | None -> ()
 
 (** {1 Task Operations} *)
 
@@ -78,6 +91,7 @@ let update_progress registry ~id ~progress ?message () =
     task.progress <- Some progress;
     task.progress_message <- message;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task is not in working state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)
@@ -90,6 +104,7 @@ let complete_task registry ~id ~result =
     task.result <- Some result;
     task.progress <- Some 1.0;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task is not in working state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)
@@ -101,6 +116,7 @@ let fail_task registry ~id ~error =
     task.state <- Failed;
     task.error <- Some error;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task is not in working state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)
@@ -111,6 +127,7 @@ let cancel_task registry ~id =
   | Some task when task.state = Working || task.state = Input_required ->
     task.state <- Cancelled;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task cannot be cancelled in current state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)
@@ -121,6 +138,7 @@ let request_input registry ~id =
   | Some task when task.state = Working ->
     task.state <- Input_required;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task is not in working state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)
@@ -131,6 +149,7 @@ let resume_task registry ~id =
   | Some task when task.state = Input_required ->
     task.state <- Working;
     task.updated_at <- Unix.gettimeofday ();
+    notify registry task;
     Ok ()
   | Some _ -> Error "Task is not in input_required state"
   | None -> Error (Printf.sprintf "Task not found: %s" id)

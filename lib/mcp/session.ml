@@ -22,12 +22,26 @@ type t = {
   mutable server_info : Protocol.implementation_info;
   mutable server_capabilities : Protocol.server_capabilities;
   mutable request_id : int;
+  mutable session_id : string option;
 }
 
 (** {1 Constructor} *)
 
+(** Generate a session ID from random bytes and timestamp.
+    Not cryptographically strong, but sufficient for session tracking.
+    For production use with security requirements, replace with
+    Mirage_crypto_rng. *)
+let generate_session_id () =
+  let ts = Unix.gettimeofday () in
+  let r1 = Random.bits () in
+  let r2 = Random.bits () in
+  Printf.sprintf "%08x%08x%08x"
+    (Float.to_int (Float.rem (ts *. 1e6) 4294967296.0))
+    r1 r2
+
 (** Create a new session *)
 let create ~server_name ~server_version () =
+  Random.self_init ();
   {
     state = Uninitialized;
     client_info = None;
@@ -44,6 +58,7 @@ let create ~server_name ~server_version () =
       logging = None;
     };
     request_id = 0;
+    session_id = None;
   }
 
 (** {1 State Management} *)
@@ -86,13 +101,15 @@ let client_capabilities t = t.client_capabilities
 
 (** {1 Initialization} *)
 
-(** Handle initialize request *)
+(** Handle initialize request.
+    Generates a session ID on first call. *)
 let handle_initialize t (params : Protocol.initialize_params) =
   match t.state with
   | Uninitialized ->
     t.state <- Initializing;
     t.client_info <- Some params.client_info;
     t.client_capabilities <- Some params.capabilities;
+    t.session_id <- Some (generate_session_id ());
     Ok {
       Protocol.protocol_version = Protocol.protocol_version;
       capabilities = t.server_capabilities;
@@ -136,3 +153,6 @@ let server_info t = t.server_info
 
 (** Get client info *)
 let client_info t = t.client_info
+
+(** Get session ID *)
+let session_id t = t.session_id
