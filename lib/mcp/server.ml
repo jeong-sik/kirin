@@ -39,6 +39,7 @@ type t = {
   mutable resources : registered_resource list;
   mutable prompts : registered_prompt list;
   session : Session.t;
+  task_registry : Tasks.registry;
 }
 
 (** {1 Constructor} *)
@@ -50,6 +51,7 @@ let create ?(name = "kirin-mcp") ?(version = "1.0.0") () =
     resources = [];
     prompts = [];
     session = Session.create ~server_name:name ~server_version:version ();
+    task_registry = Tasks.create_registry ();
   }
 
 (** {1 Tool Registration} *)
@@ -61,6 +63,8 @@ let add_tool t ~name ~description ~schema ~handler =
     Protocol.name;
     description = Some description;
     input_schema = schema;
+    annotations = None;
+    icon = None;
   } in
   t.tools <- { tool; handler } :: t.tools
 
@@ -77,6 +81,7 @@ let call_tool t ~name ~arguments =
     Ok {
       Protocol.content = [Protocol.Text (Yojson.Safe.to_string result)];
       is_error = None;
+      _meta = None;
     }
   | None ->
     Error (Printf.sprintf "Tool not found: %s" name)
@@ -91,6 +96,7 @@ let add_resource t ~uri ~name ?description ?mime_type ~handler () =
     name;
     description;
     mime_type;
+    icon = None;
   } in
   t.resources <- { resource; handler } :: t.resources
 
@@ -121,6 +127,7 @@ let add_prompt t ~name ?description ?arguments ?handler () =
     Protocol.name;
     description;
     arguments;
+    icon = None;
   } in
   t.prompts <- { prompt; handler } :: t.prompts
 
@@ -195,6 +202,69 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = prompts_list ->
     let prompts_json = `List (List.map Protocol.prompt_to_json (list_prompts t)) in
     Jsonrpc.success_response ~id:req.id (`Assoc ["prompts", prompts_json])
+
+  | m when m = tasks_get ->
+    (match req.params with
+     | Some params ->
+       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       (match Tasks.get_task t.task_registry ~id with
+        | Some task ->
+          Jsonrpc.success_response ~id:req.id
+            (`Assoc ["task", Tasks.task_to_json task])
+        | None ->
+          Jsonrpc.error_response ~id:req.id
+            (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+               ~message:(Printf.sprintf "Task not found: %s" id) ()))
+     | None ->
+       Jsonrpc.error_response ~id:req.id
+         (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+            ~message:"Missing task ID" ()))
+
+  | m when m = tasks_list ->
+    let tasks_json = `List (List.map Tasks.task_to_json (Tasks.list_tasks t.task_registry)) in
+    Jsonrpc.success_response ~id:req.id (`Assoc ["tasks", tasks_json])
+
+  | m when m = tasks_cancel ->
+    (match req.params with
+     | Some params ->
+       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       (match Tasks.cancel_task t.task_registry ~id with
+        | Ok () ->
+          Jsonrpc.success_response ~id:req.id (`Assoc [])
+        | Error msg ->
+          Jsonrpc.error_response ~id:req.id
+            (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params ~message:msg ()))
+     | None ->
+       Jsonrpc.error_response ~id:req.id
+         (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+            ~message:"Missing task ID" ()))
+
+  | m when m = tasks_result ->
+    (match req.params with
+     | Some params ->
+       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       (match Tasks.get_task t.task_registry ~id with
+        | Some task when task.state = Tasks.Completed ->
+          (match task.result with
+           | Some result ->
+             Jsonrpc.success_response ~id:req.id
+               (Protocol.tool_result_to_json result)
+           | None ->
+             Jsonrpc.error_response ~id:req.id
+               (Jsonrpc.make_error ~code:Jsonrpc.Internal_error
+                  ~message:"Task completed but no result available" ()))
+        | Some _ ->
+          Jsonrpc.error_response ~id:req.id
+            (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+               ~message:"Task is not completed" ())
+        | None ->
+          Jsonrpc.error_response ~id:req.id
+            (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+               ~message:(Printf.sprintf "Task not found: %s" id) ()))
+     | None ->
+       Jsonrpc.error_response ~id:req.id
+         (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+            ~message:"Missing task ID" ()))
 
   | _ ->
     Jsonrpc.error_response ~id:req.id

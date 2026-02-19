@@ -216,3 +216,12 @@ let success_response ~id result =
 
 let error_response ~id err =
   { id; result = None; error = Some err }
+
+(** Extract _meta from params if present *)
+let extract_meta params =
+  match params with
+  | Some (`Assoc fields) ->
+    (match List.assoc_opt "_meta" fields with
+     | Some meta -> Some meta
+     | None -> None)
+  | _ -> None

@@ -64,10 +64,12 @@ let initialize t ?(client_name = "kirin-client") ?(client_version = "1.0.0") () 
     "capabilities", Protocol.client_capabilities_to_json {
       Protocol.roots = None;
       sampling = None;
+      experimental = None;
     };
     "clientInfo", Protocol.implementation_info_to_json {
       Protocol.name = client_name;
       version = client_version;
+      description = None;
     };
   ] in
   match send_request t ~method_:Protocol.Method.initialize ~params () with
@@ -76,14 +78,25 @@ let initialize t ?(client_name = "kirin-client") ?(client_version = "1.0.0") () 
     t.server_info <- Some {
       Protocol.name = result |> member "serverInfo" |> member "name" |> to_string;
       version = result |> member "serverInfo" |> member "version" |> to_string;
+      description = (match result |> member "serverInfo" |> member "description" with
+        | `String s -> Some s
+        | _ -> None);
     };
     (* Parse server capabilities *)
     let caps_json = result |> member "capabilities" in
     t.server_capabilities <- Some {
-      Protocol.tools = (match caps_json |> member "tools" with `Null -> None | _ -> Some true);
-      resources = (match caps_json |> member "resources" with `Null -> None | _ -> Some true);
-      prompts = (match caps_json |> member "prompts" with `Null -> None | _ -> Some true);
-      logging = (match caps_json |> member "logging" with `Null -> None | _ -> Some true);
+      Protocol.tools = (match caps_json |> member "tools" with
+        | `Null -> None
+        | _ -> Some { Protocol.list_changed = None });
+      resources = (match caps_json |> member "resources" with
+        | `Null -> None
+        | _ -> Some { Protocol.subscribe = None; list_changed = None });
+      prompts = (match caps_json |> member "prompts" with
+        | `Null -> None
+        | _ -> Some { Protocol.list_changed = None });
+      logging = (match caps_json |> member "logging" with
+        | `Null -> None
+        | _ -> Some true);
     };
     (* Send initialized notification *)
     send_notification t ~method_:Protocol.Method.initialized ();
@@ -105,6 +118,8 @@ let list_tools t =
           | `String s -> Some s
           | _ -> None);
         input_schema = json |> member "inputSchema";
+        annotations = None;
+        icon = None;
       }
     )
   | None -> []
@@ -134,6 +149,7 @@ let call_tool t ~name ?(arguments = `Null) () =
         | _ -> Protocol.Text ""
       ) content;
       is_error;
+      _meta = None;
     }
   | None ->
     raise (Client_error "No result from tool call")
@@ -155,6 +171,7 @@ let list_resources t =
         mime_type = (match json |> member "mimeType" with
           | `String s -> Some s
           | _ -> None);
+        icon = None;
       }
     )
   | None -> []
@@ -210,6 +227,7 @@ let list_prompts t =
               }
             ) args)
           | _ -> None);
+        icon = None;
       }
     )
   | None -> []

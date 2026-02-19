@@ -1,7 +1,7 @@
 (** Kirin MCP - JSON Schema Builder
 
     Helper functions to construct JSON Schema objects for tool input definitions.
-    Follows JSON Schema Draft-07 specification.
+    Default dialect: JSON Schema 2020-12 (per MCP 2025-11-25 spec).
 *)
 
 (** {1 Primitive Types} *)
@@ -205,3 +205,14 @@ let bool_with_default ~default ?description () =
   match base with
   | `Assoc fields -> `Assoc (("default", `Bool default) :: fields)
   | _ -> base
+
+(** {1 Dialect} *)
+
+(** Default JSON Schema dialect (2020-12 per MCP 2025-11-25 spec) *)
+let default_dialect = "https://json-schema.org/draft/2020-12/schema"
+
+(** Add $schema annotation to a schema object *)
+let with_dialect schema =
+  match schema with
+  | `Assoc fields -> `Assoc (("$schema", `String default_dialect) :: fields)
+  | _ -> schema
