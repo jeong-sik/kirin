@@ -24,7 +24,7 @@ let () =
       let open Yojson.Safe.Util in
       let name = params |> member "name" |> to_string in
       `String (Printf.sprintf "Hello, %s! Welcome to Kirin MCP." name)
-    );
+    ) ();
 
   (* Register a calculator tool *)
   Mcp.Server.add_tool mcp
@@ -45,7 +45,7 @@ let () =
       let a = params |> member "a" |> to_number in
       let b = params |> member "b" |> to_number in
       `Float (a +. b)
-    );
+    ) ();
 
   (* Register a time resource *)
   Mcp.Server.add_resource mcp

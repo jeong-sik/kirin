@@ -56,15 +56,16 @@ let create ?(name = "kirin-mcp") ?(version = "1.0.0") () =
 
 (** {1 Tool Registration} *)
 
-(** Add a tool to the server *)
-let add_tool t ~name ~description ~schema ~handler =
+(** Add a tool to the server.
+    [?annotations] and [?icon] are optional 2025-11-25 fields. *)
+let add_tool t ~name ~description ~schema ?annotations ?icon ~handler () =
   Session.enable_tools t.session;
   let tool = {
     Protocol.name;
     description = Some description;
     input_schema = schema;
-    annotations = None;
-    icon = None;
+    annotations;
+    icon;
   } in
   t.tools <- { tool; handler } :: t.tools
 
@@ -89,14 +90,14 @@ let call_tool t ~name ~arguments =
 (** {1 Resource Registration} *)
 
 (** Add a resource to the server *)
-let add_resource t ~uri ~name ?description ?mime_type ~handler () =
+let add_resource t ~uri ~name ?description ?mime_type ?icon ~handler () =
   Session.enable_resources t.session;
   let resource = {
     Protocol.uri;
     name;
     description;
     mime_type;
-    icon = None;
+    icon;
   } in
   t.resources <- { resource; handler } :: t.resources
 
@@ -121,13 +122,13 @@ let read_resource t ~uri =
 (** {1 Prompt Registration} *)
 
 (** Add a prompt to the server *)
-let add_prompt t ~name ?description ?arguments ?handler () =
+let add_prompt t ~name ?description ?arguments ?icon ?handler () =
   Session.enable_prompts t.session;
   let prompt = {
     Protocol.name;
     description;
     arguments;
-    icon = None;
+    icon;
   } in
   t.prompts <- { prompt; handler } :: t.prompts
 

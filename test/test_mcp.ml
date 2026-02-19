@@ -110,7 +110,8 @@ let test_server_add_tool () =
       [("name", S.string ())])
     ~handler:(fun params ->
       let name = Yojson.Safe.Util.(params |> member "name" |> to_string) in
-      `String (Printf.sprintf "Hello, %s!" name));
+      `String (Printf.sprintf "Hello, %s!" name))
+    ();
   let tools = Kirin_mcp.Server.list_tools server in
   check int "one tool" 1 (List.length tools);
   check string "tool name" "greet" (List.hd tools).name
@@ -127,7 +128,8 @@ let test_server_call_tool () =
       let open Yojson.Safe.Util in
       let a = params |> member "a" |> to_int in
       let b = params |> member "b" |> to_int in
-      `Int (a + b));
+      `Int (a + b))
+    ();
   match Kirin_mcp.Server.call_tool server
     ~name:"add"
     ~arguments:(Some (`Assoc [("a", `Int 2); ("b", `Int 3)])) with
@@ -184,7 +186,8 @@ let test_server_handle_initialize () =
     ~name:"test"
     ~description:"Test tool"
     ~schema:(`Assoc [])
-    ~handler:(fun _ -> `Null);
+    ~handler:(fun _ -> `Null)
+    ();
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"initialize"
@@ -201,16 +204,45 @@ let test_server_handle_tools_list () =
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"tool1" ~description:"Tool 1"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null);
+    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
   Kirin_mcp.Server.add_tool server
     ~name:"tool2" ~description:"Tool 2"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null);
+    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"tools/list"
     () in
   let resp = Kirin_mcp.Server.handle_request server req in
   check bool "response has result" true (Option.is_some resp.result)
+
+let test_server_add_tool_with_annotations () =
+  let server = Kirin_mcp.Server.create () in
+  let ann : P.tool_annotations = {
+    title = Some "My Reader";
+    read_only_hint = Some true;
+    destructive_hint = Some false;
+    idempotent_hint = Some true;
+    open_world_hint = None;
+  } in
+  let icon : P.icon = { uri = "https://example.com/icon.png" } in
+  Kirin_mcp.Server.add_tool server
+    ~name:"reader"
+    ~description:"Read a file"
+    ~schema:(`Assoc [])
+    ~annotations:ann
+    ~icon
+    ~handler:(fun _ -> `Null)
+    ();
+  let tools = Kirin_mcp.Server.list_tools server in
+  check int "one tool" 1 (List.length tools);
+  let tool = List.hd tools in
+  check string "tool name" "reader" tool.name;
+  check bool "has annotations" true (Option.is_some tool.annotations);
+  let a = Option.get tool.annotations in
+  check (option string) "title" (Some "My Reader") a.title;
+  check (option bool) "read_only_hint" (Some true) a.read_only_hint;
+  check bool "has icon" true (Option.is_some tool.icon);
+  check string "icon uri" "https://example.com/icon.png" (Option.get tool.icon).uri
 
 let server_tests = [
   test_case "create" `Quick test_server_create;
@@ -221,6 +253,7 @@ let server_tests = [
   test_case "add prompt" `Quick test_server_add_prompt;
   test_case "handle initialize" `Quick test_server_handle_initialize;
   test_case "handle tools/list" `Quick test_server_handle_tools_list;
+  test_case "add tool with annotations/icon" `Quick test_server_add_tool_with_annotations;
 ]
 
 (** {1 Protocol Tests} *)
@@ -288,9 +321,30 @@ let test_session_initialize () =
       (Kirin_mcp.Session.state session = Kirin_mcp.Session.Initializing)
   | Error msg -> fail msg
 
+let test_session_id_generation () =
+  let session = Kirin_mcp.Session.create
+    ~server_name:"test"
+    ~server_version:"1.0.0" () in
+  check (option string) "no session id before init" None
+    (Kirin_mcp.Session.session_id session);
+  let params : P.initialize_params = {
+    protocol_version = "2025-11-25";
+    capabilities = { roots = None; sampling = None; experimental = None };
+    client_info = { name = "test-client"; version = "1.0"; description = None };
+    _meta = None;
+  } in
+  match Kirin_mcp.Session.handle_initialize session params with
+  | Ok _ ->
+    let sid = Kirin_mcp.Session.session_id session in
+    check bool "session id is Some" true (Option.is_some sid);
+    let id_str = Option.get sid in
+    check bool "session id is 24 hex chars" true (String.length id_str = 24)
+  | Error msg -> fail msg
+
 let session_tests = [
   test_case "create" `Quick test_session_create;
   test_case "initialize" `Quick test_session_initialize;
+  test_case "session id generation" `Quick test_session_id_generation;
 ]
 
 (** {1 Tasks Tests} *)
@@ -418,6 +472,36 @@ let test_tasks_state_strings () =
   check bool "input_required compat" true (T.task_state_of_string "input_required" = Ok T.Input_required);
   check bool "unknown fails" true (Result.is_error (T.task_state_of_string "bogus"))
 
+let test_tasks_on_state_change () =
+  let changes = ref [] in
+  let reg = T.create_registry
+    ~on_state_change:(fun task -> changes := (task.id, task.state) :: !changes)
+    () in
+  let task = T.create_task reg ~tool_name:"cb-test" in
+  (* update_progress fires callback *)
+  ignore (T.update_progress reg ~id:task.id ~progress:0.5 ());
+  check int "1 callback after progress" 1 (List.length !changes);
+  (* complete fires callback *)
+  let result : P.tool_result = {
+    content = [P.Text "done"];
+    is_error = None;
+    _meta = None;
+  } in
+  ignore (T.complete_task reg ~id:task.id ~result);
+  check int "2 callbacks total" 2 (List.length !changes);
+  (* Most recent is Completed *)
+  let (_, last_state) = List.hd !changes in
+  check bool "last state is completed" true (last_state = T.Completed)
+
+let test_tasks_set_on_state_change () =
+  let called = ref false in
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"late-cb" in
+  (* Set callback after creation *)
+  T.set_on_state_change reg (fun _ -> called := true);
+  ignore (T.fail_task reg ~id:task.id ~error:"oops");
+  check bool "late-bound callback fires" true !called
+
 let tasks_tests = [
   test_case "create" `Quick test_tasks_create;
   test_case "complete" `Quick test_tasks_complete;
@@ -430,6 +514,8 @@ let tasks_tests = [
   test_case "list" `Quick test_tasks_list;
   test_case "json roundtrip" `Quick test_tasks_json_roundtrip;
   test_case "state strings" `Quick test_tasks_state_strings;
+  test_case "on_state_change callback" `Quick test_tasks_on_state_change;
+  test_case "set_on_state_change late" `Quick test_tasks_set_on_state_change;
 ]
 
 (** {1 Tool Annotations Tests} *)
