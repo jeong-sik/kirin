@@ -1,7 +1,8 @@
 (** Kirin MCP - Transport Layer
 
     Transport implementations for MCP communication.
-    Supports stdio (for CLI tools) and HTTP+SSE (for web servers).
+    Supports stdio (for CLI tools) and Streamable HTTP (for web servers).
+    Updated for MCP 2025-11-25 specification.
 *)
 
 open Eio
@@ -14,16 +15,17 @@ type stdio_transport = {
   oc : Buf_write.t;
 }
 
-(** HTTP+SSE transport record *)
-type http_sse_transport = {
+(** Streamable HTTP transport record (2025-11-25) *)
+type streamable_http_transport = {
   mutable pending_requests : (Jsonrpc.id * Jsonrpc.response Eio.Promise.u) list;
   mutable message_queue : Jsonrpc.message Eio.Stream.t;
+  mutable session_id : string option;  (** Mcp-Session-Id header value *)
 }
 
 (** Transport type *)
 type t =
   | Stdio of stdio_transport
-  | Http_sse of http_sse_transport
+  | Streamable_http of streamable_http_transport
 
 (** Transport error *)
 exception Transport_error of string
@@ -60,50 +62,62 @@ let write_message_stdio oc msg =
   let line = Yojson.Safe.to_string json in
   write_line_stdio oc line
 
-(** {1 HTTP+SSE Transport} *)
+(** {1 Streamable HTTP Transport} *)
 
-(** Create HTTP+SSE transport *)
-let create_http_sse () =
-  Http_sse {
+(** Create Streamable HTTP transport (2025-11-25) *)
+let create_streamable_http () =
+  Streamable_http {
     pending_requests = [];
     message_queue = Stream.create 100;
+    session_id = None;
   }
 
 (** Queue an incoming message (called by HTTP handler) *)
 let queue_message transport msg =
   match transport with
-  | Http_sse t -> Stream.add t.message_queue msg
+  | Streamable_http t -> Stream.add t.message_queue msg
   | Stdio _ -> raise (Transport_error "Cannot queue message on stdio transport")
 
-(** Read from HTTP+SSE transport (blocks until message available) *)
-let read_message_http (t : http_sse_transport) =
+(** Read from Streamable HTTP transport (blocks until message available) *)
+let read_message_streamable_http (t : streamable_http_transport) =
   Stream.take t.message_queue
 
 (** Register a pending request for response matching *)
-let register_pending_request (t : http_sse_transport) id resolver =
+let register_pending_request (t : streamable_http_transport) id resolver =
   t.pending_requests <- (id, resolver) :: t.pending_requests
 
 (** Resolve a pending request with a response *)
-let resolve_pending_request (t : http_sse_transport) id response =
+let resolve_pending_request (t : streamable_http_transport) id response =
   match List.assoc_opt id t.pending_requests with
   | Some resolver ->
     t.pending_requests <- List.remove_assoc id t.pending_requests;
     Promise.resolve resolver response
   | None -> ()
 
+(** Get session ID from transport *)
+let session_id = function
+  | Streamable_http t -> t.session_id
+  | Stdio _ -> None
+
+(** Set session ID on transport *)
+let set_session_id transport id =
+  match transport with
+  | Streamable_http t -> t.session_id <- Some id
+  | Stdio _ -> () (* Session IDs are not used with stdio *)
+
 (** {1 Generic Interface} *)
 
 (** Read a message from transport *)
 let read_message = function
   | Stdio { ic; _ } -> read_message_stdio ic
-  | Http_sse t -> read_message_http t
+  | Streamable_http t -> read_message_streamable_http t
 
 (** Write a message to transport *)
 let write_message transport msg =
   match transport with
   | Stdio { oc; _ } -> write_message_stdio oc msg
-  | Http_sse _ ->
-    (* For HTTP+SSE, messages are written via SSE connection *)
+  | Streamable_http _ ->
+    (* For Streamable HTTP, messages are written via HTTP response or SSE *)
     (* This is handled by the server/client at a higher level *)
     ()
 
@@ -113,19 +127,19 @@ let write_message transport msg =
 let of_stdio ~ic ~oc =
   Stdio { ic; oc }
 
-(** Create HTTP+SSE transport *)
-let of_http_sse = create_http_sse
+(** Create Streamable HTTP transport *)
+let of_streamable_http = create_streamable_http
 
 (** {1 Utilities} *)
 
 (** Check if transport is stdio *)
 let is_stdio = function
   | Stdio _ -> true
-  | Http_sse _ -> false
+  | Streamable_http _ -> false
 
-(** Check if transport is HTTP+SSE *)
-let is_http_sse = function
-  | Http_sse _ -> true
+(** Check if transport is Streamable HTTP *)
+let is_streamable_http = function
+  | Streamable_http _ -> true
   | Stdio _ -> false
 
 (** Send a request and wait for response (stdio only) *)
@@ -140,8 +154,8 @@ let send_request transport request =
       | _ -> wait_for_response ()
     in
     wait_for_response ()
-  | Http_sse _ ->
-    raise (Transport_error "Use async methods for HTTP+SSE transport")
+  | Streamable_http _ ->
+    raise (Transport_error "Use async methods for Streamable HTTP transport")
 
 (** Send a notification (no response expected) *)
 let send_notification transport notif =

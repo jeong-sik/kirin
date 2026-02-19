@@ -189,7 +189,7 @@ let test_server_handle_initialize () =
     ~id:(J.Int 1)
     ~method_:"initialize"
     ~params:(`Assoc [
-      ("protocolVersion", `String "2024-11-05");
+      ("protocolVersion", `String "2025-11-25");
       ("capabilities", `Assoc []);
       ("clientInfo", `Assoc [("name", `String "test-client"); ("version", `String "1.0")]);
     ])
@@ -230,6 +230,8 @@ let test_protocol_tool_json () =
     name = "test_tool";
     description = Some "A test tool";
     input_schema = `Assoc [("type", `String "object")];
+    annotations = None;
+    icon = None;
   } in
   let json = P.tool_to_json tool in
   check bool "has name field" true
@@ -243,6 +245,7 @@ let test_protocol_resource_json () =
     name = "test";
     description = Some "Test resource";
     mime_type = Some "text/plain";
+    icon = None;
   } in
   let json = P.resource_to_json resource in
   check bool "has uri field" true
@@ -251,7 +254,7 @@ let test_protocol_resource_json () =
      | _ -> false)
 
 let test_protocol_version () =
-  check string "protocol version" "2024-11-05" P.protocol_version
+  check string "protocol version" "2025-11-25" P.protocol_version
 
 let protocol_tests = [
   test_case "tool json" `Quick test_protocol_tool_json;
@@ -273,9 +276,10 @@ let test_session_initialize () =
     ~server_name:"test"
     ~server_version:"1.0.0" () in
   let params : P.initialize_params = {
-    protocol_version = "2024-11-05";
-    capabilities = { roots = None; sampling = None };
-    client_info = { name = "test-client"; version = "1.0" };
+    protocol_version = "2025-11-25";
+    capabilities = { roots = None; sampling = None; experimental = None };
+    client_info = { name = "test-client"; version = "1.0"; description = None };
+    _meta = None;
   } in
   match Kirin_mcp.Session.handle_initialize session params with
   | Ok result ->
@@ -289,6 +293,278 @@ let session_tests = [
   test_case "initialize" `Quick test_session_initialize;
 ]
 
+(** {1 Tasks Tests} *)
+
+module T = Kirin_mcp.Tasks
+
+let test_tasks_create () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"test-tool" in
+  check string "task id" "task-1" task.id;
+  check string "tool name" "test-tool" task.tool_name;
+  check bool "state is working" true (task.state = T.Working);
+  check bool "no progress" true (Option.is_none task.progress)
+
+let test_tasks_complete () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"add" in
+  let result : P.tool_result = {
+    content = [P.Text "42"];
+    is_error = None;
+    _meta = None;
+  } in
+  (match T.complete_task reg ~id:task.id ~result with
+   | Ok () ->
+     let t = Option.get (T.get_task reg ~id:task.id) in
+     check bool "completed" true (t.state = T.Completed);
+     check bool "has result" true (Option.is_some t.result);
+     check bool "progress is 1.0" true (t.progress = Some 1.0)
+   | Error msg -> fail msg)
+
+let test_tasks_fail () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"fail-tool" in
+  (match T.fail_task reg ~id:task.id ~error:"something broke" with
+   | Ok () ->
+     let t = Option.get (T.get_task reg ~id:task.id) in
+     check bool "failed" true (t.state = T.Failed);
+     check (option string) "error msg" (Some "something broke") t.error
+   | Error msg -> fail msg)
+
+let test_tasks_cancel () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"cancel-me" in
+  (match T.cancel_task reg ~id:task.id with
+   | Ok () ->
+     let t = Option.get (T.get_task reg ~id:task.id) in
+     check bool "cancelled" true (t.state = T.Cancelled)
+   | Error msg -> fail msg)
+
+let test_tasks_cancel_completed_fails () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"done" in
+  let result : P.tool_result = {
+    content = [P.Text "ok"]; is_error = None; _meta = None;
+  } in
+  ignore (T.complete_task reg ~id:task.id ~result);
+  match T.cancel_task reg ~id:task.id with
+  | Ok () -> fail "should not cancel completed task"
+  | Error _ -> ()
+
+let test_tasks_progress () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"slow" in
+  (match T.update_progress reg ~id:task.id ~progress:0.5 ~message:"halfway" () with
+   | Ok () ->
+     let t = Option.get (T.get_task reg ~id:task.id) in
+     check bool "progress 50%" true (t.progress = Some 0.5);
+     check (option string) "progress msg" (Some "halfway") t.progress_message
+   | Error msg -> fail msg)
+
+let test_tasks_input_required () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"interactive" in
+  (match T.request_input reg ~id:task.id with
+   | Ok () ->
+     let t = Option.get (T.get_task reg ~id:task.id) in
+     check bool "input_required" true (t.state = T.Input_required);
+     (* Can cancel from input_required *)
+     (match T.cancel_task reg ~id:task.id with
+      | Ok () -> check bool "cancelled" true
+          ((Option.get (T.get_task reg ~id:task.id)).state = T.Cancelled)
+      | Error msg -> fail msg)
+   | Error msg -> fail msg)
+
+let test_tasks_resume () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"interactive" in
+  ignore (T.request_input reg ~id:task.id);
+  (match T.resume_task reg ~id:task.id with
+   | Ok () ->
+     check bool "working again" true
+       ((Option.get (T.get_task reg ~id:task.id)).state = T.Working)
+   | Error msg -> fail msg)
+
+let test_tasks_list () =
+  let reg = T.create_registry () in
+  ignore (T.create_task reg ~tool_name:"a");
+  ignore (T.create_task reg ~tool_name:"b");
+  ignore (T.create_task reg ~tool_name:"c");
+  check int "three tasks" 3 (List.length (T.list_tasks reg))
+
+let test_tasks_json_roundtrip () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"json-test" in
+  ignore (T.update_progress reg ~id:task.id ~progress:0.75 ~message:"almost" ());
+  let json = T.task_to_json task in
+  match T.task_of_json json with
+  | Ok decoded ->
+    check string "id matches" task.id decoded.id;
+    check string "tool_name matches" "json-test" decoded.tool_name;
+    check bool "state matches" true (decoded.state = T.Working);
+    check bool "progress matches" true (decoded.progress = Some 0.75);
+    check (option string) "message matches" (Some "almost") decoded.progress_message
+  | Error msg -> fail msg
+
+let test_tasks_state_strings () =
+  check string "working" "working" (T.task_state_to_string T.Working);
+  check string "input_required" "input_required" (T.task_state_to_string T.Input_required);
+  check string "completed" "completed" (T.task_state_to_string T.Completed);
+  check string "failed" "failed" (T.task_state_to_string T.Failed);
+  check string "cancelled" "cancelled" (T.task_state_to_string T.Cancelled);
+  (* Round-trip *)
+  check bool "working rt" true (T.task_state_of_string "working" = Ok T.Working);
+  check bool "unknown fails" true (Result.is_error (T.task_state_of_string "bogus"))
+
+let tasks_tests = [
+  test_case "create" `Quick test_tasks_create;
+  test_case "complete" `Quick test_tasks_complete;
+  test_case "fail" `Quick test_tasks_fail;
+  test_case "cancel" `Quick test_tasks_cancel;
+  test_case "cancel completed fails" `Quick test_tasks_cancel_completed_fails;
+  test_case "progress" `Quick test_tasks_progress;
+  test_case "input required" `Quick test_tasks_input_required;
+  test_case "resume" `Quick test_tasks_resume;
+  test_case "list" `Quick test_tasks_list;
+  test_case "json roundtrip" `Quick test_tasks_json_roundtrip;
+  test_case "state strings" `Quick test_tasks_state_strings;
+]
+
+(** {1 Tool Annotations Tests} *)
+
+let test_annotations_defaults () =
+  let ann : P.tool_annotations = {
+    title = None;
+    read_only_hint = None;
+    destructive_hint = None;
+    idempotent_hint = None;
+    open_world_hint = None;
+  } in
+  let json = P.tool_annotations_to_json ann in
+  (* All None fields should produce empty object *)
+  check bool "empty annotations" true
+    (match json with `Assoc [] -> true | _ -> false)
+
+let test_annotations_populated () =
+  let ann : P.tool_annotations = {
+    title = Some "Read File";
+    read_only_hint = Some true;
+    destructive_hint = Some false;
+    idempotent_hint = Some true;
+    open_world_hint = Some false;
+  } in
+  let json = P.tool_annotations_to_json ann in
+  let json_str = Yojson.Safe.to_string json in
+  check bool "has title" true (String.length json_str > 0);
+  check bool "has readOnlyHint" true
+    (Yojson.Safe.Util.member "readOnlyHint" json = `Bool true)
+
+let test_annotations_in_tool () =
+  let tool : P.tool = {
+    name = "safe_read";
+    description = Some "Read a file safely";
+    input_schema = `Assoc [("type", `String "object")];
+    annotations = Some {
+      title = Some "Safe Read";
+      read_only_hint = Some true;
+      destructive_hint = Some false;
+      idempotent_hint = Some true;
+      open_world_hint = Some false;
+    };
+    icon = None;
+  } in
+  let json = P.tool_to_json tool in
+  check bool "has annotations" true
+    (Yojson.Safe.Util.member "annotations" json <> `Null)
+
+let annotations_tests = [
+  test_case "defaults (empty)" `Quick test_annotations_defaults;
+  test_case "populated" `Quick test_annotations_populated;
+  test_case "in tool" `Quick test_annotations_in_tool;
+]
+
+(** {1 Icon Tests} *)
+
+let test_icon_encoding () =
+  let icon : P.icon = { uri = "https://example.com/icon.png" } in
+  let json = P.icon_to_json icon in
+  check bool "has uri" true
+    (Yojson.Safe.Util.member "uri" json = `String "https://example.com/icon.png")
+
+let test_icon_in_tool () =
+  let tool : P.tool = {
+    name = "with_icon";
+    description = None;
+    input_schema = `Assoc [];
+    annotations = None;
+    icon = Some { uri = "data:image/svg+xml;base64,abc" };
+  } in
+  let json = P.tool_to_json tool in
+  check bool "has icon field" true
+    (Yojson.Safe.Util.member "icon" json <> `Null)
+
+let icon_tests = [
+  test_case "encoding" `Quick test_icon_encoding;
+  test_case "in tool" `Quick test_icon_in_tool;
+]
+
+(** {1 Meta Tests} *)
+
+let test_meta_extraction () =
+  let params = Some (`Assoc [
+    ("name", `String "test");
+    ("_meta", `Assoc [("progressToken", `String "tok-1")]);
+  ]) in
+  match J.extract_meta params with
+  | Some meta ->
+    check bool "has progressToken" true
+      (Yojson.Safe.Util.member "progressToken" meta = `String "tok-1")
+  | None -> fail "expected _meta"
+
+let test_meta_absent () =
+  let params = Some (`Assoc [("name", `String "test")]) in
+  check bool "no _meta" true (Option.is_none (J.extract_meta params))
+
+let test_meta_null_params () =
+  check bool "null params" true (Option.is_none (J.extract_meta None))
+
+let meta_tests = [
+  test_case "extraction" `Quick test_meta_extraction;
+  test_case "absent" `Quick test_meta_absent;
+  test_case "null params" `Quick test_meta_null_params;
+]
+
+(** {1 Capabilities Tests} *)
+
+let test_capabilities_structured () =
+  let caps : P.server_capabilities = {
+    tools = Some { list_changed = Some true };
+    resources = Some { subscribe = Some true; list_changed = None };
+    prompts = Some { list_changed = None };
+    logging = Some true;
+  } in
+  let json = P.server_capabilities_to_json caps in
+  let tools_json = Yojson.Safe.Util.member "tools" json in
+  check bool "tools not null" true (tools_json <> `Null);
+  check bool "tools.listChanged" true
+    (Yojson.Safe.Util.member "listChanged" tools_json = `Bool true)
+
+let test_capabilities_empty () =
+  let caps : P.server_capabilities = {
+    tools = None;
+    resources = None;
+    prompts = None;
+    logging = None;
+  } in
+  let json = P.server_capabilities_to_json caps in
+  check bool "tools is null" true
+    (Yojson.Safe.Util.member "tools" json = `Null)
+
+let capabilities_tests = [
+  test_case "structured" `Quick test_capabilities_structured;
+  test_case "empty" `Quick test_capabilities_empty;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -298,4 +574,9 @@ let () =
     ("Server", server_tests);
     ("Protocol", protocol_tests);
     ("Session", session_tests);
+    ("Tasks", tasks_tests);
+    ("Annotations", annotations_tests);
+    ("Icons", icon_tests);
+    ("Meta", meta_tests);
+    ("Capabilities", capabilities_tests);
   ]

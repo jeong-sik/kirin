@@ -1,7 +1,7 @@
 (** Kirin MCP Client Example
 
-    Demonstrates how to create an MCP client that uses HTTP+SSE transport.
-    This is the typical setup for web-based MCP servers.
+    Demonstrates how to create an MCP client that uses Streamable HTTP transport.
+    This is the typical setup for web-based MCP servers (2025-11-25 spec).
 
     In a real application, you would connect to an MCP server endpoint
     and use the client to call tools, read resources, etc.
@@ -16,9 +16,9 @@ let () =
   Printf.printf "Kirin MCP Client Example\n";
   Printf.printf "========================\n\n";
 
-  (* Create HTTP+SSE transport (for web-based MCP servers) *)
-  let transport = Mcp.Transport.of_http_sse () in
-  Printf.printf "Created HTTP+SSE transport\n";
+  (* Create Streamable HTTP transport (for web-based MCP servers) *)
+  let transport = Mcp.Transport.create_streamable_http () in
+  Printf.printf "Created Streamable HTTP transport\n";
 
   (* Create client *)
   let client = Mcp.Client.create transport in
@@ -49,12 +49,13 @@ let () =
 
   Printf.printf "\nTo connect to a real MCP server:\n";
   Printf.printf "  1. Start an MCP server (e.g., run mcp_server example)\n";
-  Printf.printf "  2. The client would POST to /mcp endpoint\n";
-  Printf.printf "  3. Server-sent events come from /mcp/sse\n";
+  Printf.printf "  2. Client POSTs JSON-RPC to /mcp endpoint\n";
+  Printf.printf "  3. Server responds with JSON or SSE stream\n";
+  Printf.printf "  4. Mcp-Session-Id header tracks the session\n";
 
   (* Show transport check *)
   Printf.printf "\nTransport type: %s\n"
-    (if Mcp.Transport.is_http_sse transport then "HTTP+SSE" else "stdio");
+    (if Mcp.Transport.is_streamable_http transport then "Streamable HTTP" else "stdio");
 
   ignore client;
   Printf.printf "\nMCP client demo complete.\n"

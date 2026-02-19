@@ -35,6 +35,7 @@ let create ~server_name ~server_version () =
     server_info = {
       Protocol.name = server_name;
       version = server_version;
+      description = None;
     };
     server_capabilities = {
       Protocol.tools = None;
@@ -60,15 +61,18 @@ let is_closed t = t.state = Closed
 
 (** Enable tools capability *)
 let enable_tools t =
-  t.server_capabilities <- { t.server_capabilities with tools = Some true }
+  t.server_capabilities <- { t.server_capabilities with
+    tools = Some { Protocol.list_changed = None } }
 
 (** Enable resources capability *)
 let enable_resources t =
-  t.server_capabilities <- { t.server_capabilities with resources = Some true }
+  t.server_capabilities <- { t.server_capabilities with
+    resources = Some { Protocol.subscribe = None; list_changed = None } }
 
 (** Enable prompts capability *)
 let enable_prompts t =
-  t.server_capabilities <- { t.server_capabilities with prompts = Some true }
+  t.server_capabilities <- { t.server_capabilities with
+    prompts = Some { Protocol.list_changed = None } }
 
 (** Enable logging capability *)
 let enable_logging t =
@@ -93,6 +97,7 @@ let handle_initialize t (params : Protocol.initialize_params) =
       Protocol.protocol_version = Protocol.protocol_version;
       capabilities = t.server_capabilities;
       server_info = t.server_info;
+      _meta = None;
     }
   | _ ->
     Error "Session already initialized"

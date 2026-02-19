@@ -79,13 +79,15 @@ let tool_of_json_handler ~name ~description ~(schema : Yojson.Safe.t)
     name;
     description = Some description;
     input_schema = schema;
+    annotations = None;
+    icon = None;
   } in
   (tool, handler)
 
-(** Create Kirin routes for MCP server (HTTP+SSE transport)
+(** Create Kirin routes for MCP server (Streamable HTTP transport, 2025-11-25)
 
     Returns routes for:
-    - POST /mcp - Handle JSON-RPC requests
+    - POST /mcp - Handle JSON-RPC requests (immediate or streaming response)
     - GET /mcp/sse - SSE endpoint for server-to-client messages
 
     {[
@@ -149,16 +151,17 @@ let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
     Router.options prefix handle_options;
   ]
 
-(** Create an HTTP+SSE MCP client transport.
+(** Create a Streamable HTTP MCP client transport (2025-11-25).
 
     Note: For a production client, you'd need to handle:
     1. HTTP POST requests to the MCP endpoint
-    2. SSE connection for server-initiated messages
+    2. Optional GET SSE for server-initiated messages
+    3. Mcp-Session-Id header management
 
     For now, this returns the basic transport structure.
 *)
 let create_http_client () =
-  Transport.of_http_sse ()
+  Transport.create_streamable_http ()
 
 (** {1 Quick Access} *)
 

@@ -54,8 +54,11 @@ module Protocol = Protocol
 (** JSON Schema builder for tool input definitions *)
 module Schema = Schema
 
-(** Transport layer (stdio, HTTP+SSE) *)
+(** Transport layer (stdio, Streamable HTTP) *)
 module Transport = Transport
+
+(** Tasks primitive for async tool execution *)
+module Tasks = Tasks
 
 (** Session management and lifecycle *)
 module Session = Session
