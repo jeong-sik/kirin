@@ -408,12 +408,14 @@ let test_tasks_json_roundtrip () =
 
 let test_tasks_state_strings () =
   check string "working" "working" (T.task_state_to_string T.Working);
-  check string "input_required" "input_required" (T.task_state_to_string T.Input_required);
+  check string "inputRequired" "inputRequired" (T.task_state_to_string T.Input_required);
   check string "completed" "completed" (T.task_state_to_string T.Completed);
   check string "failed" "failed" (T.task_state_to_string T.Failed);
   check string "cancelled" "cancelled" (T.task_state_to_string T.Cancelled);
   (* Round-trip *)
   check bool "working rt" true (T.task_state_of_string "working" = Ok T.Working);
+  check bool "inputRequired rt" true (T.task_state_of_string "inputRequired" = Ok T.Input_required);
+  check bool "input_required compat" true (T.task_state_of_string "input_required" = Ok T.Input_required);
   check bool "unknown fails" true (Result.is_error (T.task_state_of_string "bogus"))
 
 let tasks_tests = [

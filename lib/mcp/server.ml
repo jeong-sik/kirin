@@ -206,7 +206,7 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = tasks_get ->
     (match req.params with
      | Some params ->
-       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       let id = Yojson.Safe.Util.(params |> member "taskId" |> to_string) in
        (match Tasks.get_task t.task_registry ~id with
         | Some task ->
           Jsonrpc.success_response ~id:req.id
@@ -227,7 +227,7 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = tasks_cancel ->
     (match req.params with
      | Some params ->
-       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       let id = Yojson.Safe.Util.(params |> member "taskId" |> to_string) in
        (match Tasks.cancel_task t.task_registry ~id with
         | Ok () ->
           Jsonrpc.success_response ~id:req.id (`Assoc [])
@@ -242,7 +242,7 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = tasks_result ->
     (match req.params with
      | Some params ->
-       let id = Yojson.Safe.Util.(params |> member "id" |> to_string) in
+       let id = Yojson.Safe.Util.(params |> member "taskId" |> to_string) in
        (match Tasks.get_task t.task_registry ~id with
         | Some task when task.state = Tasks.Completed ->
           (match task.result with
