@@ -12,6 +12,10 @@ let mime_of_ext ext =
   | ".gif" -> "image/gif"
   | ".svg" -> "image/svg+xml"
   | ".txt" -> "text/plain; charset=utf-8"
+  | ".woff" | ".woff2" -> "font/woff2"
+  | ".ttf" -> "font/ttf"
+  | ".eot" -> "application/vnd.ms-fontobject"
+  | ".webp" -> "image/webp"
   | _ -> "application/octet-stream"
 
 let get_mime_type path =
@@ -33,6 +37,14 @@ let static prefix ~dir =
        String.sub path 0 (String.length prefix) = prefix then
       let relative_path = 
         String.sub path (String.length prefix) (String.length path - String.length prefix)
+      in
+      
+      (* Remove leading slash to prevent Filename.concat treating it as absolute *)
+      let relative_path = 
+        if String.length relative_path > 0 && relative_path.[0] = '/' then
+          String.sub relative_path 1 (String.length relative_path - 1)
+        else
+          relative_path
       in
       
       if contains_dot_dot relative_path then
