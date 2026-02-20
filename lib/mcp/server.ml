@@ -6,8 +6,21 @@
 
 (** {1 Types} *)
 
-(** Tool handler function *)
-type tool_handler = Yojson.Safe.t -> Yojson.Safe.t
+(** Eio clock type alias *)
+type eio_clock = float Eio.Time.clock_ty Eio.Resource.t
+
+(** Eio execution context — bundles Switch + Clock so callers pass one value
+    instead of threading multiple labeled args through the call chain.
+    Extend this record (e.g., with [env] or [fs]) without breaking callers. *)
+type eio_ctx = {
+  sw : Eio.Switch.t;
+  clock : eio_clock;
+}
+
+(** Tool handler: can be sync or async (Eio fiber-based) *)
+type tool_handler =
+  | Sync of (Yojson.Safe.t -> Yojson.Safe.t)
+  | Async of (eio_ctx -> Yojson.Safe.t -> Yojson.Safe.t)
 
 (** Resource handler function: returns (content, mime_type) *)
 type resource_handler = unit -> string * string
@@ -38,6 +51,7 @@ type t = {
   mutable tools : registered_tool list;
   mutable resources : registered_resource list;
   mutable prompts : registered_prompt list;
+  logging : Logging.t;
   session : Session.t;
   task_registry : Tasks.registry;
 }
@@ -45,11 +59,12 @@ type t = {
 (** {1 Constructor} *)
 
 (** Create a new MCP server *)
-let create ?(name = "kirin-mcp") ?(version = "1.0.0") () =
+let create ?(name = "kirin-mcp") ?(version = "1.0.0") ?log_level ?log_handler () =
   {
     tools = [];
     resources = [];
     prompts = [];
+    logging = Logging.create ?level:log_level ?handler:log_handler ();
     session = Session.create ~server_name:name ~server_version:version ();
     task_registry = Tasks.create_registry ();
   }
@@ -57,6 +72,7 @@ let create ?(name = "kirin-mcp") ?(version = "1.0.0") () =
 (** {1 Tool Registration} *)
 
 (** Add a tool to the server.
+    [handler] is a [tool_handler] variant: [Sync f] or [Async f].
     [?annotations] and [?icon] are optional 2025-11-25 fields. *)
 let add_tool t ~name ~description ~schema ?annotations ?icon ~handler () =
   Session.enable_tools t.session;
@@ -69,16 +85,25 @@ let add_tool t ~name ~description ~schema ?annotations ?icon ~handler () =
   } in
   t.tools <- { tool; handler } :: t.tools
 
+(** Convenience: add a synchronous tool (wraps handler in [Sync]) *)
+let add_tool_sync t ~name ~description ~schema ?annotations ?icon ~handler () =
+  add_tool t ~name ~description ~schema ?annotations ?icon
+    ~handler:(Sync handler) ()
+
 (** List all tools *)
 let list_tools t =
   List.map (fun rt -> rt.tool) t.tools
 
-(** Call a tool by name *)
-let call_tool t ~name ~arguments =
+(** Call a tool by name.
+    [~ctx] carries the Eio execution context for [Async] handlers. *)
+let call_tool t ~ctx ~name ~arguments =
   match List.find_opt (fun rt -> rt.tool.name = name) t.tools with
   | Some rt ->
     let args = Option.value arguments ~default:`Null in
-    let result = rt.handler args in
+    let result = match rt.handler with
+      | Sync f -> f args
+      | Async f -> f ctx args
+    in
     Ok {
       Protocol.content = [Protocol.Text (Yojson.Safe.to_string result)];
       is_error = None;
@@ -136,10 +161,20 @@ let add_prompt t ~name ?description ?arguments ?icon ?handler () =
 let list_prompts t =
   List.map (fun rp -> rp.prompt) t.prompts
 
+(** Get a prompt by name and execute its handler *)
+let get_prompt t ~name ~arguments =
+  match List.find_opt (fun rp -> rp.prompt.name = name) t.prompts with
+  | Some rp ->
+    (match rp.handler with
+     | Some handler -> Ok (handler arguments)
+     | None -> Error "Prompt has no handler")
+  | None -> Error (Printf.sprintf "Prompt not found: %s" name)
+
 (** {1 Request Handling} *)
 
-(** Handle a JSON-RPC request *)
-let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
+(** Handle a JSON-RPC request.
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let handle_request t ~ctx (req : Jsonrpc.request) : Jsonrpc.response =
   let open Protocol.Method in
   match req.method_ with
   | m when m = initialize ->
@@ -169,7 +204,7 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
     (match req.params with
      | Some params ->
        let call = Protocol.tool_call_of_json params in
-       (match call_tool t ~name:call.name ~arguments:call.arguments with
+       (match call_tool t ~ctx ~name:call.name ~arguments:call.arguments with
         | Ok result ->
           Jsonrpc.success_response ~id:req.id (Protocol.tool_result_to_json result)
         | Error msg ->
@@ -203,6 +238,52 @@ let handle_request t (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = prompts_list ->
     let prompts_json = `List (List.map Protocol.prompt_to_json (list_prompts t)) in
     Jsonrpc.success_response ~id:req.id (`Assoc ["prompts", prompts_json])
+
+  | m when m = prompts_get ->
+    (match req.params with
+     | Some params ->
+       let name = Yojson.Safe.Util.(params |> member "name" |> to_string) in
+       let arguments =
+         match Yojson.Safe.Util.(params |> member "arguments") with
+         | `Assoc pairs ->
+           List.filter_map (fun (k, v) ->
+             match v with `String s -> Some (k, s) | _ -> None
+           ) pairs
+         | _ -> []
+       in
+       (match get_prompt t ~name ~arguments with
+        | Ok messages ->
+          Jsonrpc.success_response ~id:req.id
+            (`Assoc ["messages", `List (List.map Protocol.prompt_message_to_json messages)])
+        | Error msg ->
+          Jsonrpc.error_response ~id:req.id
+            (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params ~message:msg ()))
+     | None ->
+       Jsonrpc.error_response ~id:req.id
+         (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+            ~message:"Missing prompt get params" ()))
+
+  | m when m = logging_set_level ->
+    (match req.params with
+     | Some params ->
+       (try
+         let level_str = Yojson.Safe.Util.(params |> member "level" |> to_string) in
+         (match Logging.log_level_of_string level_str with
+          | Ok level ->
+            Session.enable_logging t.session;
+            Logging.set_level t.logging level;
+            Jsonrpc.success_response ~id:req.id (`Assoc [])
+          | Error msg ->
+            Jsonrpc.error_response ~id:req.id
+              (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params ~message:msg ()))
+       with Yojson.Safe.Util.Type_error (msg, _) ->
+         Jsonrpc.error_response ~id:req.id
+           (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+              ~message:(Printf.sprintf "Invalid level param: %s" msg) ()))
+     | None ->
+       Jsonrpc.error_response ~id:req.id
+         (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+            ~message:"Missing logging level params" ()))
 
   | m when m = tasks_get ->
     (match req.params with
@@ -286,11 +367,12 @@ let handle_notification t (notif : Jsonrpc.notification) =
     (* Unknown notification - ignore *)
     ()
 
-(** Handle any incoming message *)
-let handle_message t (msg : Jsonrpc.message) : Jsonrpc.message option =
+(** Handle any incoming message.
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let handle_message t ~ctx (msg : Jsonrpc.message) : Jsonrpc.message option =
   match msg with
   | Jsonrpc.Request req ->
-    Some (Jsonrpc.Response (handle_request t req))
+    Some (Jsonrpc.Response (handle_request t ~ctx req))
   | Jsonrpc.Notification notif ->
     handle_notification t notif;
     None
@@ -300,11 +382,12 @@ let handle_message t (msg : Jsonrpc.message) : Jsonrpc.message option =
 
 (** {1 Server Loop} *)
 
-(** Run the server on a transport (blocking, direct-style) *)
-let run t transport =
+(** Run the server on a transport (blocking, direct-style).
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let run t ~ctx transport =
   let rec loop () =
     let msg = Transport.read_message transport in
-    (match handle_message t msg with
+    (match handle_message t ~ctx msg with
      | Some response -> Transport.write_message transport response
      | None -> ());
     if Session.is_ready t.session || Session.state t.session = Session.Initializing then
@@ -316,3 +399,6 @@ let run t transport =
 
 (** Get the session *)
 let session t = t.session
+
+(** Get the logging instance *)
+let logging t = t.logging

@@ -108,15 +108,19 @@ let test_server_add_tool () =
     ~schema:(S.object_
       ~required:["name"]
       [("name", S.string ())])
-    ~handler:(fun params ->
+    ~handler:(Kirin_mcp.Server.Sync (fun params ->
       let name = Yojson.Safe.Util.(params |> member "name" |> to_string) in
-      `String (Printf.sprintf "Hello, %s!" name))
+      `String (Printf.sprintf "Hello, %s!" name)))
     ();
   let tools = Kirin_mcp.Server.list_tools server in
   check int "one tool" 1 (List.length tools);
   check string "tool name" "greet" (List.hd tools).name
 
 let test_server_call_tool () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"add"
@@ -124,13 +128,13 @@ let test_server_call_tool () =
     ~schema:(S.object_
       ~required:["a"; "b"]
       [("a", S.int ()); ("b", S.int ())])
-    ~handler:(fun params ->
+    ~handler:(Kirin_mcp.Server.Sync (fun params ->
       let open Yojson.Safe.Util in
       let a = params |> member "a" |> to_int in
       let b = params |> member "b" |> to_int in
-      `Int (a + b))
+      `Int (a + b)))
     ();
-  match Kirin_mcp.Server.call_tool server
+  match Kirin_mcp.Server.call_tool server ~ctx
     ~name:"add"
     ~arguments:(Some (`Assoc [("a", `Int 2); ("b", `Int 3)])) with
   | Ok result ->
@@ -181,12 +185,16 @@ let test_server_add_prompt () =
   check string "prompt name" "greeting" (List.hd prompts).name
 
 let test_server_handle_initialize () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create ~name:"test-server" ~version:"1.0.0" () in
   Kirin_mcp.Server.add_tool server
     ~name:"test"
     ~description:"Test tool"
     ~schema:(`Assoc [])
-    ~handler:(fun _ -> `Null)
+    ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null))
     ();
   let req = J.make_request
     ~id:(J.Int 1)
@@ -197,22 +205,26 @@ let test_server_handle_initialize () =
       ("clientInfo", `Assoc [("name", `String "test-client"); ("version", `String "1.0")]);
     ])
     () in
-  let resp = Kirin_mcp.Server.handle_request server req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_handle_tools_list () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"tool1" ~description:"Tool 1"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
+    ~schema:(`Assoc []) ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null)) ();
   Kirin_mcp.Server.add_tool server
     ~name:"tool2" ~description:"Tool 2"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
+    ~schema:(`Assoc []) ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null)) ();
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"tools/list"
     () in
-  let resp = Kirin_mcp.Server.handle_request server req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_add_tool_with_annotations () =
@@ -231,7 +243,7 @@ let test_server_add_tool_with_annotations () =
     ~schema:(`Assoc [])
     ~annotations:ann
     ~icon
-    ~handler:(fun _ -> `Null)
+    ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null))
     ();
   let tools = Kirin_mcp.Server.list_tools server in
   check int "one tool" 1 (List.length tools);
@@ -890,6 +902,168 @@ let client_tests = [
   test_case "next_id monotonic" `Quick test_client_next_id_monotonic;
 ]
 
+(** {1 Governance Tests} *)
+
+module G = Kirin_mcp.Governance
+
+let test_governance_audit_log_create () =
+  Eio_main.run @@ fun _env ->
+  let log = G.create_audit_log ~max_events:10 () in
+  let events = G.recent_events log 100 in
+  check int "empty log" 0 (List.length events)
+
+let test_governance_audit_record_and_retrieve () =
+  Eio_main.run @@ fun _env ->
+  let log = G.create_audit_log ~max_events:10 () in
+  let event = G.tool_call_event ~tool_name:"test_tool" ~outcome:"success" () in
+  G.record_event log event;
+  let events = G.recent_events log 10 in
+  check int "one event" 1 (List.length events);
+  let e = List.hd events in
+  check (option string) "tool name" (Some "test_tool") e.tool_name;
+  check string "outcome" "success" e.outcome
+
+let test_governance_audit_eviction () =
+  Eio_main.run @@ fun _env ->
+  let log = G.create_audit_log ~max_events:3 () in
+  for i = 0 to 4 do
+    let event = G.tool_call_event
+      ~tool_name:(Printf.sprintf "tool_%d" i) ~outcome:"success" () in
+    G.record_event log event
+  done;
+  let events = G.recent_events log 10 in
+  check int "max 3 events" 3 (List.length events);
+  (* oldest events (0,1) evicted; events 2,3,4 remain *)
+  let first = List.hd events in
+  check (option string) "oldest is tool_2" (Some "tool_2") first.tool_name
+
+let test_governance_audit_to_json () =
+  Eio_main.run @@ fun _env ->
+  let log = G.create_audit_log ~max_events:10 () in
+  let event = G.tool_call_event ~tool_name:"json_tool" ~outcome:"error"
+    ~session_id:"sess-1" () in
+  G.record_event log event;
+  let json = G.audit_log_to_json log in
+  let open Yojson.Safe.Util in
+  check int "count" 1 (json |> member "count" |> to_int);
+  check int "max_events" 10 (json |> member "max_events" |> to_int)
+
+let test_governance_permission_check () =
+  let config = G.default_development () in
+  (match G.check_tool_permission config ~tool_name:"anything" with
+   | G.Allowed -> ()
+   | _ -> fail "development should allow all tools");
+  let deny_config = { config with denied_tools = ["blocked_tool"] } in
+  (match G.check_tool_permission deny_config ~tool_name:"blocked_tool" with
+   | G.Denied _ -> ()
+   | _ -> fail "denied tool should be denied")
+
+let test_governance_concurrent_access () =
+  Eio_main.run @@ fun _env ->
+  let log = G.create_audit_log ~max_events:100 () in
+  Eio.Fiber.all [
+    (fun () ->
+      for i = 0 to 19 do
+        let event = G.tool_call_event
+          ~tool_name:(Printf.sprintf "fiber_a_%d" i) ~outcome:"success" () in
+        G.record_event log event
+      done);
+    (fun () ->
+      for i = 0 to 19 do
+        let event = G.tool_call_event
+          ~tool_name:(Printf.sprintf "fiber_b_%d" i) ~outcome:"success" () in
+        G.record_event log event
+      done);
+  ];
+  let events = G.recent_events log 100 in
+  check int "40 events from 2 fibers" 40 (List.length events)
+
+let governance_tests = [
+  test_case "audit log create" `Quick test_governance_audit_log_create;
+  test_case "audit record and retrieve" `Quick test_governance_audit_record_and_retrieve;
+  test_case "audit eviction" `Quick test_governance_audit_eviction;
+  test_case "audit to json" `Quick test_governance_audit_to_json;
+  test_case "permission check" `Quick test_governance_permission_check;
+  test_case "concurrent access" `Quick test_governance_concurrent_access;
+]
+
+(** {1 Logging Handler Tests} *)
+
+module L = Kirin_mcp.Logging
+
+let test_logging_set_level_valid () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let server = Kirin_mcp.Server.create () in
+  let req = J.make_request
+    ~id:(J.Int 1)
+    ~method_:"logging/setLevel"
+    ~params:(`Assoc [("level", `String "debug")])
+    () in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
+  check bool "success response" true (Option.is_some resp.result);
+  check bool "no error" true (Option.is_none resp.error);
+  (* Verify the level actually changed *)
+  let logging = Kirin_mcp.Server.logging server in
+  check bool "level is debug" true (L.current_level logging = L.Debug)
+
+let test_logging_set_level_invalid_string () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let server = Kirin_mcp.Server.create () in
+  let req = J.make_request
+    ~id:(J.Int 1)
+    ~method_:"logging/setLevel"
+    ~params:(`Assoc [("level", `String "bogus_level")])
+    () in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
+  check bool "error response" true (Option.is_some resp.error);
+  check bool "no result" true (Option.is_none resp.result)
+
+let test_logging_set_level_non_string () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let server = Kirin_mcp.Server.create () in
+  let req = J.make_request
+    ~id:(J.Int 1)
+    ~method_:"logging/setLevel"
+    ~params:(`Assoc [("level", `Int 42)])
+    () in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
+  check bool "error on non-string" true (Option.is_some resp.error)
+
+let test_logging_set_level_missing_params () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let server = Kirin_mcp.Server.create () in
+  let req = J.make_request
+    ~id:(J.Int 1)
+    ~method_:"logging/setLevel"
+    () in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
+  check bool "error on missing params" true (Option.is_some resp.error)
+
+let test_logging_create_with_custom_level () =
+  let server = Kirin_mcp.Server.create ~log_level:L.Error () in
+  let logging = Kirin_mcp.Server.logging server in
+  check bool "initial level is error" true (L.current_level logging = L.Error)
+
+let logging_handler_tests = [
+  test_case "setLevel valid" `Quick test_logging_set_level_valid;
+  test_case "setLevel invalid string" `Quick test_logging_set_level_invalid_string;
+  test_case "setLevel non-string type" `Quick test_logging_set_level_non_string;
+  test_case "setLevel missing params" `Quick test_logging_set_level_missing_params;
+  test_case "create with custom level" `Quick test_logging_create_with_custom_level;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -907,4 +1081,6 @@ let () =
     ("Adapter", adapter_tests);
     ("Transport", transport_tests);
     ("Client", client_tests);
+    ("Governance", governance_tests);
+    ("Logging", logging_handler_tests);
   ]

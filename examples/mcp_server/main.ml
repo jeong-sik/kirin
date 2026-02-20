@@ -13,8 +13,8 @@ let () =
   (* Create MCP server *)
   let mcp = Mcp.Server.create ~name:"kirin-example" ~version:"1.0.0" () in
 
-  (* Register a greeting tool *)
-  Mcp.Server.add_tool mcp
+  (* Register a greeting tool (synchronous) *)
+  Mcp.Server.add_tool_sync mcp
     ~name:"greet"
     ~description:"Greet a person by name"
     ~schema:(Mcp.Schema.object_ [
@@ -26,8 +26,8 @@ let () =
       `String (Printf.sprintf "Hello, %s! Welcome to Kirin MCP." name)
     ) ();
 
-  (* Register a calculator tool *)
-  Mcp.Server.add_tool mcp
+  (* Register a calculator tool (synchronous) *)
+  Mcp.Server.add_tool_sync mcp
     ~name:"add"
     ~description:"Add two numbers together"
     ~schema:(Mcp.Schema.object_ [
@@ -62,8 +62,12 @@ let () =
     )
     ();
 
-  (* Create Kirin routes *)
-  let mcp_routes = Mcp.routes mcp in
+  (* Create Kirin routes — ctx bundles Eio execution context for async tools *)
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let mcp_routes = Mcp.routes ~ctx mcp in
 
   let routes = router ([
     get "/" (fun _ -> html {|
