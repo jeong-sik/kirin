@@ -8,7 +8,7 @@
 
 (test
  (name test_mcp)
- (libraries kirin kirin.mcp alcotest str))
+ (libraries kirin kirin.mcp alcotest str eio eio_main))
 
 (test
  (name test_openapi)
