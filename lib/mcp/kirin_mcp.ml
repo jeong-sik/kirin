@@ -69,6 +69,12 @@ module Server = Server
 (** MCP Client implementation *)
 module Client = Client
 
+(** Governance layer *)
+module Governance = Governance
+
+(** Logging capability *)
+module Logging = Logging
+
 (** {1 Quick Access} *)
 
 (** Create an MCP server *)

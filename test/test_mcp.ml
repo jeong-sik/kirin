@@ -108,15 +108,18 @@ let test_server_add_tool () =
     ~schema:(S.object_
       ~required:["name"]
       [("name", S.string ())])
-    ~handler:(fun params ->
+    ~handler:(Kirin_mcp.Server.Sync (fun params ->
       let name = Yojson.Safe.Util.(params |> member "name" |> to_string) in
-      `String (Printf.sprintf "Hello, %s!" name))
+      `String (Printf.sprintf "Hello, %s!" name)))
     ();
   let tools = Kirin_mcp.Server.list_tools server in
   check int "one tool" 1 (List.length tools);
   check string "tool name" "greet" (List.hd tools).name
 
 let test_server_call_tool () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"add"
@@ -124,13 +127,13 @@ let test_server_call_tool () =
     ~schema:(S.object_
       ~required:["a"; "b"]
       [("a", S.int ()); ("b", S.int ())])
-    ~handler:(fun params ->
+    ~handler:(Kirin_mcp.Server.Sync (fun params ->
       let open Yojson.Safe.Util in
       let a = params |> member "a" |> to_int in
       let b = params |> member "b" |> to_int in
-      `Int (a + b))
+      `Int (a + b)))
     ();
-  match Kirin_mcp.Server.call_tool server
+  match Kirin_mcp.Server.call_tool server ~sw ~clock
     ~name:"add"
     ~arguments:(Some (`Assoc [("a", `Int 2); ("b", `Int 3)])) with
   | Ok result ->
@@ -181,12 +184,15 @@ let test_server_add_prompt () =
   check string "prompt name" "greeting" (List.hd prompts).name
 
 let test_server_handle_initialize () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
   let server = Kirin_mcp.Server.create ~name:"test-server" ~version:"1.0.0" () in
   Kirin_mcp.Server.add_tool server
     ~name:"test"
     ~description:"Test tool"
     ~schema:(`Assoc [])
-    ~handler:(fun _ -> `Null)
+    ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null))
     ();
   let req = J.make_request
     ~id:(J.Int 1)
@@ -197,22 +203,25 @@ let test_server_handle_initialize () =
       ("clientInfo", `Assoc [("name", `String "test-client"); ("version", `String "1.0")]);
     ])
     () in
-  let resp = Kirin_mcp.Server.handle_request server req in
+  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_handle_tools_list () =
+  Eio_main.run @@ fun env ->
+  Eio.Switch.run @@ fun sw ->
+  let clock = Eio.Stdenv.clock env in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"tool1" ~description:"Tool 1"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
+    ~schema:(`Assoc []) ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null)) ();
   Kirin_mcp.Server.add_tool server
     ~name:"tool2" ~description:"Tool 2"
-    ~schema:(`Assoc []) ~handler:(fun _ -> `Null) ();
+    ~schema:(`Assoc []) ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null)) ();
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"tools/list"
     () in
-  let resp = Kirin_mcp.Server.handle_request server req in
+  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_add_tool_with_annotations () =
@@ -231,7 +240,7 @@ let test_server_add_tool_with_annotations () =
     ~schema:(`Assoc [])
     ~annotations:ann
     ~icon
-    ~handler:(fun _ -> `Null)
+    ~handler:(Kirin_mcp.Server.Sync (fun _ -> `Null))
     ();
   let tools = Kirin_mcp.Server.list_tools server in
   check int "one tool" 1 (List.length tools);

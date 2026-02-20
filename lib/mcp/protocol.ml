@@ -384,6 +384,13 @@ let prompt_to_json (p : prompt) =
   in
   `Assoc fields
 
+let prompt_message_to_json (pm : prompt_message) =
+  let role_str = match pm.role with `user -> "user" | `assistant -> "assistant" in
+  `Assoc [
+    "role", `String role_str;
+    "content", content_to_json pm.content;
+  ]
+
 let initialize_result_to_json (result : initialize_result) =
   let base = [
     "protocolVersion", `String result.protocol_version;

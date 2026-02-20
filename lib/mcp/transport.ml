@@ -17,6 +17,7 @@ type stdio_transport = {
 
 (** Streamable HTTP transport record (2025-11-25) *)
 type streamable_http_transport = {
+  endpoint : string;  (** MCP endpoint URL, e.g. "http://localhost:8080/mcp" *)
   mutable pending_requests : (Jsonrpc.id * Jsonrpc.response Eio.Promise.u) list;
   mutable message_queue : Jsonrpc.message Eio.Stream.t;
   mutable session_id : string option;  (** Mcp-Session-Id header value *)
@@ -65,8 +66,9 @@ let write_message_stdio oc msg =
 (** {1 Streamable HTTP Transport} *)
 
 (** Create Streamable HTTP transport (2025-11-25) *)
-let create_streamable_http () =
+let create_streamable_http ?(endpoint = "") () =
   Streamable_http {
+    endpoint;
     pending_requests = [];
     message_queue = Stream.create 100;
     session_id = None;
@@ -116,10 +118,8 @@ let read_message = function
 let write_message transport msg =
   match transport with
   | Stdio { oc; _ } -> write_message_stdio oc msg
-  | Streamable_http _ ->
-    (* For Streamable HTTP, messages are written via HTTP response or SSE *)
-    (* This is handled by the server/client at a higher level *)
-    ()
+  | Streamable_http t ->
+    Stream.add t.message_queue msg
 
 (** {1 Constructors} *)
 
@@ -129,6 +129,11 @@ let of_stdio ~ic ~oc =
 
 (** Create Streamable HTTP transport *)
 let of_streamable_http = create_streamable_http
+
+(** Get the endpoint URL from an HTTP transport *)
+let endpoint = function
+  | Streamable_http t -> Some t.endpoint
+  | Stdio _ -> None
 
 (** {1 Utilities} *)
 
@@ -142,7 +147,19 @@ let is_streamable_http = function
   | Streamable_http _ -> true
   | Stdio _ -> false
 
-(** Send a request and wait for response (stdio only) *)
+(** Send a request via HTTP transport and wait for response.
+    Registers a pending request with a Promise, queues the message,
+    and blocks the current fiber until the response arrives via
+    [resolve_pending_request]. *)
+let send_http_request (t : streamable_http_transport) (request : Jsonrpc.request) =
+  let promise, resolver = Promise.create () in
+  register_pending_request t request.id resolver;
+  Stream.add t.message_queue (Jsonrpc.Request request);
+  Promise.await promise
+
+(** Send a request and wait for response.
+    For stdio: writes the request and reads responses until a matching ID arrives.
+    For HTTP: queues the request and awaits a Promise resolved by the HTTP handler. *)
 let send_request transport request =
   match transport with
   | Stdio { ic; oc } ->
@@ -154,8 +171,8 @@ let send_request transport request =
       | _ -> wait_for_response ()
     in
     wait_for_response ()
-  | Streamable_http _ ->
-    raise (Transport_error "Use async methods for Streamable HTTP transport")
+  | Streamable_http t ->
+    send_http_request t request
 
 (** Send a notification (no response expected) *)
 let send_notification transport notif =

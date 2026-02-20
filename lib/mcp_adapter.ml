@@ -64,6 +64,12 @@ module Server = Kirin_mcp.Server
 (** MCP Client *)
 module Client = Kirin_mcp.Client
 
+(** Governance layer *)
+module Governance = Kirin_mcp.Governance
+
+(** Logging capability *)
+module Logging = Kirin_mcp.Logging
+
 (** {1 Kirin Integration} *)
 
 (** Convert an MCP tool handler that works with JSON params
@@ -141,16 +147,19 @@ let with_session_header server resp =
     - OPTIONS /mcp - CORS preflight
 
     {[
+      Eio_main.run @@ fun env ->
+      Eio.Switch.run @@ fun sw ->
+      let clock = Eio.Stdenv.clock env in
       let mcp = Server.create () in
-      Server.add_tool mcp ~name:"hello" ...;
+      Server.add_tool_sync mcp ~name:"hello" ...;
 
-      let all_routes = routes mcp @ [
+      let all_routes = routes ~sw ~clock mcp @ [
         Kirin.get "/" (fun _ -> Kirin.html "Home");
       ] in
       Kirin.start ~port:8080 @@ Kirin.router all_routes
     ]}
 *)
-let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
+let routes ?(prefix = "/mcp") ~sw ~clock (server : Server.t) : Router.route list =
   let broadcaster = Sse.Broadcaster.create () in
 
   let handle_post req =
@@ -164,7 +173,7 @@ let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
         | Some err -> err
         | None ->
           let msg = Jsonrpc.decode json in
-          (match Server.handle_message server msg with
+          (match Server.handle_message server ~sw ~clock msg with
            | Some (Jsonrpc.Response resp) ->
              Response.json (Jsonrpc.encode_response resp)
              |> with_session_header server
@@ -176,7 +185,7 @@ let routes ?(prefix = "/mcp") (server : Server.t) : Router.route list =
              |> with_session_header server)
       else
         let msg = Jsonrpc.decode json in
-        match Server.handle_message server msg with
+        match Server.handle_message server ~sw ~clock msg with
         | Some (Jsonrpc.Response resp) ->
           Response.json (Jsonrpc.encode_response resp)
           |> with_session_header server
@@ -252,8 +261,11 @@ let create_http_client () =
 (** Create an MCP server *)
 let create_server = Server.create
 
-(** Add a tool to server *)
+(** Add a tool to server (variant handler: [Sync] or [Async]) *)
 let add_tool = Server.add_tool
+
+(** Add a synchronous tool to server (convenience) *)
+let add_tool_sync = Server.add_tool_sync
 
 (** Add a resource to server *)
 let add_resource = Server.add_resource

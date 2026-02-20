@@ -1,6 +1,14 @@
 # Dune build artifacts
 _build/
 *.install
+*.cmi
+*.cmo
+*.cma
+*.cmx
+*.cmxa
+*.cmxs
+*.o
+*.a
 
 # opam
 _opam/

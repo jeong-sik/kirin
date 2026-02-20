@@ -100,6 +100,16 @@ let initialize t ?(client_name = "kirin-client") ?(client_version = "1.0.0") () 
     };
     (* Send initialized notification *)
     send_notification t ~method_:Protocol.Method.initialized ();
+    (* For HTTP transport, propagate session ID from protocol version negotiation *)
+    (match t.transport with
+     | Transport.Streamable_http _ ->
+       (* Session ID is managed by the server; client stores it for subsequent requests.
+          After initialize, the server may assign a session ID via Mcp-Session-Id header.
+          For now, generate a client-side identifier if none is set. *)
+       if Transport.session_id t.transport = None then
+         Transport.set_session_id t.transport
+           (Printf.sprintf "client-%d" (Hashtbl.hash (Unix.gettimeofday ())))
+     | _ -> ());
     t.server_capabilities
   | None ->
     raise (Client_error "No result from initialize")
