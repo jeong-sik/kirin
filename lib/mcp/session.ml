@@ -27,21 +27,28 @@ type t = {
 
 (** {1 Constructor} *)
 
-(** Generate a session ID from random bytes and timestamp.
-    Not cryptographically strong, but sufficient for session tracking.
-    For production use with security requirements, replace with
-    Mirage_crypto_rng. *)
+(** Generate a session ID from /dev/urandom (128-bit CSPRNG).
+    Reads 16 bytes and hex-encodes to 32 chars.
+    Same pattern as lib/auth/secure_random.ml. *)
 let generate_session_id () =
-  let ts = Unix.gettimeofday () in
-  let r1 = Random.bits () in
-  let r2 = Random.bits () in
-  Printf.sprintf "%08x%08x%08x"
-    (Float.to_int (Float.rem (ts *. 1e6) 4294967296.0))
-    r1 r2
+  let len = 16 in
+  let buf = Bytes.create len in
+  let fd = Unix.openfile "/dev/urandom" [Unix.O_RDONLY] 0 in
+  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+    let rec loop off =
+      if off < len then begin
+        let n = Unix.read fd buf off (len - off) in
+        if n <= 0 then failwith "generate_session_id: /dev/urandom short read";
+        loop (off + n)
+      end
+    in
+    loop 0);
+  Bytes.to_seq buf
+  |> Seq.map (fun c -> Printf.sprintf "%02x" (Char.code c))
+  |> List.of_seq |> String.concat ""
 
 (** Create a new session *)
 let create ~server_name ~server_version () =
-  Random.self_init ();
   {
     state = Uninitialized;
     client_info = None;

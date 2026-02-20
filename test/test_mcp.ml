@@ -338,13 +338,44 @@ let test_session_id_generation () =
     let sid = Kirin_mcp.Session.session_id session in
     check bool "session id is Some" true (Option.is_some sid);
     let id_str = Option.get sid in
-    check bool "session id is 24 hex chars" true (String.length id_str = 24)
+    check bool "session id is 32 hex chars" true (String.length id_str = 32)
   | Error msg -> fail msg
+
+let test_session_id_uniqueness () =
+  let s1 = Kirin_mcp.Session.create ~server_name:"s" ~server_version:"1" () in
+  let s2 = Kirin_mcp.Session.create ~server_name:"s" ~server_version:"1" () in
+  let params : P.initialize_params = {
+    protocol_version = "2025-11-25";
+    capabilities = { roots = None; sampling = None; experimental = None };
+    client_info = { name = "test"; version = "1.0"; description = None };
+    _meta = None;
+  } in
+  ignore (Kirin_mcp.Session.handle_initialize s1 params);
+  ignore (Kirin_mcp.Session.handle_initialize s2 params);
+  let id1 = Option.get (Kirin_mcp.Session.session_id s1) in
+  let id2 = Option.get (Kirin_mcp.Session.session_id s2) in
+  check bool "two sessions have different IDs" true (id1 <> id2)
+
+let test_session_id_hex_format () =
+  let session = Kirin_mcp.Session.create ~server_name:"s" ~server_version:"1" () in
+  let params : P.initialize_params = {
+    protocol_version = "2025-11-25";
+    capabilities = { roots = None; sampling = None; experimental = None };
+    client_info = { name = "test"; version = "1.0"; description = None };
+    _meta = None;
+  } in
+  ignore (Kirin_mcp.Session.handle_initialize session params);
+  let id_str = Option.get (Kirin_mcp.Session.session_id session) in
+  let is_hex c = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') in
+  let all_hex = String.to_seq id_str |> Seq.for_all is_hex in
+  check bool "all chars are hex [0-9a-f]" true all_hex
 
 let session_tests = [
   test_case "create" `Quick test_session_create;
   test_case "initialize" `Quick test_session_initialize;
   test_case "session id generation" `Quick test_session_id_generation;
+  test_case "session id uniqueness" `Quick test_session_id_uniqueness;
+  test_case "session id hex format" `Quick test_session_id_hex_format;
 ]
 
 (** {1 Tasks Tests} *)
@@ -502,6 +533,38 @@ let test_tasks_set_on_state_change () =
   ignore (T.fail_task reg ~id:task.id ~error:"oops");
   check bool "late-bound callback fires" true !called
 
+let test_tasks_complete_from_failed () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"cfail" in
+  ignore (T.fail_task reg ~id:task.id ~error:"boom");
+  let result = { P.content = [P.Text "late"]; is_error = None; _meta = None } in
+  match T.complete_task reg ~id:task.id ~result with
+  | Error msg -> check bool "mentions working state" true (String.length msg > 0)
+  | Ok () -> fail "should not complete a Failed task"
+
+let test_tasks_fail_from_completed () =
+  let reg = T.create_registry () in
+  let task = T.create_task reg ~tool_name:"fc" in
+  let result = { P.content = [P.Text "ok"]; is_error = None; _meta = None } in
+  ignore (T.complete_task reg ~id:task.id ~result);
+  match T.fail_task reg ~id:task.id ~error:"too-late" with
+  | Error msg -> check bool "mentions working state" true (String.length msg > 0)
+  | Ok () -> fail "should not fail a Completed task"
+
+let test_tasks_not_found () =
+  let reg = T.create_registry () in
+  let result = { P.content = [P.Text "x"]; is_error = None; _meta = None } in
+  let check_err label r =
+    match r with Error msg -> check bool label true (String.length msg > 0) | Ok () -> fail label
+  in
+  check_err "complete not found" (T.complete_task reg ~id:"ghost" ~result);
+  check_err "fail not found" (T.fail_task reg ~id:"ghost" ~error:"e");
+  check_err "cancel not found" (T.cancel_task reg ~id:"ghost");
+  check_err "progress not found" (T.update_progress reg ~id:"ghost" ~progress:0.5 ());
+  check_err "request_input not found" (T.request_input reg ~id:"ghost");
+  check_err "resume not found" (T.resume_task reg ~id:"ghost");
+  check (option (of_pp Fmt.nop)) "get not found" None (T.get_task reg ~id:"ghost")
+
 let tasks_tests = [
   test_case "create" `Quick test_tasks_create;
   test_case "complete" `Quick test_tasks_complete;
@@ -516,6 +579,9 @@ let tasks_tests = [
   test_case "state strings" `Quick test_tasks_state_strings;
   test_case "on_state_change callback" `Quick test_tasks_on_state_change;
   test_case "set_on_state_change late" `Quick test_tasks_set_on_state_change;
+  test_case "complete from failed" `Quick test_tasks_complete_from_failed;
+  test_case "fail from completed" `Quick test_tasks_fail_from_completed;
+  test_case "not found" `Quick test_tasks_not_found;
 ]
 
 (** {1 Tool Annotations Tests} *)
@@ -713,6 +779,117 @@ let adapter_tests = [
   test_case "is_initialize malformed" `Quick test_adapter_is_init_malformed;
 ]
 
+(** {1 Transport Tests} *)
+
+module Tr = Kirin_mcp.Transport
+
+let test_transport_stdio_create () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  let r, w = Eio_unix.pipe sw in
+  let ic = Eio.Buf_read.of_flow r ~max_size:4096 in
+  Eio.Buf_write.with_flow w @@ fun oc ->
+  let transport = Tr.of_stdio ~ic ~oc in
+  check bool "is_stdio" true (Tr.is_stdio transport);
+  check bool "not streamable" false (Tr.is_streamable_http transport)
+
+let test_transport_streamable_http_create () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  check bool "is_streamable_http" true (Tr.is_streamable_http transport);
+  check bool "not stdio" false (Tr.is_stdio transport)
+
+let test_transport_session_id_stdio () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  let r, w = Eio_unix.pipe sw in
+  let ic = Eio.Buf_read.of_flow r ~max_size:4096 in
+  Eio.Buf_write.with_flow w @@ fun oc ->
+  let transport = Tr.of_stdio ~ic ~oc in
+  check (option string) "stdio session_id is None" None (Tr.session_id transport);
+  Tr.set_session_id transport "ignored";
+  check (option string) "still None after set" None (Tr.session_id transport)
+
+let test_transport_session_id_streamable () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  check (option string) "initial session_id is None" None (Tr.session_id transport);
+  Tr.set_session_id transport "test-session-42";
+  check (option string) "session_id after set" (Some "test-session-42") (Tr.session_id transport)
+
+let test_transport_queue_message_streamable () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  let msg = J.Notification (J.make_notification ~method_:"test/ping" ()) in
+  Tr.queue_message transport msg;
+  let read_msg = Tr.read_message transport in
+  match read_msg with
+  | J.Notification n ->
+    check string "method matches" "test/ping" n.method_
+  | _ -> fail "expected Notification"
+
+let test_transport_queue_on_stdio_fails () =
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun sw ->
+  let r, w = Eio_unix.pipe sw in
+  let ic = Eio.Buf_read.of_flow r ~max_size:4096 in
+  Eio.Buf_write.with_flow w @@ fun oc ->
+  let transport = Tr.of_stdio ~ic ~oc in
+  let msg = J.Notification (J.make_notification ~method_:"test/ping" ()) in
+  match Tr.queue_message transport msg with
+  | exception Tr.Transport_error _ -> ()
+  | _ -> fail "expected Transport_error"
+
+let transport_tests = [
+  test_case "stdio create" `Quick test_transport_stdio_create;
+  test_case "streamable http create" `Quick test_transport_streamable_http_create;
+  test_case "session id stdio" `Quick test_transport_session_id_stdio;
+  test_case "session id streamable" `Quick test_transport_session_id_streamable;
+  test_case "queue message streamable" `Quick test_transport_queue_message_streamable;
+  test_case "queue on stdio fails" `Quick test_transport_queue_on_stdio_fails;
+]
+
+(** {1 Client Tests} *)
+
+module C = Kirin_mcp.Client
+
+let test_client_create () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  let client = C.create transport in
+  check bool "not initialized" false (C.is_initialized client);
+  check (option (of_pp Fmt.nop)) "no server_caps" None (C.server_capabilities client);
+  check (option (of_pp Fmt.nop)) "no server_info" None (C.server_info client)
+
+let test_client_next_id () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  let client = C.create transport in
+  let id0 = C.next_id client in
+  let id1 = C.next_id client in
+  let id2 = C.next_id client in
+  check bool "id0 is Int 0" true (id0 = J.Int 0);
+  check bool "id1 is Int 1" true (id1 = J.Int 1);
+  check bool "id2 is Int 2" true (id2 = J.Int 2)
+
+let test_client_next_id_monotonic () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  let client = C.create transport in
+  let ids = List.init 100 (fun _ -> C.next_id client) in
+  let ints = List.map (function J.Int i -> i | _ -> -1) ids in
+  let rec is_sorted = function
+    | [] | [_] -> true
+    | a :: (b :: _ as rest) -> a < b && is_sorted rest
+  in
+  check bool "100 IDs strictly increasing" true (is_sorted ints)
+
+let client_tests = [
+  test_case "create" `Quick test_client_create;
+  test_case "next_id" `Quick test_client_next_id;
+  test_case "next_id monotonic" `Quick test_client_next_id_monotonic;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -728,4 +905,6 @@ let () =
     ("Meta", meta_tests);
     ("Capabilities", capabilities_tests);
     ("Adapter", adapter_tests);
+    ("Transport", transport_tests);
+    ("Client", client_tests);
   ]
