@@ -9,10 +9,18 @@
 (** Eio clock type alias *)
 type eio_clock = float Eio.Time.clock_ty Eio.Resource.t
 
+(** Eio execution context — bundles Switch + Clock so callers pass one value
+    instead of threading multiple labeled args through the call chain.
+    Extend this record (e.g., with [env] or [fs]) without breaking callers. *)
+type eio_ctx = {
+  sw : Eio.Switch.t;
+  clock : eio_clock;
+}
+
 (** Tool handler: can be sync or async (Eio fiber-based) *)
 type tool_handler =
   | Sync of (Yojson.Safe.t -> Yojson.Safe.t)
-  | Async of (sw:Eio.Switch.t -> clock:eio_clock -> Yojson.Safe.t -> Yojson.Safe.t)
+  | Async of (eio_ctx -> Yojson.Safe.t -> Yojson.Safe.t)
 
 (** Resource handler function: returns (content, mime_type) *)
 type resource_handler = unit -> string * string
@@ -87,14 +95,14 @@ let list_tools t =
   List.map (fun rt -> rt.tool) t.tools
 
 (** Call a tool by name.
-    [~sw] and [~clock] are required for [Async] handlers but ignored by [Sync]. *)
-let call_tool t ~sw ~clock ~name ~arguments =
+    [~ctx] carries the Eio execution context for [Async] handlers. *)
+let call_tool t ~ctx ~name ~arguments =
   match List.find_opt (fun rt -> rt.tool.name = name) t.tools with
   | Some rt ->
     let args = Option.value arguments ~default:`Null in
     let result = match rt.handler with
       | Sync f -> f args
-      | Async f -> f ~sw ~clock args
+      | Async f -> f ctx args
     in
     Ok {
       Protocol.content = [Protocol.Text (Yojson.Safe.to_string result)];
@@ -165,8 +173,8 @@ let get_prompt t ~name ~arguments =
 (** {1 Request Handling} *)
 
 (** Handle a JSON-RPC request.
-    [~sw] and [~clock] are threaded through for async tool execution. *)
-let handle_request t ~sw ~clock (req : Jsonrpc.request) : Jsonrpc.response =
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let handle_request t ~ctx (req : Jsonrpc.request) : Jsonrpc.response =
   let open Protocol.Method in
   match req.method_ with
   | m when m = initialize ->
@@ -196,7 +204,7 @@ let handle_request t ~sw ~clock (req : Jsonrpc.request) : Jsonrpc.response =
     (match req.params with
      | Some params ->
        let call = Protocol.tool_call_of_json params in
-       (match call_tool t ~sw ~clock ~name:call.name ~arguments:call.arguments with
+       (match call_tool t ~ctx ~name:call.name ~arguments:call.arguments with
         | Ok result ->
           Jsonrpc.success_response ~id:req.id (Protocol.tool_result_to_json result)
         | Error msg ->
@@ -360,11 +368,11 @@ let handle_notification t (notif : Jsonrpc.notification) =
     ()
 
 (** Handle any incoming message.
-    [~sw] and [~clock] are threaded through for async tool execution. *)
-let handle_message t ~sw ~clock (msg : Jsonrpc.message) : Jsonrpc.message option =
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let handle_message t ~ctx (msg : Jsonrpc.message) : Jsonrpc.message option =
   match msg with
   | Jsonrpc.Request req ->
-    Some (Jsonrpc.Response (handle_request t ~sw ~clock req))
+    Some (Jsonrpc.Response (handle_request t ~ctx req))
   | Jsonrpc.Notification notif ->
     handle_notification t notif;
     None
@@ -375,11 +383,11 @@ let handle_message t ~sw ~clock (msg : Jsonrpc.message) : Jsonrpc.message option
 (** {1 Server Loop} *)
 
 (** Run the server on a transport (blocking, direct-style).
-    [~sw] and [~clock] are required for async tool execution. *)
-let run t ~sw ~clock transport =
+    [~ctx] carries the Eio execution context for async tool execution. *)
+let run t ~ctx transport =
   let rec loop () =
     let msg = Transport.read_message transport in
-    (match handle_message t ~sw ~clock msg with
+    (match handle_message t ~ctx msg with
      | Some response -> Transport.write_message transport response
      | None -> ());
     if Session.is_ready t.session || Session.state t.session = Session.Initializing then

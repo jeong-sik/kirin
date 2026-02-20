@@ -62,11 +62,12 @@ let () =
     )
     ();
 
-  (* Create Kirin routes — sw and clock are needed for async tool execution *)
+  (* Create Kirin routes — ctx bundles Eio execution context for async tools *)
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
-  let mcp_routes = Mcp.routes ~sw ~clock mcp in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
+  let mcp_routes = Mcp.routes ~ctx mcp in
 
   let routes = router ([
     get "/" (fun _ -> html {|

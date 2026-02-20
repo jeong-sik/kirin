@@ -120,6 +120,7 @@ let test_server_call_tool () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"add"
@@ -133,7 +134,7 @@ let test_server_call_tool () =
       let b = params |> member "b" |> to_int in
       `Int (a + b)))
     ();
-  match Kirin_mcp.Server.call_tool server ~sw ~clock
+  match Kirin_mcp.Server.call_tool server ~ctx
     ~name:"add"
     ~arguments:(Some (`Assoc [("a", `Int 2); ("b", `Int 3)])) with
   | Ok result ->
@@ -187,6 +188,7 @@ let test_server_handle_initialize () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create ~name:"test-server" ~version:"1.0.0" () in
   Kirin_mcp.Server.add_tool server
     ~name:"test"
@@ -203,13 +205,14 @@ let test_server_handle_initialize () =
       ("clientInfo", `Assoc [("name", `String "test-client"); ("version", `String "1.0")]);
     ])
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_handle_tools_list () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   Kirin_mcp.Server.add_tool server
     ~name:"tool1" ~description:"Tool 1"
@@ -221,7 +224,7 @@ let test_server_handle_tools_list () =
     ~id:(J.Int 1)
     ~method_:"tools/list"
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "response has result" true (Option.is_some resp.result)
 
 let test_server_add_tool_with_annotations () =
@@ -992,13 +995,14 @@ let test_logging_set_level_valid () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"logging/setLevel"
     ~params:(`Assoc [("level", `String "debug")])
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "success response" true (Option.is_some resp.result);
   check bool "no error" true (Option.is_none resp.error);
   (* Verify the level actually changed *)
@@ -1009,13 +1013,14 @@ let test_logging_set_level_invalid_string () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"logging/setLevel"
     ~params:(`Assoc [("level", `String "bogus_level")])
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "error response" true (Option.is_some resp.error);
   check bool "no result" true (Option.is_none resp.result)
 
@@ -1023,25 +1028,27 @@ let test_logging_set_level_non_string () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"logging/setLevel"
     ~params:(`Assoc [("level", `Int 42)])
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "error on non-string" true (Option.is_some resp.error)
 
 let test_logging_set_level_missing_params () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
+  let ctx = Kirin_mcp.Server.{ sw; clock } in
   let server = Kirin_mcp.Server.create () in
   let req = J.make_request
     ~id:(J.Int 1)
     ~method_:"logging/setLevel"
     () in
-  let resp = Kirin_mcp.Server.handle_request server ~sw ~clock req in
+  let resp = Kirin_mcp.Server.handle_request server ~ctx req in
   check bool "error on missing params" true (Option.is_some resp.error)
 
 let test_logging_create_with_custom_level () =

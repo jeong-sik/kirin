@@ -150,7 +150,13 @@ let is_streamable_http = function
 (** Send a request via HTTP transport and wait for response.
     Registers a pending request with a Promise, queues the message,
     and blocks the current fiber until the response arrives via
-    [resolve_pending_request]. *)
+    [resolve_pending_request].
+
+    The [Promise.await] call here has no explicit timeout.  This is safe
+    because Eio's structured concurrency guarantees that all fibers
+    spawned inside a [Switch.run] scope are cancelled when the switch
+    exits (whether normally or via exception).  Callers that need a
+    wall-clock deadline should wrap the call in [Eio.Time.with_timeout]. *)
 let send_http_request (t : streamable_http_transport) (request : Jsonrpc.request) =
   let promise, resolver = Promise.create () in
   register_pending_request t request.id resolver;

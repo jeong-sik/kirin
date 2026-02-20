@@ -150,16 +150,17 @@ let with_session_header server resp =
       Eio_main.run @@ fun env ->
       Eio.Switch.run @@ fun sw ->
       let clock = Eio.Stdenv.clock env in
+      let ctx = Server.{ sw; clock } in
       let mcp = Server.create () in
       Server.add_tool_sync mcp ~name:"hello" ...;
 
-      let all_routes = routes ~sw ~clock mcp @ [
+      let all_routes = routes ~ctx mcp @ [
         Kirin.get "/" (fun _ -> Kirin.html "Home");
       ] in
       Kirin.start ~port:8080 @@ Kirin.router all_routes
     ]}
 *)
-let routes ?(prefix = "/mcp") ~sw ~clock (server : Server.t) : Router.route list =
+let routes ?(prefix = "/mcp") ~ctx (server : Server.t) : Router.route list =
   let broadcaster = Sse.Broadcaster.create () in
 
   let handle_post req =
@@ -173,7 +174,7 @@ let routes ?(prefix = "/mcp") ~sw ~clock (server : Server.t) : Router.route list
         | Some err -> err
         | None ->
           let msg = Jsonrpc.decode json in
-          (match Server.handle_message server ~sw ~clock msg with
+          (match Server.handle_message server ~ctx msg with
            | Some (Jsonrpc.Response resp) ->
              Response.json (Jsonrpc.encode_response resp)
              |> with_session_header server
@@ -185,7 +186,7 @@ let routes ?(prefix = "/mcp") ~sw ~clock (server : Server.t) : Router.route list
              |> with_session_header server)
       else
         let msg = Jsonrpc.decode json in
-        match Server.handle_message server ~sw ~clock msg with
+        match Server.handle_message server ~ctx msg with
         | Some (Jsonrpc.Response resp) ->
           Response.json (Jsonrpc.encode_response resp)
           |> with_session_header server
