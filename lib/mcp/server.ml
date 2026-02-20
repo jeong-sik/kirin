@@ -43,7 +43,7 @@ type t = {
   mutable tools : registered_tool list;
   mutable resources : registered_resource list;
   mutable prompts : registered_prompt list;
-  mutable log_level : string option;
+  logging : Logging.t;
   session : Session.t;
   task_registry : Tasks.registry;
 }
@@ -51,12 +51,12 @@ type t = {
 (** {1 Constructor} *)
 
 (** Create a new MCP server *)
-let create ?(name = "kirin-mcp") ?(version = "1.0.0") () =
+let create ?(name = "kirin-mcp") ?(version = "1.0.0") ?log_level ?log_handler () =
   {
     tools = [];
     resources = [];
     prompts = [];
-    log_level = None;
+    logging = Logging.create ?level:log_level ?handler:log_handler ();
     session = Session.create ~server_name:name ~server_version:version ();
     task_registry = Tasks.create_registry ();
   }
@@ -258,10 +258,20 @@ let handle_request t ~sw ~clock (req : Jsonrpc.request) : Jsonrpc.response =
   | m when m = logging_set_level ->
     (match req.params with
      | Some params ->
-       let level = Yojson.Safe.Util.(params |> member "level" |> to_string) in
-       Session.enable_logging t.session;
-       t.log_level <- Some level;
-       Jsonrpc.success_response ~id:req.id (`Assoc [])
+       (try
+         let level_str = Yojson.Safe.Util.(params |> member "level" |> to_string) in
+         (match Logging.log_level_of_string level_str with
+          | Ok level ->
+            Session.enable_logging t.session;
+            Logging.set_level t.logging level;
+            Jsonrpc.success_response ~id:req.id (`Assoc [])
+          | Error msg ->
+            Jsonrpc.error_response ~id:req.id
+              (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params ~message:msg ()))
+       with Yojson.Safe.Util.Type_error (msg, _) ->
+         Jsonrpc.error_response ~id:req.id
+           (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
+              ~message:(Printf.sprintf "Invalid level param: %s" msg) ()))
      | None ->
        Jsonrpc.error_response ~id:req.id
          (Jsonrpc.make_error ~code:Jsonrpc.Invalid_params
@@ -381,3 +391,6 @@ let run t ~sw ~clock transport =
 
 (** Get the session *)
 let session t = t.session
+
+(** Get the logging instance *)
+let logging t = t.logging

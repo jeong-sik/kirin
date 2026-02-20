@@ -106,9 +106,12 @@ let initialize t ?(client_name = "kirin-client") ?(client_version = "1.0.0") () 
        (* Session ID is managed by the server; client stores it for subsequent requests.
           After initialize, the server may assign a session ID via Mcp-Session-Id header.
           For now, generate a client-side identifier if none is set. *)
-       if Transport.session_id t.transport = None then
-         Transport.set_session_id t.transport
-           (Printf.sprintf "client-%d" (Hashtbl.hash (Unix.gettimeofday ())))
+       if Transport.session_id t.transport = None then begin
+         Random.self_init ();
+         let id = Printf.sprintf "client-%08x%08x%08x%08x"
+           (Random.bits ()) (Random.bits ()) (Random.bits ()) (Random.bits ()) in
+         Transport.set_session_id t.transport id
+       end
      | _ -> ());
     t.server_capabilities
   | None ->

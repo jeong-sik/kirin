@@ -35,10 +35,11 @@ type audit_event = {
   outcome : string;             (** "success", "error", "denied" *)
 }
 
-(** Audit log (in-memory ring buffer) *)
+(** Audit log (in-memory ring buffer, Eio.Mutex-protected) *)
 type audit_log = {
   events : audit_event Queue.t;
   max_events : int;
+  mutex : Eio.Mutex.t;
 }
 
 (* {1 Constructors} *)
@@ -74,7 +75,7 @@ let default_enterprise () =
   }
 
 let create_audit_log ?(max_events = 1000) () =
-  { events = Queue.create (); max_events }
+  { events = Queue.create (); max_events; mutex = Eio.Mutex.create () }
 
 (* {1 Permission Checks} *)
 
@@ -94,9 +95,10 @@ let check_tool_permission config ~tool_name =
 (* {1 Audit} *)
 
 let record_event log event =
-  if Queue.length log.events >= log.max_events then
-    ignore (Queue.pop log.events);
-  Queue.push event log.events
+  Eio.Mutex.use_rw ~protect:true log.mutex (fun () ->
+    if Queue.length log.events >= log.max_events then
+      ignore (Queue.pop log.events);
+    Queue.push event log.events)
 
 let tool_call_event ?session_id ~tool_name ~outcome ?details () =
   {
@@ -109,18 +111,19 @@ let tool_call_event ?session_id ~tool_name ~outcome ?details () =
   }
 
 let recent_events log n =
-  let all = Queue.to_seq log.events |> List.of_seq in
-  let len = List.length all in
-  if n >= len then all
-  else
-    let drop = len - n in
-    let rec skip lst k =
-      if k <= 0 then lst
-      else match lst with
-        | [] -> []
-        | _ :: rest -> skip rest (k - 1)
-    in
-    skip all drop
+  Eio.Mutex.use_ro log.mutex (fun () ->
+    let all = Queue.to_seq log.events |> List.of_seq in
+    let len = List.length all in
+    if n >= len then all
+    else
+      let drop = len - n in
+      let rec skip lst k =
+        if k <= 0 then lst
+        else match lst with
+          | [] -> []
+          | _ :: rest -> skip rest (k - 1)
+      in
+      skip all drop)
 
 let audit_event_to_json event =
   let fields = [
@@ -143,15 +146,16 @@ let audit_event_to_json event =
   `Assoc fields
 
 let audit_log_to_json log =
-  let events = Queue.to_seq log.events
-    |> Seq.map audit_event_to_json
-    |> List.of_seq
-  in
-  `Assoc [
-    "max_events", `Int log.max_events;
-    "count", `Int (Queue.length log.events);
-    "events", `List events;
-  ]
+  Eio.Mutex.use_ro log.mutex (fun () ->
+    let events = Queue.to_seq log.events
+      |> Seq.map audit_event_to_json
+      |> List.of_seq
+    in
+    `Assoc [
+      "max_events", `Int log.max_events;
+      "count", `Int (Queue.length log.events);
+      "events", `List events;
+    ])
 
 (* {1 JSON Encoding} *)
 
