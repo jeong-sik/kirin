@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File Splits**: validation.ml, testing.ml, webrtc_adapter.ml, metrics.ml split into sub-modules via `include` pattern. Public API unchanged.
 - **Coverage Gate**: CI threshold raised from 50% to 60%.
 
+### Fixed
+- **Stream Producer EOS Safety**: All 3 producer functions (`response`, `file_response`, `file_inline`) wrapped with `Fun.protect ~finally` to guarantee `None` (EOS) is always sent even on producer exception. Prevents consumer fiber hang.
+- **WebRTC Signaling Exception**: Narrowed `decode_message` catch-all to `Yojson.Safe.Util.Type_error`.
+
 ### Added
 - **.mli Interface Files**: Added for 8 more modules (trace, backpressure, cache, validation, metrics, websocket, sse, cookie). Total: 15.
 
