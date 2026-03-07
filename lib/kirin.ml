@@ -647,6 +647,7 @@ module Request = Request
 module Response = Response
 module Router = Router
 module Middleware = Middleware
+module Trace = Trace
 module Static = Static
 module Fs_compat = Fs_compat
 module Time_compat = Time_compat
