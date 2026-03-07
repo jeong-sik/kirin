@@ -89,7 +89,7 @@ let decode_message json_str =
       Result.Error (Printf.sprintf "Unknown message type: %s" t)
   with
   | Yojson.Json_error e -> Result.Error (Printf.sprintf "JSON parse error: %s" e)
-  | e -> Result.Error (Printf.sprintf "Decode error: %s" (Printexc.to_string e))
+  | Yojson.Safe.Util.Type_error (msg, _) -> Result.Error (Printf.sprintf "Decode error: %s" msg)
 
 (** Signaling room state *)
 type room = {
