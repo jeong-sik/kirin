@@ -5,6 +5,21 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-03-07
+
+### Added
+- **Trace Module**: Lightweight request tracing with W3C Trace Context (`traceparent`) support. Pluggable exporters (Stderr, JSON). No OpenTelemetry dependency.
+- **Middleware Context**: `ctx : Hmap.t` field on `Request.t` for type-safe state sharing between middleware.
+- **.mli Interface Files**: Added for 7 core modules (request, response, router, middleware, server, stream, pool).
+- **CI Coverage**: `bisect_ppx` coverage job with 50% warning gate.
+
+### Fixed
+- **Streaming**: `Response.Producer` now uses true chunked streaming via `Eio.Flow.source` adapter instead of buffering the entire response in memory.
+- **Exception Narrowing**: Narrowed 46 broad `with _ ->` handlers to specific exception types across 20+ files.
+
+### Changed
+- **OpenAPI Split**: `openapi.ml` (868 lines) split into `openapi_schema.ml` + `openapi_ui.ml`. Backward compatible via `include Openapi_schema`.
+
 ## [0.5.2] - 2026-02-04
 
 ### Fixed
