@@ -174,7 +174,7 @@ let parse_request body : graphql_request option =
     match query with
     | Some q -> Some { query = q; operation_name; variables }
     | None -> None
-  with _ -> None
+  with Yojson.Json_error _ -> None
 
 (** Convert Yojson.Safe.t to Graphql_parser.const_value *)
 let rec yojson_to_const_value : Yojson.Safe.t -> Graphql_parser.const_value = function
@@ -467,6 +467,6 @@ let batched_handler ?(make_ctx = fun _req -> ()) schema req =
     | _ ->
       Response.json ~status:`Bad_request
         (`Assoc [("errors", `List [`Assoc [("message", `String "Invalid request format")]])])
-  with _ ->
+  with Yojson.Json_error _ ->
     Response.json ~status:`Bad_request
       (`Assoc [("errors", `List [`Assoc [("message", `String "Invalid JSON")]])])

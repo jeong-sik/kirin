@@ -70,7 +70,7 @@ let create ~sw ~env ~config =
       
       Eio.Stream.add stream mock_notify;
       listen_loop ()
-    with _ -> 
+    with Eio.Io _ | Unix.Unix_error _ ->
       Eio.Time.sleep clock config.reconnect_delay;
       listen_loop ()
   in

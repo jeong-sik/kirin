@@ -275,7 +275,7 @@ let response_json resp callback =
     Js.Unsafe.inject (Js.wrap_callback (fun text_js ->
       let text = Js.to_string text_js in
       try callback (Some (Yojson.Safe.from_string text))
-      with _ -> callback None))
+      with Yojson.Json_error _ -> callback None))
   |])
 
 (** Convenience: GET request *)

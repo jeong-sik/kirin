@@ -236,7 +236,7 @@ let parse_accept_language header =
           let q = String.trim q in
           if String.length q > 2 && String.sub q 0 2 = "q=" then
             try float_of_string (String.sub q 2 (String.length q - 2))
-            with _ -> 1.0
+            with Failure _ -> 1.0
           else 1.0
       in
       Some (String.trim locale, quality)

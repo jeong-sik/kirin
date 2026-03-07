@@ -127,7 +127,7 @@ let connection_from_list ?(total_count) list args =
   let total = Option.value total_count ~default:count in
   
   let decode_cursor c = 
-    try Base64.decode_exn c |> int_of_string with _ -> 0
+    try Base64.decode_exn c |> int_of_string with Failure _ | Invalid_argument _ -> 0
   in
   let encode_cursor i = 
     Base64.encode_string (string_of_int i)

@@ -420,7 +420,7 @@ let validate_string_json schema str =
   try
     let json = Yojson.Safe.from_string str in
     validate schema json
-  with _ ->
+  with Yojson.Json_error _ ->
     Error [make_error ~code:"parse_error" "Invalid JSON"]
 
 (** {1 Error Formatting} *)
@@ -594,7 +594,7 @@ let coerce_string_to_json schema value =
         `Float (float_of_string value)
       else
         `Int (int_of_string value)
-     with _ -> `String value)
+     with Failure _ -> `String value)
   | Bool ->
     (* Try to parse as boolean *)
     (match String.lowercase_ascii value with

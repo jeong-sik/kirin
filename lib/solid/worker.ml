@@ -80,7 +80,7 @@ let stop worker =
    | None -> ());
   (match worker.pid with
    | Some pid ->
-     (try Unix.kill pid Sys.sigterm with _ -> ());
+     (try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ());
      ignore (Unix.waitpid [] pid)
    | None -> ());
   worker.pid <- None;

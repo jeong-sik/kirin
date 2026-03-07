@@ -150,7 +150,7 @@ let decode_stream_chunk json_str =
           | _ -> Error "Unknown stream error")
        | _ -> Error "Unknown chunk type")
     | _ -> Error "Invalid chunk JSON"
-  with _ -> Error "Chunk parse error"
+  with Yojson.Json_error _ -> Error "Chunk parse error"
 
 (** {1 Health Check Response} *)
 
@@ -189,4 +189,4 @@ let decode_health_response json_str =
          Ok { ok; memory_mb; uptime_s; renders }
        | _ -> Error "Missing result")
     | _ -> Error "Invalid JSON"
-  with _ -> Error "Parse error"
+  with Yojson.Json_error _ | Yojson.Safe.Util.Type_error (_, _) -> Error "Parse error"

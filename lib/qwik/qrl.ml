@@ -71,7 +71,7 @@ let of_serialized s =
         (try
           let refs = List.map int_of_string captures in
           Some { chunk; symbol; capture = CaptureRef refs; dev_name = None }
-        with _ ->
+        with Failure _ ->
           Some { chunk; symbol; capture = Capture captures; dev_name = None })
       else
         Some { chunk; symbol = rest; capture = NoCapture; dev_name = None }
@@ -168,7 +168,7 @@ let of_json json =
     | `List items ->
       (try
         CaptureRef (List.map to_int items)
-      with _ ->
+      with Yojson.Safe.Util.Type_error (_, _) ->
         Capture (List.map to_string items))
     | _ -> NoCapture
   in

@@ -28,10 +28,10 @@ let reap_pid pid =
     | Unix.Unix_error (Unix.ECHILD, _, _) -> true
   in
   if not (wait_for ~timeout_s:0.5) then (
-    (try Unix.kill pid Sys.sigterm with _ -> ());
+    (try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ());
     ignore (wait_for ~timeout_s:0.5);
-    (try Unix.kill pid Sys.sigkill with _ -> ());
-    (try ignore (Unix.waitpid [] pid) with _ -> ()))
+    (try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ());
+    (try ignore (Unix.waitpid [] pid) with Unix.Unix_error _ -> ()))
 
 type t = {
   mutable process: process option;
@@ -68,7 +68,7 @@ let start_process config =
     let (stdout_r, stdout_w) = Unix.pipe () in
     Unix.set_close_on_exec stdin_w;
     Unix.set_close_on_exec stdout_r;
-    let close_noerr fd = try Unix.close fd with _ -> () in
+    let close_noerr fd = try Unix.close fd with Unix.Unix_error _ -> () in
     try
       let pid =
         Unix.create_process_env
@@ -189,11 +189,11 @@ let restart worker =
       let req = Protocol.shutdown_request ~id in
       let _ = send_request worker req in
       ()
-    with _ -> ());
+    with End_of_file | Sys_error _ -> ());
     (try
       close_in_noerr proc.in_ch;
       close_out_noerr proc.out_ch;
-    with _ -> ())
+    with Sys_error _ -> ())
     ;
     reap_pid proc.pid
   | None -> ());
@@ -241,7 +241,7 @@ let close worker =
       let req = Protocol.shutdown_request ~id in
       let _ = send_request worker req in
       ()
-    with _ -> ());
+    with End_of_file | Sys_error _ -> ());
     close_in_noerr proc.in_ch;
     close_out_noerr proc.out_ch;
     reap_pid proc.pid;

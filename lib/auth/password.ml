@@ -117,7 +117,7 @@ let verify password hash_str =
         let expected_hash = hex_to_bytes hash_hex in
         let derived = pbkdf2 ~password ~salt ~iterations ~dk_len:hash_length in
         constant_time_compare derived expected_hash
-      with _ -> false)
+      with Failure _ | Invalid_argument _ -> false)
   | _ -> false
 
 (** Check if hash needs rehashing (iterations changed) *)
@@ -125,7 +125,7 @@ let needs_rehash ?(iterations = default_iterations) hash_str =
   match String.split_on_char '$' hash_str with
   | [""; "pbkdf2-sha256"; iter_str; _; _] ->
       (try int_of_string iter_str < iterations
-       with _ -> true)
+       with Failure _ -> true)
   | _ -> true
 
 (** {1 Strength Checking} *)

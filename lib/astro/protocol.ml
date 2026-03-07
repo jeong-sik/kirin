@@ -207,4 +207,4 @@ let decode_batch_response s =
         in
         Error { id; code; message; data }
     )
-  with _ -> []
+  with Yojson.Json_error _ | Yojson.Safe.Util.Type_error (_, _) -> []

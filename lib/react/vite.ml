@@ -15,7 +15,7 @@ let is_dev_server_running ?(host = "localhost") ~port () =
     Unix.close sock;
     ignore host;
     true
-  with _ -> false
+  with Unix.Unix_error _ -> false
 
 (** Check if running in development mode *)
 let is_dev () =

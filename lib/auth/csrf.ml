@@ -111,7 +111,7 @@ let validate_token ~secret ~session_id token =
                       Error "Token expired"
                     else
                       Ok ()
-                  with _ -> Error "Invalid expiration")
+                  with Failure _ -> Error "Invalid expiration")
             | _ -> Error "Invalid token data"
 
 (** {1 Request Validation} *)

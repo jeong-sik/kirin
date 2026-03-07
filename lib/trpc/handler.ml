@@ -46,7 +46,7 @@ let parse_query_input req =
     (try
        let decoded = Uri.pct_decode encoded in
        Some (Yojson.Safe.from_string decoded)
-     with _ -> None)
+     with Yojson.Json_error _ -> None)
   | None -> Some `Null
 
 (** Parse input from request body (for POST mutations) *)
@@ -155,7 +155,7 @@ let create_handler ?(config = default_config) ~ctx_factory router =
         (* Could be mutation or batch *)
         let body = Request.body req in
         if config.enable_batching && Batch.is_batch (
-          try Yojson.Safe.from_string body with _ -> `Null
+          try Yojson.Safe.from_string body with Yojson.Json_error _ -> `Null
         ) then
           handle_batch ~config router ctx_factory body req
         else

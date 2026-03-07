@@ -71,7 +71,7 @@ window.$SR = function(id, html) {
 let parse_stream_line line =
   try
     Protocol.decode_stream_chunk line
-  with _ ->
+  with Yojson.Json_error _ ->
     Protocol.Error "Parse error"
 
 (** {1 Kirin Response Helpers} *)
