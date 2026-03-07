@@ -2,8 +2,8 @@
 
 type body =
   | String of string
-  | Stream of string Eio.Stream.t
-  | Producer of (string Eio.Stream.t -> unit)
+  | Stream of string option Eio.Stream.t
+  | Producer of (string option Eio.Stream.t -> unit)
 
 (** Response type *)
 type t = {

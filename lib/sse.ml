@@ -105,11 +105,11 @@ let response stream =
   let stream_producer body_stream =
     let rec loop () =
       let evt = Eio.Stream.take stream in
-      Eio.Stream.add body_stream (encode evt);
+      Eio.Stream.add body_stream (Some (encode evt));
       loop ()
     in
     (try loop () with Eio.Io _ | End_of_file -> ());
-    Eio.Stream.add body_stream ""
+    Eio.Stream.add body_stream None
   in
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 (** Keep-alive ping *)

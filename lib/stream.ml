@@ -73,9 +73,9 @@ let max_chunk_size = 1024 * 1024
 let response ?(status = `OK) ?(headers = Http.Header.init ()) producer = 
   let headers = Http.Header.add headers "transfer-encoding" "chunked" in 
   let stream_producer stream = 
-    let yield chunk = Eio.Stream.add stream chunk in 
+    let yield chunk = Eio.Stream.add stream (Some chunk) in
     producer yield;
-    Eio.Stream.add stream "" (* End marker *)
+    Eio.Stream.add stream None (* End marker *)
   in 
   Response.make ~status ~headers (`Producer stream_producer)
 
@@ -110,15 +110,15 @@ let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) pat
         let n = Unix.read fd buffer 0 chunk_size in 
         if n > 0 then begin 
           let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
+          Eio.Stream.add stream (Some chunk);
           loop ()
-        end 
-      in 
+        end
+      in
       loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+      Eio.Stream.add stream None (* End marker *)
+    )
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** Create an inline file response *)
@@ -141,15 +141,15 @@ let file_inline ?content_type ?(chunk_size = default_chunk_size) path =
         let n = Unix.read fd buffer 0 chunk_size in 
         if n > 0 then begin 
           let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
+          Eio.Stream.add stream (Some chunk);
           loop ()
-        end 
-      in 
+        end
+      in
       loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+      Eio.Stream.add stream None (* End marker *)
+    )
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** {1 Chunked Encoding} *)

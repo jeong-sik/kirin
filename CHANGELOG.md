@@ -5,6 +5,18 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - Unreleased
+
+### Changed
+- **Stream EOS Type Safety**: `string Eio.Stream.t` to `string option Eio.Stream.t` — `None` signals end-of-stream instead of empty string sentinel. Prevents false EOS on protocols where empty string is valid data.
+- **Traceparent Hex Validation**: `parse_traceparent` now validates hex characters (lowercase a-f, 0-9) per W3C Trace Context spec.
+- **Random Seeding**: `Random.self_init ()` at module init for trace ID uniqueness.
+- **File Splits**: validation.ml, testing.ml, webrtc_adapter.ml, metrics.ml split into sub-modules via `include` pattern. Public API unchanged.
+- **Coverage Gate**: CI threshold raised from 50% to 60%.
+
+### Added
+- **.mli Interface Files**: Added for 8 more modules (trace, backpressure, cache, validation, metrics, websocket, sse, cookie). Total: 15.
+
 ## [0.8.0] - 2026-03-07
 
 ### Added

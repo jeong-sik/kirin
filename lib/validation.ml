@@ -22,173 +22,8 @@
     ]}
 *)
 
-(** {1 Validation Types} *)
-
-(** Validation error *)
-type error = {
-  path : string list;
-  message : string;
-  code : string;
-}
-
-(** Validation result *)
-type 'a result = ('a, error list) Result.t
-
-(** {1 Schema Types} *)
-
-(** String constraints *)
-type string_constraints = {
-  min_length : int option;
-  max_length : int option;
-  pattern : string option;
-  format : string option;  (* email, uri, uuid, date, datetime, etc. *)
-}
-
-(** Number constraints *)
-type number_constraints = {
-  minimum : float option;
-  maximum : float option;
-  exclusive_min : bool;
-  exclusive_max : bool;
-  multiple_of : float option;
-}
-
-(** Array constraints *)
-type array_constraints = {
-  min_items : int option;
-  max_items : int option;
-  unique_items : bool;
-}
-
-(** Validation schema *)
-type schema =
-  | String of string_constraints
-  | Int of number_constraints
-  | Float of number_constraints
-  | Bool
-  | Null
-  | Array of schema * array_constraints
-  | Object of object_schema
-  | OneOf of schema list
-  | AnyOf of schema list
-  | AllOf of schema list
-  | Enum of Yojson.Safe.t list
-  | Const of Yojson.Safe.t
-  | Any
-  | Custom of (Yojson.Safe.t -> (Yojson.Safe.t, string) Result.t)
-
-and object_schema = {
-  properties : (string * schema) list;
-  required : string list;
-  additional_properties : bool;
-}
-
-(** {1 Schema Builders} *)
-
-let empty_string_constraints = {
-  min_length = None;
-  max_length = None;
-  pattern = None;
-  format = None;
-}
-
-let empty_number_constraints = {
-  minimum = None;
-  maximum = None;
-  exclusive_min = false;
-  exclusive_max = false;
-  multiple_of = None;
-}
-
-let empty_array_constraints = {
-  min_items = None;
-  max_items = None;
-  unique_items = false;
-}
-
-(** String schema *)
-let string ?min_length ?max_length ?pattern ?format () =
-  String { min_length; max_length; pattern; format }
-
-(** Integer schema *)
-let int ?minimum ?maximum ?(exclusive_min = false) ?(exclusive_max = false) ?multiple_of () =
-  Int {
-    minimum = Option.map float_of_int minimum;
-    maximum = Option.map float_of_int maximum;
-    exclusive_min;
-    exclusive_max;
-    multiple_of = Option.map float_of_int multiple_of;
-  }
-
-(** Float schema *)
-let float ?minimum ?maximum ?(exclusive_min = false) ?(exclusive_max = false) ?multiple_of () =
-  Float { minimum; maximum; exclusive_min; exclusive_max; multiple_of }
-
-(** Boolean schema *)
-let bool () = Bool
-
-(** Null schema *)
-let null () = Null
-
-(** Array schema *)
-let array ?min_items ?max_items ?(unique_items = false) items =
-  Array (items, { min_items; max_items; unique_items })
-
-(** Object schema *)
-let object_ ?(required = []) ?(additional = true) properties =
-  Object { properties; required; additional_properties = additional }
-
-(** Field helper *)
-let field name schema = (name, schema)
-
-(** Optional field (wraps in nullable) *)
-let optional schema = OneOf [schema; Null]
-
-(** OneOf (exactly one must match) *)
-let one_of schemas = OneOf schemas
-
-(** AnyOf (at least one must match) *)
-let any_of schemas = AnyOf schemas
-
-(** AllOf (all must match) *)
-let all_of schemas = AllOf schemas
-
-(** Enum schema *)
-let enum values = Enum values
-
-(** Const schema *)
-let const value = Const value
-
-(** Any (no validation) *)
-let any () = Any
-
-(** Custom validator *)
-let custom f = Custom f
-
-(** {1 Format Validators} *)
-
-(* Note: OCaml Str module doesn't support \d, use [0-9] instead *)
-let email_pattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z][a-zA-Z]+$"
-let uuid_pattern = "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
-let uri_pattern = "^https?://[^ /$.?#]"
-let date_pattern = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$"
-let datetime_pattern = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]"
-
-let validate_format format value =
-  let pattern = match format with
-    | "email" -> Some email_pattern
-    | "uuid" -> Some uuid_pattern
-    | "uri" | "url" -> Some uri_pattern
-    | "date" -> Some date_pattern
-    | "date-time" | "datetime" -> Some datetime_pattern
-    | _ -> None
-  in
-  match pattern with
-  | None -> Ok ()
-  | Some p ->
-    let re = Str.regexp p in
-    if Str.string_match re value 0 then Ok ()
-    else Error (Printf.sprintf "Invalid %s format" format)
+include Validation_schema
+include Validation_format
 
 (** {1 Validation Logic} *)
 
@@ -423,36 +258,6 @@ let validate_string_json schema str =
   with Yojson.Json_error _ ->
     Error [make_error ~code:"parse_error" "Invalid JSON"]
 
-(** {1 Error Formatting} *)
-
-(** Format error path *)
-let format_path path =
-  match path with
-  | [] -> "root"
-  | _ -> String.concat "." path
-
-(** Error to JSON *)
-let error_to_json err =
-  `Assoc [
-    ("path", `String (format_path err.path));
-    ("message", `String err.message);
-    ("code", `String err.code);
-  ]
-
-(** Errors to JSON *)
-let errors_to_json errors =
-  `Assoc [
-    ("errors", `List (List.map error_to_json errors));
-  ]
-
-(** Error to string *)
-let error_to_string err =
-  Printf.sprintf "%s: %s (%s)" (format_path err.path) err.message err.code
-
-(** Errors to string *)
-let errors_to_string errors =
-  String.concat "\n" (List.map error_to_string errors)
-
 (** {1 Common Schemas} *)
 
 (** Email string *)
@@ -484,8 +289,8 @@ let non_empty_string () = string ~min_length:1 ()
 
 (** {1 Type-safe Validation (Pydantic style)} *)
 
-(** Type-safe validator that combines JSON parsing and schema validation 
-    
+(** Type-safe validator that combines JSON parsing and schema validation
+
     @param of_yojson Function generated by ppx_deriving_yojson
     @param schema Kirin validation schema
 *)
@@ -495,11 +300,11 @@ let validate_type of_yojson schema json =
   | Ok validated_json ->
     (match of_yojson validated_json with
      | Ok v -> Ok v
-     | Error msg -> 
+     | Error msg ->
        Error [make_error ~code:"mapping_error" (Printf.sprintf "Failed to map JSON to type: %s" msg)])
 
-(** Handler wrapper for automatic body validation (FastAPI style) 
-    
+(** Handler wrapper for automatic body validation (FastAPI style)
+
     {[
       let create_user_handler = Validation.validated_body user_of_yojson user_schema (fun user req ->
         (* 'user' is already parsed and validated! *)
@@ -513,7 +318,7 @@ let validated_body of_yojson schema handler next req =
   | Ok json ->
     match validate_type of_yojson schema json with
     | Ok validated_data -> handler validated_data next req
-    | Error errors -> 
+    | Error errors ->
       Response.json ~status:`Bad_request (errors_to_json errors)
 
 (** {1 Kirin Type-safe DSL} *)
@@ -527,20 +332,20 @@ module Type = struct
   let make schema of_json = { schema; of_json }
 
   let string ?min ?max ?pattern ?format () =
-    make (String { 
-      min_length = min; 
-      max_length = max; 
-      pattern; 
-      format 
+    make (String {
+      min_length = min;
+      max_length = max;
+      pattern;
+      format
     }) (fun j -> match j with `String s -> Ok s | _ -> Error "Expected string")
 
   let int ?min ?max () =
-    make (Int { 
-      minimum = Option.map float_of_int min; 
-      maximum = Option.map float_of_int max; 
-      exclusive_min = false; 
-      exclusive_max = false; 
-      multiple_of = None 
+    make (Int {
+      minimum = Option.map float_of_int min;
+      maximum = Option.map float_of_int max;
+      exclusive_min = false;
+      exclusive_max = false;
+      multiple_of = None
     }) (fun j -> match j with `Int i -> Ok i | _ -> Error "Expected integer")
 
   let bool () = make Bool (fun j -> match j with `Bool b -> Ok b | _ -> Error "Expected boolean")
@@ -549,20 +354,20 @@ module Type = struct
     let required = List.map fst props in
     make (Object { properties = props; required; additional_properties = false }) of_json
 
-  (** Infix operator for field definition: "name" %> Type.string () 
+  (** Infix operator for field definition: "name" %> Type.string ()
       Only extracts the schema to allow heterogeneous field types in the list.
   *)
   let ( %> ) name t = (name, t.schema)
 end
 
-(** New validated handler using the Type DSL 
-    
+(** New validated handler using the Type DSL
+
     {[
       let v = Type.(obj user_of_yojson [
         "name" %> string ~min:1 ();
         "age"  %> int ~min:0 ();
       ])
-      
+
       let create_user = validated v (fun user req -> ...)
     ]}
 *)
@@ -575,7 +380,7 @@ let validated t handler req =
     | Ok validated_json ->
       (match t.of_json validated_json with
        | Ok v -> handler v req
-       | Error msg -> 
+       | Error msg ->
          Response.json ~status:`Bad_request (`Assoc [("error", `String msg)]))
 
 (** {1 Request Helpers} *)

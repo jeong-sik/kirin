@@ -47,6 +47,9 @@ type span = {
 
 let hex_chars = "0123456789abcdef"
 
+(* Seed RNG for trace ID uniqueness. Not for cryptographic purposes. *)
+let () = Random.self_init ()
+
 let random_hex n =
   let buf = Bytes.create n in
   for i = 0 to n - 1 do
@@ -87,11 +90,20 @@ let duration span =
 
 (** {1 W3C Trace Context} *)
 
+let is_hex_string s =
+  String.length s > 0 &&
+  try String.iter (fun c ->
+    if not ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) then
+      raise_notrace Exit
+  ) s; true
+  with Exit -> false
+
 (** Parse a traceparent header: [version-trace_id-parent_id-flags]. *)
 let parse_traceparent header =
   match String.split_on_char '-' header with
   | [_version; tid; pid; _flags]
-    when String.length tid = 32 && String.length pid = 16 ->
+    when String.length tid = 32 && String.length pid = 16
+         && is_hex_string tid && is_hex_string pid ->
     Some (tid, pid)
   | _ -> None
 
