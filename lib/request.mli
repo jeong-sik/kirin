@@ -11,6 +11,7 @@ type t = {
   body_source : Eio.Buf_read.t;
   mutable cached_body : string option;
   params : params;
+  ctx : Hmap.t;
   raw : Http.Request.t;
 }
 
@@ -53,6 +54,12 @@ val query_all : string -> t -> string list option
 
 (** [with_params params req] returns a copy of [req] with new path parameters. *)
 val with_params : params -> t -> t
+
+(** [ctx req] returns the middleware context map. *)
+val ctx : t -> Hmap.t
+
+(** [with_ctx ctx req] returns a copy of [req] with a new context map. *)
+val with_ctx : Hmap.t -> t -> t
 
 (** [json_body req] parses the request body as JSON. *)
 val json_body : t -> (Yojson.Safe.t, [> `Json_parse_error of string ]) result

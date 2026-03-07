@@ -17,28 +17,42 @@ let default_config = {
   stream_read_timeout = 5.0;  (** 5 seconds default stream read timeout *)
 }
 
-(** Read stream chunks with timeout to prevent blocking forever.
-    Returns collected string. On timeout, returns partial data collected so far. *)
-let read_stream_with_timeout ~clock ~timeout (stream : string Eio.Stream.t) : string =
-  let buf = Buffer.create 4096 in
-  let rec loop () : string =
-    (* with_timeout expects fn to return result type *)
-    match Eio.Time.with_timeout clock timeout (fun () ->
-      Ok (Eio.Stream.take stream)
-    ) with
-    | Ok chunk when chunk = "" ->
-        (* Empty string = end of stream *)
-        Buffer.contents buf
-    | Ok chunk ->
-        Buffer.add_string buf chunk;
-        loop ()
-    | Error `Timeout ->
-        (* Timeout reading chunk - return what we have *)
-        Logger.warn "Stream read timeout after %.1fs, returning partial data (%d bytes)"
-          timeout (Buffer.length buf);
-        Buffer.contents buf
-  in
-  loop ()
+(** Adapter: Eio.Stream.t string -> Eio.Flow.source for true chunked streaming.
+    Reads from the stream on demand, buffering partial chunks. *)
+module Stream_source = struct
+  type t = {
+    stream : string Eio.Stream.t;
+    mutable buf : string;
+    mutable pos : int;
+  }
+
+  let read_methods = []
+
+  let single_read t dst =
+    (* Use buffered data first *)
+    if t.pos < String.length t.buf then begin
+      let available = String.length t.buf - t.pos in
+      let n = min available (Cstruct.length dst) in
+      Cstruct.blit_from_string t.buf t.pos dst 0 n;
+      t.pos <- t.pos + n;
+      n
+    end else begin
+      (* Take next chunk from stream; empty string = end of stream *)
+      let chunk = Eio.Stream.take t.stream in
+      if chunk = "" then raise End_of_file;
+      let n = min (String.length chunk) (Cstruct.length dst) in
+      Cstruct.blit_from_string chunk 0 dst 0 n;
+      t.buf <- chunk;
+      t.pos <- n;
+      n
+    end
+end
+
+let stream_source_handler : (Stream_source.t, Eio.Flow.source_ty) Eio.Resource.handler =
+  Eio.Flow.Pi.source (module Stream_source)
+
+let make_stream_source (stream : string Eio.Stream.t) : Eio.Flow.source_ty Eio.Resource.t =
+  Eio.Resource.T ({ Stream_source.stream; buf = ""; pos = 0 }, stream_source_handler)
 
 (** Convert Kirin handler to cohttp-eio handler *)
 let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
@@ -78,12 +92,12 @@ let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
         Cohttp_eio.Server.respond_string ~status ~headers ~body:s ()
 
     | Response.Stream s ->
-        (* Convert Eio.Stream to string body with timeout protection *)
-        let body = read_stream_with_timeout ~clock ~timeout:config.stream_read_timeout s in
-        Cohttp_eio.Server.respond_string ~status ~headers ~body ()
+        (* True chunked streaming via Flow.source adapter *)
+        let body = make_stream_source s in
+        Cohttp_eio.Server.respond ~status ~headers ~body ()
 
     | Response.Producer p ->
-        (* Create stream and fork producer *)
+        (* Create stream, fork producer, stream chunks to client *)
         let stream = Eio.Stream.create 16 in
         Eio.Fiber.fork ~sw (fun () ->
           try p stream with exn ->
@@ -91,9 +105,8 @@ let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
             (* Signal end of stream on error *)
             Eio.Stream.add stream ""
         );
-        (* Consume stream with timeout protection *)
-        let body = read_stream_with_timeout ~clock ~timeout:config.stream_read_timeout stream in
-        Cohttp_eio.Server.respond_string ~status ~headers ~body ()
+        let body = make_stream_source stream in
+        Cohttp_eio.Server.respond ~status ~headers ~body ()
 
 (** Run the server with given handler *)
 let run ?(config = default_config) ~sw ~env handler =

@@ -13,6 +13,7 @@ type t = {
   body_source : Buf_read.t;
   mutable cached_body : string option;
   params : params;
+  ctx : Hmap.t;
   (* Internal: raw http request for advanced use *)
   raw : Http.Request.t;
 }
@@ -22,7 +23,7 @@ let make ~raw ~body_source =
   let uri = Http.Request.resource raw |> Uri.of_string in
   let headers = Http.Request.headers raw in
   let meth = Http.Request.meth raw in
-  { meth; uri; headers; body_source; cached_body = None; params = []; raw }
+  { meth; uri; headers; body_source; cached_body = None; params = []; ctx = Hmap.empty; raw }
 
 (** Get HTTP method *)
 let meth t = t.meth
@@ -74,6 +75,12 @@ let query_all name t =
 
 (** Internal: set path parameters after route matching *)
 let with_params params t = { t with params }
+
+(** Get the middleware context map *)
+let ctx t = t.ctx
+
+(** Return a copy with a new context map *)
+let with_ctx ctx t = { t with ctx }
 
 (** Parse body as JSON *)
 let json_body t =

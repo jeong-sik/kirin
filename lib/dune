@@ -23,6 +23,7 @@
   graphql_parser
   kirin_mcp
   ocaml-webrtc
+  hmap
   caqti
   caqti-eio
   caqti-eio.unix
