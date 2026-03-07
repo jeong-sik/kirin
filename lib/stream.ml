@@ -72,11 +72,11 @@ let max_chunk_size = 1024 * 1024
 (** Create a streaming response from a producer function. *)
 let response ?(status = `OK) ?(headers = Http.Header.init ()) producer = 
   let headers = Http.Header.add headers "transfer-encoding" "chunked" in 
-  let stream_producer stream = 
-    let yield chunk = Eio.Stream.add stream chunk in 
-    producer yield;
-    Eio.Stream.add stream "" (* End marker *)
-  in 
+  let stream_producer stream =
+    let yield chunk = Eio.Stream.add stream (Some chunk) in
+    Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
+      (fun () -> producer yield)
+  in
   Response.make ~status ~headers (`Producer stream_producer)
 
 (** Create a streaming response from an Eio flow writer. *)
@@ -101,55 +101,59 @@ let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) pat
     |> fun h -> Http.Header.add h "transfer-encoding" "chunked" 
   in 
   
-  let stream_producer stream = 
-    let chunk_size = min chunk_size max_chunk_size in 
-    let fd = Unix.openfile path [Unix.O_RDONLY] 0 in 
-    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-      let buffer = Bytes.create chunk_size in 
-      let rec loop () = 
-        let n = Unix.read fd buffer 0 chunk_size in 
-        if n > 0 then begin 
-          let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
+  let stream_producer stream =
+    Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
+      (fun () ->
+        let chunk_size = min chunk_size max_chunk_size in
+        let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+          let buffer = Bytes.create chunk_size in
+          let rec loop () =
+            let n = Unix.read fd buffer 0 chunk_size in
+            if n > 0 then begin
+              let chunk = Bytes.sub_string buffer 0 n in
+              Eio.Stream.add stream (Some chunk);
+              loop ()
+            end
+          in
           loop ()
-        end 
-      in 
-      loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+        )
+      )
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** Create an inline file response *)
-let file_inline ?content_type ?(chunk_size = default_chunk_size) path = 
-  let content_type = match content_type with 
-    | Some ct -> ct 
-    | None -> mime_of_filename path 
-  in 
-  let headers = Http.Header.init () 
-    |> fun h -> Http.Header.add h "content-type" content_type 
-    |> fun h -> Http.Header.add h "transfer-encoding" "chunked" 
-  in 
-  
-  let stream_producer stream = 
-    let chunk_size = min chunk_size max_chunk_size in 
-    let fd = Unix.openfile path [Unix.O_RDONLY] 0 in 
-    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-      let buffer = Bytes.create chunk_size in 
-      let rec loop () = 
-        let n = Unix.read fd buffer 0 chunk_size in 
-        if n > 0 then begin 
-          let chunk = Bytes.sub_string buffer 0 n in 
-          Eio.Stream.add stream chunk;
+let file_inline ?content_type ?(chunk_size = default_chunk_size) path =
+  let content_type = match content_type with
+    | Some ct -> ct
+    | None -> mime_of_filename path
+  in
+  let headers = Http.Header.init ()
+    |> fun h -> Http.Header.add h "content-type" content_type
+    |> fun h -> Http.Header.add h "transfer-encoding" "chunked"
+  in
+
+  let stream_producer stream =
+    Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
+      (fun () ->
+        let chunk_size = min chunk_size max_chunk_size in
+        let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+          let buffer = Bytes.create chunk_size in
+          let rec loop () =
+            let n = Unix.read fd buffer 0 chunk_size in
+            if n > 0 then begin
+              let chunk = Bytes.sub_string buffer 0 n in
+              Eio.Stream.add stream (Some chunk);
+              loop ()
+            end
+          in
           loop ()
-        end 
-      in 
-      loop ();
-      Eio.Stream.add stream "" (* End marker *)
-    ) 
-  in 
-  
+        )
+      )
+  in
+
   Response.make ~status:`OK ~headers (`Producer stream_producer)
 
 (** {1 Chunked Encoding} *)

@@ -21,7 +21,7 @@ let default_config = {
     Reads from the stream on demand, buffering partial chunks. *)
 module Stream_source = struct
   type t = {
-    stream : string Eio.Stream.t;
+    stream : string option Eio.Stream.t;
     mutable buf : string;
     mutable pos : int;
   }
@@ -37,21 +37,22 @@ module Stream_source = struct
       t.pos <- t.pos + n;
       n
     end else begin
-      (* Take next chunk from stream; empty string = end of stream *)
-      let chunk = Eio.Stream.take t.stream in
-      if chunk = "" then raise End_of_file;
-      let n = min (String.length chunk) (Cstruct.length dst) in
-      Cstruct.blit_from_string chunk 0 dst 0 n;
-      t.buf <- chunk;
-      t.pos <- n;
-      n
+      (* Take next chunk from stream; None = end of stream *)
+      match Eio.Stream.take t.stream with
+      | None -> raise End_of_file
+      | Some chunk ->
+        let n = min (String.length chunk) (Cstruct.length dst) in
+        Cstruct.blit_from_string chunk 0 dst 0 n;
+        t.buf <- chunk;
+        t.pos <- n;
+        n
     end
 end
 
 let stream_source_handler : (Stream_source.t, Eio.Flow.source_ty) Eio.Resource.handler =
   Eio.Flow.Pi.source (module Stream_source)
 
-let make_stream_source (stream : string Eio.Stream.t) : Eio.Flow.source_ty Eio.Resource.t =
+let make_stream_source (stream : string option Eio.Stream.t) : Eio.Flow.source_ty Eio.Resource.t =
   Eio.Resource.T ({ Stream_source.stream; buf = ""; pos = 0 }, stream_source_handler)
 
 (** Convert Kirin handler to cohttp-eio handler *)
@@ -103,7 +104,7 @@ let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
           try p stream with exn ->
             Logger.error "Stream producer error: %s" (Printexc.to_string exn);
             (* Signal end of stream on error *)
-            Eio.Stream.add stream ""
+            Eio.Stream.add stream None
         );
         let body = make_stream_source stream in
         Cohttp_eio.Server.respond ~status ~headers ~body ()

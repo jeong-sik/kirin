@@ -3,8 +3,8 @@
 (** Response body variants. *)
 type body =
   | String of string
-  | Stream of string Eio.Stream.t
-  | Producer of (string Eio.Stream.t -> unit)
+  | Stream of string option Eio.Stream.t
+  | Producer of (string option Eio.Stream.t -> unit)
 
 (** Response type. *)
 type t = {
@@ -18,7 +18,7 @@ type t = {
 val make :
   ?status:Http.Status.t ->
   ?headers:Http.Header.t ->
-  [< `String of string | `Stream of string Eio.Stream.t | `Producer of (string Eio.Stream.t -> unit) ] ->
+  [< `String of string | `Stream of string option Eio.Stream.t | `Producer of (string option Eio.Stream.t -> unit) ] ->
   t
 
 (** [status t] returns the HTTP status. *)
@@ -77,7 +77,7 @@ val bad_request : ?body:string -> unit -> t
 val server_error : ?body:string -> unit -> t
 
 (** [stream ?status ?headers s] creates a streaming response. *)
-val stream : ?status:Http.Status.t -> ?headers:(string * string) list -> string Eio.Stream.t -> t
+val stream : ?status:Http.Status.t -> ?headers:(string * string) list -> string option Eio.Stream.t -> t
 
 (** [htmx ?status ?target ?swap body] creates an HTMX response with optional swap headers. *)
 val htmx : ?status:Http.Status.t -> ?target:string -> ?swap:string -> string -> t

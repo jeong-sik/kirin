@@ -76,6 +76,37 @@ let test_parse_traceparent_invalid_format () =
   check (option reject) "empty" None (Kirin.Trace.parse_traceparent "");
   check (option reject) "no dashes" None (Kirin.Trace.parse_traceparent "garbage")
 
+let test_parse_traceparent_valid_w3c () =
+  let header = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01" in
+  match Kirin.Trace.parse_traceparent header with
+  | Some (tid, pid) ->
+    check string "trace_id" "0af7651916cd43dd8448eb211c80319c" tid;
+    check string "parent_id" "b7ad6b7169203331" pid
+  | None -> fail "expected Some for valid W3C traceparent"
+
+let test_parse_traceparent_reject_uppercase () =
+  let header = "00-0AF7651916CD43DD8448EB211C80319C-b7ad6b7169203331-01" in
+  check (option reject) "uppercase trace_id" None
+    (Kirin.Trace.parse_traceparent header)
+
+let test_parse_traceparent_reject_non_hex () =
+  let header = "00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-b7ad6b7169203331-01" in
+  check (option reject) "non-hex chars" None
+    (Kirin.Trace.parse_traceparent header)
+
+let test_parse_traceparent_reject_wrong_length () =
+  let header = "00-0af765-b7ad6b7169203331-01" in
+  check (option reject) "short trace_id" None
+    (Kirin.Trace.parse_traceparent header)
+
+let test_parse_traceparent_all_zeros () =
+  let header = "00-00000000000000000000000000000000-0000000000000000-00" in
+  match Kirin.Trace.parse_traceparent header with
+  | Some (tid, pid) ->
+    check string "zero trace_id" "00000000000000000000000000000000" tid;
+    check string "zero parent_id" "0000000000000000" pid
+  | None -> fail "expected Some for all-zeros traceparent"
+
 let test_to_traceparent () =
   let span = Kirin.Trace.start ~name:"op"
     ~trace_id:"0123456789abcdef0123456789abcdef" () in
@@ -176,6 +207,11 @@ let () =
       test_case "parse valid traceparent" `Quick test_parse_traceparent_valid;
       test_case "reject short trace_id" `Quick test_parse_traceparent_invalid_short_tid;
       test_case "reject invalid format" `Quick test_parse_traceparent_invalid_format;
+      test_case "valid W3C example" `Quick test_parse_traceparent_valid_w3c;
+      test_case "reject uppercase hex" `Quick test_parse_traceparent_reject_uppercase;
+      test_case "reject non-hex chars" `Quick test_parse_traceparent_reject_non_hex;
+      test_case "reject wrong length" `Quick test_parse_traceparent_reject_wrong_length;
+      test_case "all zeros valid" `Quick test_parse_traceparent_all_zeros;
       test_case "to_traceparent format" `Quick test_to_traceparent;
       test_case "traceparent roundtrip" `Quick test_traceparent_roundtrip;
     ];
