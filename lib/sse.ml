@@ -108,7 +108,7 @@ let response stream =
       Eio.Stream.add body_stream (encode evt);
       loop ()
     in
-    (try loop () with _ -> ());
+    (try loop () with Eio.Io _ | End_of_file -> ());
     Eio.Stream.add body_stream ""
   in
   Response.make ~status:`OK ~headers (`Producer stream_producer)

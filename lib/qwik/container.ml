@@ -121,7 +121,7 @@ let rec sobj_of_json (json : Yojson.Safe.t) =
     | _ ->
     match List.assoc_opt "$resource$" props with
     | Some (`Int r) ->
-      let state = try props |> List.assoc "$state$" |> to_string with _ -> "pending" in
+      let state = try props |> List.assoc "$state$" |> to_string with Not_found | Yojson.Safe.Util.Type_error (_, _) -> "pending" in
       SResource (r, state)
     | _ ->
     match List.assoc_opt "$store$" props with

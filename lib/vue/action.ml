@@ -193,7 +193,7 @@ let get_text_exn form name =
 let get_number form name =
   match List.assoc_opt name form with
   | Some (Number n) -> Some n
-  | Some (Text s) -> (try Some (float_of_string s) with _ -> None)
+  | Some (Text s) -> (try Some (float_of_string s) with Failure _ -> None)
   | _ -> None
 
 (** Get bool field *)

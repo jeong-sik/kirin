@@ -35,7 +35,7 @@ let param_exn name ctx =
 (** Get param as int *)
 let param_int name ctx =
   match param name ctx with
-  | Some v -> (try Some (int_of_string v) with _ -> None)
+  | Some v -> (try Some (int_of_string v) with Failure _ -> None)
   | None -> None
 
 (** Get search param *)
@@ -90,7 +90,7 @@ let parse_redirect error =
     let rest = String.sub error 9 (String.length error - 9) in
     match String.split_on_char ':' rest with
     | [status_str; url] ->
-      (try Some (int_of_string status_str, url) with _ -> None)
+      (try Some (int_of_string status_str, url) with Failure _ -> None)
     | _ -> None
   else
     None

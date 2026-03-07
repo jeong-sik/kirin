@@ -153,10 +153,10 @@ let modifier_of_string = function
   | "passive" -> Some Passive
   | "capture" -> Some Capture
   | s when String.length s > 8 && String.sub s 0 8 = "debounce" ->
-    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with _ -> 250 in
+    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with Failure _ | Invalid_argument _ -> 250 in
     Some (Debounce ms)
   | s when String.length s > 8 && String.sub s 0 8 = "throttle" ->
-    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with _ -> 250 in
+    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with Failure _ | Invalid_argument _ -> 250 in
     Some (Throttle ms)
   | _ -> None
 

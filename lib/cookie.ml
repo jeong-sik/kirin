@@ -143,7 +143,7 @@ let verify signed_value =
       else
         None
     | None -> None
-  with _ -> None
+  with Failure _ | Invalid_argument _ -> None
 
 (** Get a signed cookie value *)
 let get_signed name req =

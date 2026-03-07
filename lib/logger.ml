@@ -128,7 +128,7 @@ let rec run_logger () =
   match take_entry () with
   | None -> ()
   | Some entry ->
-    (try write_entry entry with _ -> ());
+    (try write_entry entry with Sys_error _ -> ());
     run_logger ()
 
 (** Shutdown logger gracefully *)
@@ -192,7 +192,7 @@ let emit level message context trace_id =
     if not enqueued then (
       (* Fallback: if the async logger isn't running (or queue is full), write
          synchronously rather than blocking or growing memory. *)
-      (try write_entry entry with _ -> ())
+      (try write_entry entry with Sys_error _ -> ())
     )
 (** Configure logger *)
 let configure ?min_level ?format ?output () = 

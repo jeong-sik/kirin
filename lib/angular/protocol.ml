@@ -195,7 +195,7 @@ let decode_response json_str =
         | d -> Some d
       in
       Failure { id; error = { code; message; data } }
-  with _ ->
+  with Yojson.Json_error _ | Yojson.Safe.Util.Type_error (_, _) ->
     Failure {
       id = None;
       error = {

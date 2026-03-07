@@ -173,7 +173,7 @@ module Test_response = struct
   (** Get body as JSON *)
   let json resp =
     try Some (Yojson.Safe.from_string resp.body)
-    with _ -> None
+    with Yojson.Json_error _ -> None
 
   (** Check if response is success (2xx) *)
   let is_success resp =

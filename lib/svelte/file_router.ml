@@ -170,7 +170,7 @@ let extract_params route url =
     let rec extract idx acc = function
       | [] -> Some (List.rev acc)
       | seg :: rest ->
-        let value = try Str.matched_group (idx + 1) url with _ -> "" in
+        let value = try Str.matched_group (idx + 1) url with Not_found | Invalid_argument _ -> "" in
         let name = match seg.segment_type with
           | Param n | OptionalParam n | Rest n | Matcher (n, _) -> n
           | _ -> ""

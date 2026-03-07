@@ -183,7 +183,7 @@ let rec discover_routes ~base_path dir =
         acc
     ) [] entries in
     List.rev routes
-  with _ -> []
+  with Sys_error _ -> []
 
 (** {1 Preload Hints} *)
 

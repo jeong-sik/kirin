@@ -180,7 +180,7 @@ let is_valid pool pooled =
   | None -> true
   | Some validate ->
     try validate pooled.conn
-    with _ -> false
+    with Eio.Io _ | Failure _ -> false
 
 (** Check if connection is too old *)
 let is_expired pool pooled =
@@ -343,7 +343,7 @@ let ensure_minimum pool =
           let pooled = create_pooled pool in
           pool.connections <- pooled :: pool.connections;
           update_stats pool (fun s -> { s with total_connections = s.total_connections + 1 })
-        with _ ->
+        with Eio.Io _ | Failure _ ->
           update_stats pool (fun s -> { s with total_errors = s.total_errors + 1 })
       done;
       needed

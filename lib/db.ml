@@ -172,7 +172,7 @@ let health_check pool =
 (** Parse database URI *)
 let parse_uri uri_string =
   try Ok (Uri.of_string uri_string)
-  with _ -> Error (Invalid_uri uri_string)
+  with Invalid_argument _ -> Error (Invalid_uri uri_string)
 
 (** Get scheme from URI (postgresql, sqlite3, etc.) *)
 let scheme_of_uri uri = Uri.scheme uri
