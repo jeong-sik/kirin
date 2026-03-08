@@ -5,7 +5,20 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] - Unreleased
+## [1.0.0] - Unreleased
+
+### Changed
+- **WebRTC**: Replaced internal mock PeerConnection/DataChannel with real ocaml-webrtc thin wrapper. Full ICE, DTLS, SCTP, and DataChannel stack via `Webrtc_eio`.
+- **WebRTC API (breaking)**: `Kirin.WebRTC.PeerConnection` and `Kirin.WebRTC.DataChannel` modules removed. Use `Kirin.WebRTC.create_peer`, `Kirin.WebRTC.create_datachannel`, and `Kirin.WebRTC.Peer` instead.
+- **WebRTC Config**: `webrtc_config.ml` now re-exports `Webrtc.Webrtc_eio.connection_state` (6 variants: New/Connecting/Connected/Disconnected/Failed/Closed) for type equality with peer-level state. Added `ice_server_of_stun`/`stun_of_ice_server` conversion functions.
+- **WebRTC Type Rename (breaking)**: `Kirin.webrtc_ice_state` renamed to `Kirin.webrtc_connection_state`.
+- **WebRTC ICE Role**: `create_peer` now maps `Client` to `Ice.Controlling` and `Server` to `Ice.Controlled`.
+
+### Removed
+- Internal mock PeerConnection and DataChannel (303 lines of mock code).
+- Dead types: `datachannel_state`, `datachannel_options`, `default_datachannel_options` from `webrtc_config`.
+
+## [0.9.0] - 2026-03-08
 
 ### Changed
 - **Stream EOS Type Safety**: `string Eio.Stream.t` to `string option Eio.Stream.t` — `None` signals end-of-stream instead of empty string sentinel. Prevents false EOS on protocols where empty string is valid data.

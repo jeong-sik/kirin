@@ -852,6 +852,8 @@ type shutdown_state = Shutdown.state =
 
 (** WebRTC peer-to-peer communication.
 
+    Backed by ocaml-webrtc: full ICE, DTLS, SCTP, and DataChannel stack.
+
     {b Quick Example - Signaling Server:}
     {[
       let () = Kirin.start ~port:8080
@@ -864,18 +866,15 @@ type shutdown_state = Shutdown.state =
 
     {b Quick Example - Peer Connection:}
     {[
-      let pc = Kirin.WebRTC.PeerConnection.create () in
-      let dc = Kirin.WebRTC.PeerConnection.create_data_channel pc ~label:"chat" () in
-
-      Kirin.WebRTC.DataChannel.on_message dc (fun msg ->
-        Printf.printf "Received: %s\n" msg);
-
-      let offer = Kirin.WebRTC.PeerConnection.create_offer pc
+      let peer = Kirin.WebRTC.create_peer ~role:Client () in
+      Kirin.WebRTC.Peer.on_datachannel peer (fun dc ->
+        dc.on_message <- Some (fun data ->
+          Printf.printf "Received: %s\n" (Bytes.to_string data)));
+      Kirin.WebRTC.Peer.run peer ~sw ~net ~clock
     ]}
 
     Features:
-    - PeerConnection: WebRTC connection management
-    - DataChannel: P2P data communication
+    - Peer: Full WebRTC stack (ICE, DTLS, SCTP, DataChannels)
     - Signaling: WebSocket-based signaling server
     - ICE: STUN/TURN integration
 
@@ -883,14 +882,15 @@ type shutdown_state = Shutdown.state =
 *)
 module WebRTC = Webrtc_adapter
 
-(** ICE connection state *)
-type webrtc_ice_state = Webrtc_adapter.ice_state =
+(** WebRTC peer connection state.
+    Re-exported from {!Webrtc_adapter.connection_state} for convenience.
+    Matches {!WebRTC.Peer.get_state} return type. *)
+type webrtc_connection_state = Webrtc_adapter.connection_state =
   | New
-  | Checking
+  | Connecting
   | Connected
-  | Completed
-  | Failed
   | Disconnected
+  | Failed
   | Closed
 
 (** {1 Database Integration (Phase 12)}
