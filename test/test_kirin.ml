@@ -1816,7 +1816,7 @@ let shutdown_tests = [
 ]
 
 (* ============================================================
-   WebRTC Tests (Phase 11)
+   WebRTC Tests (Phase 11) — v1.0.0 real ocaml-webrtc API
    ============================================================ *)
 
 module WR = Kirin.WebRTC
@@ -1828,58 +1828,49 @@ let test_webrtc_ice_states () =
   ] in
   check int "ice states count" 7 (List.length states)
 
-(* Test DataChannel creation *)
-let test_webrtc_datachannel_create () =
-  let dc = WR.DataChannel.create ~label:"test-channel" () in
-  check string "label" "test-channel" (WR.DataChannel.label dc);
-  check bool "initial state not open" false (WR.DataChannel.is_open dc)
+(* Test peer creation *)
+let test_webrtc_peer_create () =
+  let peer = WR.create_peer ~role:WR.Peer.Client () in
+  check bool "state is new"
+    true (WR.Peer.get_state peer = WR.Peer.New)
 
-(* Test DataChannel with options *)
-let test_webrtc_datachannel_options () =
-  let options = {
-    WR.default_datachannel_options with
-    ordered = false;
-    protocol = "custom-protocol";
-  } in
-  let dc = WR.DataChannel.create ~label:"ordered-channel" ~options () in
-  check string "label" "ordered-channel" (WR.DataChannel.label dc)
-
-(* Test PeerConnection creation *)
-let test_webrtc_peerconnection_create () =
-  let pc = WR.PeerConnection.create () in
-  check bool "ice state is new"
-    true (WR.PeerConnection.ice_state pc = Kirin.New);
-  check (option (module struct
-    type t = WR.session_description
-    let pp fmt _ = Format.fprintf fmt "<session_description>"
-    let equal _ _ = true
-  end)) "no local desc" None (WR.PeerConnection.local_description pc)
-
-(* Test PeerConnection with custom ICE servers *)
-let test_webrtc_peerconnection_ice_servers () =
+(* Test peer creation with custom ICE servers *)
+let test_webrtc_peer_ice_servers () =
   let ice_servers = [
     { WR.urls = ["stun:stun.example.com:3478"]; username = None; credential = None };
     { WR.urls = ["turn:turn.example.com:3478"]; username = Some "user"; credential = Some "pass" };
   ] in
-  let pc = WR.PeerConnection.create ~ice_servers () in
-  check bool "ice state is new"
-    true (WR.PeerConnection.ice_state pc = Kirin.New)
+  let peer = WR.create_peer ~ice_servers ~role:WR.Peer.Client () in
+  check bool "state is new"
+    true (WR.Peer.get_state peer = WR.Peer.New)
 
-(* Test create_data_channel on PeerConnection *)
-let test_webrtc_peerconnection_data_channel () =
-  let pc = WR.PeerConnection.create () in
-  let dc = WR.PeerConnection.create_data_channel pc ~label:"chat" () in
-  check string "channel label" "chat" (WR.DataChannel.label dc)
+(* Test DataChannel creation on a peer *)
+let test_webrtc_datachannel_create () =
+  let peer = WR.create_peer ~role:WR.Peer.Client () in
+  let dc = WR.create_datachannel peer ~label:"test-channel" in
+  check string "label" "test-channel" dc.WR.Peer.label
 
 (* Test create_offer *)
 let test_webrtc_create_offer () =
-  let pc = WR.PeerConnection.create () in
-  let _ = WR.PeerConnection.create_data_channel pc ~label:"data" () in
-  let offer = WR.PeerConnection.create_offer pc in
+  let peer = WR.create_peer ~role:WR.Peer.Client () in
+  let _ = WR.create_datachannel peer ~label:"data" in
+  let offer = WR.create_offer peer in
   check bool "offer type" true (offer.sdp_type = WR.Offer);
   check bool "offer has SDP" true (String.length offer.sdp > 0);
-  check bool "SDP contains v=0" true (String.sub offer.sdp 0 4 = "v=0 " ||
-                                       String.sub offer.sdp 0 3 = "v=0")
+  check bool "SDP contains v=0" true (String.sub offer.sdp 0 3 = "v=0")
+
+(* Test ICE server conversion roundtrip *)
+let test_webrtc_ice_server_conversion () =
+  let stun : WR.stun_server = {
+    urls = ["stun:example.com:3478"];
+    username = Some "user";
+    credential = Some "pass";
+  } in
+  let ice = WR.ice_server_of_stun stun in
+  let back = WR.stun_of_ice_server ice in
+  check (list string) "urls" stun.urls back.urls;
+  check (option string) "username" stun.username back.username;
+  check (option string) "credential" stun.credential back.credential
 
 (* Test Signaling message encoding *)
 let test_webrtc_signaling_encode () =
@@ -1925,12 +1916,11 @@ let test_webrtc_routes () =
 
 let webrtc_tests = [
   test_case "ice states" `Quick (with_eio test_webrtc_ice_states);
+  test_case "peer create" `Quick (with_eio test_webrtc_peer_create);
+  test_case "peer ice servers" `Quick (with_eio test_webrtc_peer_ice_servers);
   test_case "datachannel create" `Quick (with_eio test_webrtc_datachannel_create);
-  test_case "datachannel options" `Quick (with_eio test_webrtc_datachannel_options);
-  test_case "peerconnection create" `Quick (with_eio test_webrtc_peerconnection_create);
-  test_case "peerconnection ice servers" `Quick (with_eio test_webrtc_peerconnection_ice_servers);
-  test_case "peerconnection data channel" `Quick (with_eio test_webrtc_peerconnection_data_channel);
   test_case "create offer" `Quick (with_eio test_webrtc_create_offer);
+  test_case "ice server conversion" `Quick (with_eio test_webrtc_ice_server_conversion);
   test_case "signaling encode" `Quick (with_eio test_webrtc_signaling_encode);
   test_case "signaling decode" `Quick (with_eio test_webrtc_signaling_decode);
   test_case "signaling decode error" `Quick (with_eio test_webrtc_signaling_decode_error);
