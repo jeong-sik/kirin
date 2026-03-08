@@ -52,10 +52,13 @@ val create_datachannel : Peer.t -> label:string -> Peer.datachannel
 val send_datachannel : Peer.t -> Peer.datachannel -> string -> (int, string) result
 
 (** [create_offer peer] generates an SDP offer for signaling.
-    Uses the peer's ICE credentials with a placeholder fingerprint. *)
+    Uses the peer's ICE credentials with a {b placeholder} DTLS fingerprint
+    (all zeros). Not suitable for real DTLS negotiation — use {!Peer.connect}
+    for production WebRTC connections. *)
 val create_offer : Peer.t -> session_description
 
 (** [create_answer peer ~remote_sdp] generates an SDP answer.
+    Uses a {b placeholder} DTLS fingerprint. See {!create_offer} caveat.
     Returns [Error] if the remote SDP cannot be parsed. *)
 val create_answer : Peer.t -> remote_sdp:string -> (session_description, string) result
 

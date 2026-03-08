@@ -1,25 +1,31 @@
 (** WebRTC type definitions and default configurations.
 
     Types are bridged between Kirin's signaling layer and the ocaml-webrtc
-    protocol stack. ICE connection state is re-exported from {!Webrtc.Ice}
-    to ensure type equality. Signaling-specific types (lightweight candidates,
-    SDP descriptions) remain Kirin-defined.
+    protocol stack. The peer-level connection state is re-exported from
+    {!Webrtc.Webrtc_eio} to ensure type equality with {!Peer.get_state}.
+    Signaling-specific types (lightweight candidates, SDP descriptions)
+    remain Kirin-defined.
+
+    For ICE-layer states (RFC 8445), use {!Webrtc.Ice.connection_state}
+    directly.
 
     Conversion functions at the bottom bridge between the two type systems. *)
 
-(** {1 ICE Connection State}
+(** {1 Connection State}
 
-    Re-exported from {!Webrtc.Ice.connection_state}. Kirin code can use
-    these constructors directly (e.g. [New], [Connected]) while maintaining
-    type compatibility with the ocaml-webrtc stack. *)
+    Re-exported from {!Webrtc.Webrtc_eio.connection_state}.
+    This is the peer-level state returned by {!Peer.get_state}.
+    Kirin code can pattern-match directly (e.g. [New], [Connected]).
 
-type ice_state = Webrtc.Ice.connection_state =
+    For ICE-layer states (7 variants including [Checking] and [Completed]),
+    use [Webrtc.Ice.connection_state] instead. *)
+
+type connection_state = Webrtc.Webrtc_eio.connection_state =
   | New
-  | Checking
+  | Connecting
   | Connected
-  | Completed
-  | Failed
   | Disconnected
+  | Failed
   | Closed
 
 (** {1 Signaling Types}
@@ -44,34 +50,6 @@ type sdp_type = Offer | Answer | Pranswer | Rollback
 type session_description = {
   sdp_type : sdp_type;
   sdp : string;
-}
-
-(** {1 DataChannel Types} *)
-
-(** Data channel state *)
-type datachannel_state =
-  | Connecting
-  | Open
-  | Closing
-  | DCClosed
-
-(** Data channel options *)
-type datachannel_options = {
-  ordered : bool;
-  max_packet_life_time : int option;
-  max_retransmits : int option;
-  protocol : string;
-  negotiated : bool;
-  id : int option;
-}
-
-let default_datachannel_options = {
-  ordered = true;
-  max_packet_life_time = None;
-  max_retransmits = None;
-  protocol = "";
-  negotiated = false;
-  id = None;
 }
 
 (** {1 ICE Server Configuration} *)

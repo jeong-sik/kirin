@@ -51,12 +51,19 @@ module Peer = Webrtc.Webrtc_eio
 (** {1 Kirin-Style Helpers} *)
 
 (** Create a WebRTC peer with Kirin ICE server configuration.
-    Converts Kirin {!stun_server} list to {!Ice.ice_config}. *)
+    Converts Kirin {!stun_server} list to {!Ice.ice_config}.
+    ICE role is derived from the WebRTC [role]:
+    [Client] maps to [Ice.Controlling], [Server] to [Ice.Controlled]. *)
 let create_peer ?(ice_servers = default_ice_servers) ~role () =
   let ws_ice_servers = List.map ice_server_of_stun ice_servers in
+  let ice_role = match role with
+    | Peer.Client -> Ice.Controlling
+    | Peer.Server -> Ice.Controlled
+  in
   let ice_config =
     { Peer.default_ice_config with
-      Ice.ice_servers = ws_ice_servers
+      ice_servers = ws_ice_servers
+    ; role = ice_role
     }
   in
   Peer.create ~ice_config ~role ()
@@ -73,8 +80,10 @@ let send_datachannel peer channel data =
   Peer.send_channel peer channel (Bytes.of_string data)
 
 (** Create an SDP offer for signaling.
-    Uses the peer's ICE credentials with a placeholder DTLS fingerprint.
-    For full DTLS negotiation, use {!Peer.connect} instead. *)
+    Uses the peer's ICE credentials with a {b placeholder} DTLS fingerprint
+    (all zeros). The generated SDP is {b not suitable for real DTLS negotiation}.
+    For production WebRTC connections, use {!Peer.connect} which performs
+    actual DTLS handshake with proper certificate fingerprints. *)
 let create_offer peer =
   let ufrag, pwd = Peer.get_local_credentials peer in
   let fingerprint =
@@ -92,6 +101,8 @@ let create_offer peer =
   { sdp_type = Offer; sdp = Sdp.to_string sdp }
 
 (** Create an SDP answer from a remote offer SDP string.
+    Uses a {b placeholder} DTLS fingerprint (all zeros) — not suitable for
+    real DTLS negotiation. For production use, see {!Peer.connect}.
     Returns [Error] if SDP parsing fails. *)
 let create_answer peer ~remote_sdp =
   match Sdp.parse remote_sdp with

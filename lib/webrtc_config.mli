@@ -1,20 +1,20 @@
 (** WebRTC type definitions and default configurations.
 
     Types are bridged between Kirin's signaling layer and the ocaml-webrtc
-    protocol stack. ICE connection state is re-exported from {!Webrtc.Ice}
-    to ensure type equality. *)
+    protocol stack. Peer-level connection state is re-exported from
+    {!Webrtc.Webrtc_eio} to ensure type equality with {!Peer.get_state}. *)
 
-(** {1 ICE Connection State}
+(** {1 Connection State}
 
-    Re-exported from {!Webrtc.Ice.connection_state}. *)
+    Re-exported from {!Webrtc.Webrtc_eio.connection_state}.
+    For ICE-layer states, use [Webrtc.Ice.connection_state] directly. *)
 
-type ice_state = Webrtc.Ice.connection_state =
+type connection_state = Webrtc.Webrtc_eio.connection_state =
   | New
-  | Checking
+  | Connecting
   | Connected
-  | Completed
-  | Failed
   | Disconnected
+  | Failed
   | Closed
 
 (** {1 Signaling Types} *)
@@ -35,29 +35,6 @@ type session_description = {
   sdp_type : sdp_type;
   sdp : string;
 }
-
-(** {1 DataChannel Types} *)
-
-(** Data channel state. *)
-type datachannel_state =
-  | Connecting
-  | Open
-  | Closing
-  | DCClosed
-
-(** Data channel creation options. *)
-type datachannel_options = {
-  ordered : bool;
-  max_packet_life_time : int option;
-  max_retransmits : int option;
-  protocol : string;
-  negotiated : bool;
-  id : int option;
-}
-
-(** Default data channel options: ordered, no lifetime/retransmit limits,
-    empty protocol, not pre-negotiated, no explicit id. *)
-val default_datachannel_options : datachannel_options
 
 (** {1 ICE Server Configuration} *)
 

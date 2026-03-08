@@ -882,14 +882,15 @@ type shutdown_state = Shutdown.state =
 *)
 module WebRTC = Webrtc_adapter
 
-(** ICE connection state *)
-type webrtc_ice_state = Webrtc_adapter.ice_state =
+(** WebRTC peer connection state.
+    Re-exported from {!Webrtc_adapter.connection_state} for convenience.
+    Matches {!WebRTC.Peer.get_state} return type. *)
+type webrtc_connection_state = Webrtc_adapter.connection_state =
   | New
-  | Checking
+  | Connecting
   | Connected
-  | Completed
-  | Failed
   | Disconnected
+  | Failed
   | Closed
 
 (** {1 Database Integration (Phase 12)}

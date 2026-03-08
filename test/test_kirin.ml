@@ -1821,12 +1821,12 @@ let shutdown_tests = [
 
 module WR = Kirin.WebRTC
 
-(* Test ICE state types *)
+(* Test connection state types *)
 let test_webrtc_ice_states () =
-  let states : Kirin.webrtc_ice_state list = [
-    New; Checking; Connected; Completed; Failed; Disconnected; Closed
+  let states : Kirin.webrtc_connection_state list = [
+    New; Connecting; Connected; Disconnected; Failed; Closed
   ] in
-  check int "ice states count" 7 (List.length states)
+  check int "connection states count" 6 (List.length states)
 
 (* Test peer creation *)
 let test_webrtc_peer_create () =
@@ -1876,8 +1876,12 @@ let test_webrtc_ice_server_conversion () =
 let test_webrtc_signaling_encode () =
   let msg = WR.Signaling.SdpOffer { from_peer = "peer1"; sdp = "v=0..." } in
   let json = WR.Signaling.encode_message msg in
-  check bool "contains type" true (String.contains (String.lowercase_ascii json) 'o');
-  check bool "is json object" true (json.[0] = '{')
+  check bool "is json object" true (json.[0] = '{');
+  let parsed = Yojson.Safe.from_string json in
+  let type_field = Yojson.Safe.Util.member "type" parsed |> Yojson.Safe.Util.to_string in
+  check string "type is offer" "offer" type_field;
+  let sdp_field = Yojson.Safe.Util.member "sdp" parsed |> Yojson.Safe.Util.to_string in
+  check string "sdp preserved" "v=0..." sdp_field
 
 (* Test Signaling message decoding *)
 let test_webrtc_signaling_decode () =
@@ -1906,8 +1910,12 @@ let test_webrtc_ice_candidate () =
   } in
   let msg = WR.Signaling.IceCandidate { from_peer = "peer1"; candidate } in
   let json = WR.Signaling.encode_message msg in
-  check bool "contains ice-candidate" true
-    (String.contains (String.lowercase_ascii json) 'i')
+  let parsed = Yojson.Safe.from_string json in
+  let type_field = Yojson.Safe.Util.member "type" parsed |> Yojson.Safe.Util.to_string in
+  check string "type is ice-candidate" "ice-candidate" type_field;
+  let cand_obj = Yojson.Safe.Util.member "candidate" parsed in
+  let cand_str = Yojson.Safe.Util.member "candidate" cand_obj |> Yojson.Safe.Util.to_string in
+  check bool "candidate preserved" true (String.length cand_str > 0)
 
 (* Test routes helper *)
 let test_webrtc_routes () =
