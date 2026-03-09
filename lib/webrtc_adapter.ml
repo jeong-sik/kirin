@@ -50,6 +50,15 @@ module Peer = Webrtc.Webrtc_eio
 
 (** {1 Kirin-Style Helpers} *)
 
+(** Placeholder DTLS fingerprint (all zeros).
+    Not suitable for real DTLS negotiation — for signaling/testing only. *)
+let placeholder_dtls_fingerprint =
+  { Sdp.hash_func = "sha-256"
+  ; Sdp.fingerprint =
+      "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:\
+       00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+  }
+
 (** Create a WebRTC peer with Kirin ICE server configuration.
     Converts Kirin {!stun_server} list to {!Ice.ice_config}.
     ICE role is derived from the WebRTC [role]:
@@ -86,17 +95,10 @@ let send_datachannel peer channel data =
     actual DTLS handshake with proper certificate fingerprints. *)
 let create_offer peer =
   let ufrag, pwd = Peer.get_local_credentials peer in
-  let fingerprint =
-    { Sdp.hash_func = "sha-256"
-    ; Sdp.fingerprint =
-        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:\
-         00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
-    }
-  in
   let sdp =
     Sdp.create_datachannel_offer
       ~ice_ufrag:ufrag ~ice_pwd:pwd
-      ~fingerprint ~sctp_port:5000
+      ~fingerprint:placeholder_dtls_fingerprint ~sctp_port:5000
   in
   { sdp_type = Offer; sdp = Sdp.to_string sdp }
 
@@ -109,18 +111,11 @@ let create_answer peer ~remote_sdp =
   | Error e -> Error (Printf.sprintf "Failed to parse remote SDP: %s" e)
   | Ok offer_session ->
     let ufrag, pwd = Peer.get_local_credentials peer in
-    let fingerprint =
-      { Sdp.hash_func = "sha-256"
-      ; Sdp.fingerprint =
-          "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:\
-           00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
-      }
-    in
     let sdp =
       Sdp.create_answer
         ~offer:offer_session
         ~ice_ufrag:ufrag ~ice_pwd:pwd
-        ~fingerprint
+        ~fingerprint:placeholder_dtls_fingerprint
     in
     Ok { sdp_type = Answer; sdp = Sdp.to_string sdp }
 
