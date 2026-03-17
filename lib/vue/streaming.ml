@@ -131,7 +131,7 @@ let streaming_headers ?(content_type="text/html; charset=utf-8") () = [
 
 (** {1 Stream State Machine} *)
 
-(** Stream context *)
+(** Stream context (mutex-protected for concurrent access) *)
 type context = {
   config: config;
   mutable state: state;
@@ -139,6 +139,7 @@ type context = {
   mutable bytes_sent: int;
   mutable suspense_pending: string list;
   mutable islands_pending: string list;
+  mutex: Mutex.t;
 }
 
 (** Create stream context *)
@@ -149,38 +150,46 @@ let create_context ?(config=default_config) () = {
   bytes_sent = 0;
   suspense_pending = [];
   islands_pending = [];
+  mutex = Mutex.create ();
 }
 
 (** Start streaming *)
 let start ctx =
-  ctx.state <- Streaming
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.state <- Streaming)
 
 (** Mark suspense as pending *)
 let add_suspense ctx id =
-  ctx.suspense_pending <- id :: ctx.suspense_pending
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.suspense_pending <- id :: ctx.suspense_pending)
 
 (** Mark island as pending *)
 let add_island ctx id =
-  ctx.islands_pending <- id :: ctx.islands_pending
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.islands_pending <- id :: ctx.islands_pending)
 
 (** Resolve suspense *)
 let resolve_suspense ctx id =
-  ctx.suspense_pending <- List.filter (fun i -> i <> id) ctx.suspense_pending
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.suspense_pending <- List.filter (fun i -> i <> id) ctx.suspense_pending)
 
 (** Resolve island *)
 let resolve_island ctx id =
-  ctx.islands_pending <- List.filter (fun i -> i <> id) ctx.islands_pending
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.islands_pending <- List.filter (fun i -> i <> id) ctx.islands_pending)
 
 (** Send chunk *)
 let send_chunk ctx chunk =
-  ctx.chunks_sent <- ctx.chunks_sent + 1;
-  let html = render_chunk chunk in
-  ctx.bytes_sent <- ctx.bytes_sent + String.length html;
-  encode_chunked html
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.chunks_sent <- ctx.chunks_sent + 1;
+    let html = render_chunk chunk in
+    ctx.bytes_sent <- ctx.bytes_sent + String.length html;
+    encode_chunked html)
 
 (** Finish streaming *)
 let finish ctx =
-  ctx.state <- Complete;
+  Mutex.protect ctx.mutex (fun () ->
+    ctx.state <- Complete);
   encode_chunked_end ()
 
 (** Check if complete *)

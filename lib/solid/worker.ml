@@ -16,7 +16,7 @@ type state =
 type t = {
   mutable pid: int option;
   mutable state: state;
-  mutable request_count: int;
+  request_count: int Atomic.t;
   mutable last_health_check: float;
   mutable stdin: out_channel option;
   mutable stdout: in_channel option;
@@ -31,7 +31,7 @@ type t = {
 let create ~bundle ?(max_requests = 5000) ?(timeout = 10.0) () = {
   pid = None;
   state = Stopped;
-  request_count = 0;
+  request_count = Atomic.make 0;
   last_health_check = 0.0;
   stdin = None;
   stdout = None;
@@ -62,7 +62,7 @@ let start worker =
       worker.stdin <- Some (Unix.out_channel_of_descr stdin_write);
       worker.stdout <- Some (Unix.in_channel_of_descr stdout_read);
       worker.state <- Ready;
-      worker.request_count <- 0;
+      Atomic.set worker.request_count 0;
       worker.last_health_check <- Unix.time ();
       Ok ()
     with e ->
@@ -105,11 +105,11 @@ let send_request worker request =
        flush stdin;
 
        let response = input_line stdout in
-       worker.request_count <- worker.request_count + 1;
+       let count = Atomic.fetch_and_add worker.request_count 1 + 1 in
        worker.state <- Ready;
 
        (* Check if restart needed *)
-       if worker.request_count >= worker.max_requests then
+       if count >= worker.max_requests then
          ignore (restart worker);
 
        Ok response
@@ -157,12 +157,12 @@ let render worker ~url ?(props = `Assoc []) () =
 let get_state worker = worker.state
 
 (** Get request count *)
-let get_request_count worker = worker.request_count
+let get_request_count worker = Atomic.get worker.request_count
 
 (** Check if worker is ready *)
 let is_ready worker = worker.state = Ready
 
 (** Check if worker needs restart *)
 let needs_restart worker =
-  worker.request_count >= worker.max_requests ||
+  Atomic.get worker.request_count >= worker.max_requests ||
   worker.state = Unhealthy

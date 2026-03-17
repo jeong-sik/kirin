@@ -4,13 +4,12 @@
 
 (** {1 Protocol Types} *)
 
-(** Request ID counter *)
-let request_id = ref 0
+(** Request ID counter (atomic for concurrent safety) *)
+let request_id = Atomic.make 0
 
 (** Generate next request ID *)
 let next_id () =
-  incr request_id;
-  !request_id
+  Atomic.fetch_and_add request_id 1 + 1
 
 (** Render request *)
 type render_request = {

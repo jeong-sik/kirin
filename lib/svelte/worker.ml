@@ -15,9 +15,9 @@ type status =
 type t = {
   mutable pid: int option;
   mutable status: status;
-  mutable request_count: int;
+  request_count: int Atomic.t;
   mutable last_request: float;
-  mutable error_count: int;
+  error_count: int Atomic.t;
   bundle_path: string;
   max_requests: int;
   memory_limit_mb: int;
@@ -29,9 +29,9 @@ type t = {
 let create ~bundle ~max_requests ~memory_limit_mb () = {
   pid = None;
   status = Ready;
-  request_count = 0;
+  request_count = Atomic.make 0;
   last_request = 0.0;
-  error_count = 0;
+  error_count = Atomic.make 0;
   bundle_path = bundle;
   max_requests;
   memory_limit_mb;
@@ -45,8 +45,8 @@ let is_healthy worker =
 
 (** Check if worker needs restart *)
 let needs_restart worker =
-  worker.request_count >= worker.max_requests ||
-  worker.error_count >= 5 ||
+  Atomic.get worker.request_count >= worker.max_requests ||
+  Atomic.get worker.error_count >= 5 ||
   worker.status = Crashed
 
 (** Get worker age in seconds *)
@@ -64,18 +64,18 @@ let mark_busy worker =
 (** Mark worker as ready *)
 let mark_ready worker =
   worker.status <- Ready;
-  worker.request_count <- worker.request_count + 1
+  ignore (Atomic.fetch_and_add worker.request_count 1)
 
 (** Mark worker as crashed *)
 let mark_crashed worker =
   worker.status <- Crashed;
-  worker.error_count <- worker.error_count + 1
+  ignore (Atomic.fetch_and_add worker.error_count 1)
 
 (** Reset worker state *)
 let reset worker =
   worker.status <- Ready;
-  worker.request_count <- 0;
-  worker.error_count <- 0
+  Atomic.set worker.request_count 0;
+  Atomic.set worker.error_count 0
 
 (** {1 Render Interface} *)
 
@@ -130,6 +130,7 @@ let start worker =
      node --expose-gc <bundle_path> *)
   worker.pid <- Some (Unix.getpid ());  (* Placeholder *)
   worker.status <- Ready;
+  Atomic.set worker.request_count 0;
   Ok ()
 
 (** Stop worker process *)
@@ -156,8 +157,8 @@ type stats = {
 
 (** Get worker stats *)
 let stats worker = {
-  requests = worker.request_count;
-  errors = worker.error_count;
+  requests = Atomic.get worker.request_count;
+  errors = Atomic.get worker.error_count;
   uptime = age worker;
   status = worker.status;
 }

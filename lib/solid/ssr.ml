@@ -30,10 +30,10 @@ let default_config ~bundle = {
 type t = {
   config: config;
   mutable pool: Worker.t array;
-  mutable next_worker: int;
-  mutable total_renders: int;
-  mutable errors: int;
-  mutable timeouts: int;
+  next_worker: int Atomic.t;
+  total_renders: int Atomic.t;
+  errors: int Atomic.t;
+  timeouts: int Atomic.t;
   cache: (string, Protocol.render_response) Hashtbl.t;
   cache_max_size: int;
 }
@@ -50,10 +50,10 @@ let create config =
   {
     config;
     pool;
-    next_worker = 0;
-    total_renders = 0;
-    errors = 0;
-    timeouts = 0;
+    next_worker = Atomic.make 0;
+    total_renders = Atomic.make 0;
+    errors = Atomic.make 0;
+    timeouts = Atomic.make 0;
     cache = Hashtbl.create 256;
     cache_max_size = 1000;
   }
@@ -75,7 +75,7 @@ let shutdown engine =
 
 (** Get next available worker (round-robin) *)
 let get_worker engine =
-  let start = engine.next_worker in
+  let start = Atomic.get engine.next_worker in
   let n = Array.length engine.pool in
   let rec find i =
     if i >= n then None
@@ -83,7 +83,7 @@ let get_worker engine =
       let idx = (start + i) mod n in
       let worker = engine.pool.(idx) in
       if Worker.is_ready worker then begin
-        engine.next_worker <- (idx + 1) mod n;
+        Atomic.set engine.next_worker ((idx + 1) mod n);
         Some worker
       end else
         find (i + 1)
@@ -110,41 +110,41 @@ let render_cached engine ~url ?(props = `Assoc []) () =
   (* Check cache *)
   match Hashtbl.find_opt engine.cache key with
   | Some response ->
-    engine.total_renders <- engine.total_renders + 1;
+    ignore (Atomic.fetch_and_add engine.total_renders 1);
     Ok response
   | None ->
     (* Get worker *)
     match get_worker engine with
     | None ->
-      engine.errors <- engine.errors + 1;
+      ignore (Atomic.fetch_and_add engine.errors 1);
       Error "No workers available"
     | Some worker ->
       let _ = ensure_worker_ready worker in
       match Worker.render worker ~url ~props () with
       | Ok response ->
-        engine.total_renders <- engine.total_renders + 1;
+        ignore (Atomic.fetch_and_add engine.total_renders 1);
         (* Cache if under limit *)
         if Hashtbl.length engine.cache < engine.cache_max_size then
           Hashtbl.replace engine.cache key response;
         Ok response
       | Error msg ->
-        engine.errors <- engine.errors + 1;
+        ignore (Atomic.fetch_and_add engine.errors 1);
         Error msg
 
 (** Render without caching *)
 let render engine ~url ?(props = `Assoc []) () =
   match get_worker engine with
   | None ->
-    engine.errors <- engine.errors + 1;
+    ignore (Atomic.fetch_and_add engine.errors 1);
     Error "No workers available"
   | Some worker ->
     let _ = ensure_worker_ready worker in
     match Worker.render worker ~url ~props () with
     | Ok response ->
-      engine.total_renders <- engine.total_renders + 1;
+      ignore (Atomic.fetch_and_add engine.total_renders 1);
       Ok response
     | Error msg ->
-      engine.errors <- engine.errors + 1;
+      ignore (Atomic.fetch_and_add engine.errors 1);
       Error msg
 
 (** Render with fallback *)
@@ -186,16 +186,17 @@ let stats engine =
   let workers_ready = Array.fold_left (fun acc w ->
     if Worker.is_ready w then acc + 1 else acc
   ) 0 engine.pool in
+  let total = Atomic.get engine.total_renders in
+  let errs = Atomic.get engine.errors in
   let cache_hit_rate =
-    if engine.total_renders > 0 then
-      float_of_int (engine.total_renders - engine.errors) /.
-      float_of_int engine.total_renders
+    if total > 0 then
+      float_of_int (total - errs) /. float_of_int total
     else 0.0
   in
   {
-    total_renders = engine.total_renders;
-    errors = engine.errors;
-    timeouts = engine.timeouts;
+    total_renders = total;
+    errors = errs;
+    timeouts = Atomic.get engine.timeouts;
     cache_size = Hashtbl.length engine.cache;
     cache_hit_rate;
     workers_ready;

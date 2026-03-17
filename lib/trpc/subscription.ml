@@ -88,28 +88,36 @@ module Registry = struct
 
   type t = {
     mutable subscriptions: (sub_id * cancel_fn) list;
+    mutex: Mutex.t;
   }
 
-  let create () = { subscriptions = [] }
+  let create () = { subscriptions = []; mutex = Mutex.create () }
 
   let add t ~id ~cancel =
-    t.subscriptions <- (id, cancel) :: t.subscriptions
+    Mutex.protect t.mutex (fun () ->
+      t.subscriptions <- (id, cancel) :: t.subscriptions)
 
   let remove t id =
-    match List.assoc_opt id t.subscriptions with
-    | Some cancel ->
-      cancel ();
-      t.subscriptions <- List.filter (fun (i, _) -> i <> id) t.subscriptions;
-      true
-    | None -> false
+    Mutex.protect t.mutex (fun () ->
+      match List.assoc_opt id t.subscriptions with
+      | Some cancel ->
+        cancel ();
+        t.subscriptions <- List.filter (fun (i, _) -> i <> id) t.subscriptions;
+        true
+      | None -> false)
 
   let cancel_all t =
-    List.iter (fun (_, cancel) -> cancel ()) t.subscriptions;
-    t.subscriptions <- []
+    Mutex.protect t.mutex (fun () ->
+      List.iter (fun (_, cancel) -> cancel ()) t.subscriptions;
+      t.subscriptions <- [])
 
-  let count t = List.length t.subscriptions
+  let count t =
+    Mutex.protect t.mutex (fun () ->
+      List.length t.subscriptions)
 
-  let has t id = List.mem_assoc id t.subscriptions
+  let has t id =
+    Mutex.protect t.mutex (fun () ->
+      List.mem_assoc id t.subscriptions)
 end
 
 (** {1 SSE Helpers} *)
