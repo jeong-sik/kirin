@@ -58,7 +58,7 @@ Features:
   (ppx_deriving_yojson (>= "3.0"))
   (grpc-direct (>= "0.1.0"))
   (grpc-direct-core (>= "0.1.0"))
-  (ocaml-webrtc (>= "0.1.0"))
+  (ocaml-webrtc (>= "0.2.3"))
   (graphql (>= "0.14.0"))
   (graphql_parser (>= "0.14.0"))
   (hmap (>= "0.8"))
