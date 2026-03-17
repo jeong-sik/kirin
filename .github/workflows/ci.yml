@@ -31,6 +31,9 @@ jobs:
 
     - name: Pin internal opam deps (not published on opam-repository)
       run: |
+        opam pin add -n -y mcp_protocol https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_eio https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_http https://github.com/jeong-sik/mcp-protocol-sdk.git#main
         opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
@@ -78,6 +81,9 @@ jobs:
 
     - name: Pin internal opam deps (not published on opam-repository)
       run: |
+        opam pin add -n -y mcp_protocol https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_eio https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_http https://github.com/jeong-sik/mcp-protocol-sdk.git#main
         opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
@@ -132,6 +138,9 @@ jobs:
 
     - name: Pin internal opam deps (not published on opam-repository)
       run: |
+        opam pin add -n -y mcp_protocol https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_eio https://github.com/jeong-sik/mcp-protocol-sdk.git#main
+        opam pin add -n -y mcp_protocol_http https://github.com/jeong-sik/mcp-protocol-sdk.git#main
         opam pin add -n -y grpc-direct https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y grpc-direct-core https://github.com/jeong-sik/grpc-direct.git#main
         opam pin add -n -y ocaml-webrtc https://github.com/jeong-sik/ocaml-webrtc.git#main
