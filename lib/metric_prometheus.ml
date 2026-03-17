@@ -70,24 +70,27 @@ let format_labels labels =
     ) labels in
     "{" ^ String.concat "," pairs ^ "}"
 
-let export_counter buf (c : Metric_counter.t) =
-  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" c.name c.help);
-  Buffer.add_string buf (Printf.sprintf "# TYPE %s counter\n" c.name);
-  Hashtbl.iter (fun labels value ->
-    Buffer.add_string buf (Printf.sprintf "%s%s %g\n" c.name (format_labels labels) value)
-  ) c.values
+let export_counter buf c =
+  let name = Metric_counter.name c in
+  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" name (Metric_counter.help c));
+  Buffer.add_string buf (Printf.sprintf "# TYPE %s counter\n" name);
+  Metric_counter.iter_values (fun labels value ->
+    Buffer.add_string buf (Printf.sprintf "%s%s %g\n" name (format_labels labels) value)
+  ) c
 
-let export_gauge buf (g : Metric_gauge.t) =
-  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" g.name g.help);
-  Buffer.add_string buf (Printf.sprintf "# TYPE %s gauge\n" g.name);
-  Hashtbl.iter (fun labels value ->
-    Buffer.add_string buf (Printf.sprintf "%s%s %g\n" g.name (format_labels labels) value)
-  ) g.values
+let export_gauge buf g =
+  let name = Metric_gauge.name g in
+  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" name (Metric_gauge.help g));
+  Buffer.add_string buf (Printf.sprintf "# TYPE %s gauge\n" name);
+  Metric_gauge.iter_values (fun labels value ->
+    Buffer.add_string buf (Printf.sprintf "%s%s %g\n" name (format_labels labels) value)
+  ) g
 
-let export_histogram buf (h : Metric_histogram.t) =
-  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" h.name h.help);
-  Buffer.add_string buf (Printf.sprintf "# TYPE %s histogram\n" h.name);
-  Hashtbl.iter (fun labels (data : Metric_histogram.data) ->
+let export_histogram buf h =
+  let name = Metric_histogram.name h in
+  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" name (Metric_histogram.help h));
+  Buffer.add_string buf (Printf.sprintf "# TYPE %s histogram\n" name);
+  Metric_histogram.iter_values (fun labels (data : Metric_histogram.data) ->
     let label_str = format_labels labels in
     Array.iter (fun (bucket : Metric_histogram.bucket_data) ->
       let le_labels = if labels = [] then
@@ -96,27 +99,28 @@ let export_histogram buf (h : Metric_histogram.t) =
         let inner = String.sub label_str 1 (String.length label_str - 2) in
         Printf.sprintf "{%s,le=\"%g\"}" inner bucket.upper_bound
       in
-      Buffer.add_string buf (Printf.sprintf "%s_bucket%s %d\n" h.name le_labels bucket.count)
+      Buffer.add_string buf (Printf.sprintf "%s_bucket%s %d\n" name le_labels bucket.count)
     ) data.buckets;
     let inf_labels = if labels = [] then "{le=\"+Inf\"}"
       else
         let inner = String.sub label_str 1 (String.length label_str - 2) in
         Printf.sprintf "{%s,le=\"+Inf\"}" inner
     in
-    Buffer.add_string buf (Printf.sprintf "%s_bucket%s %d\n" h.name inf_labels data.count);
-    Buffer.add_string buf (Printf.sprintf "%s_sum%s %g\n" h.name label_str data.sum);
-    Buffer.add_string buf (Printf.sprintf "%s_count%s %d\n" h.name label_str data.count)
-  ) h.values
+    Buffer.add_string buf (Printf.sprintf "%s_bucket%s %d\n" name inf_labels data.count);
+    Buffer.add_string buf (Printf.sprintf "%s_sum%s %g\n" name label_str data.sum);
+    Buffer.add_string buf (Printf.sprintf "%s_count%s %d\n" name label_str data.count)
+  ) h
 
-let export_summary buf (s : Metric_summary.t) =
-  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" s.name s.help);
-  Buffer.add_string buf (Printf.sprintf "# TYPE %s summary\n" s.name);
+let export_summary buf s =
+  let name = Metric_summary.name s in
+  Buffer.add_string buf (Printf.sprintf "# HELP %s %s\n" name (Metric_summary.help s));
+  Buffer.add_string buf (Printf.sprintf "# TYPE %s summary\n" name);
   List.iter (fun q ->
     let v = Metric_summary.quantile s q in
-    Buffer.add_string buf (Printf.sprintf "%s{quantile=\"%g\"} %g\n" s.name q v)
+    Buffer.add_string buf (Printf.sprintf "%s{quantile=\"%g\"} %g\n" name q v)
   ) [0.5; 0.9; 0.99];
-  Buffer.add_string buf (Printf.sprintf "%s_sum %g\n" s.name s.sum);
-  Buffer.add_string buf (Printf.sprintf "%s_count %d\n" s.name s.count)
+  Buffer.add_string buf (Printf.sprintf "%s_sum %g\n" name (Metric_summary.sum s));
+  Buffer.add_string buf (Printf.sprintf "%s_count %d\n" name (Metric_summary.count s))
 
 (** Export all metrics in Prometheus format *)
 let export t =
@@ -163,10 +167,23 @@ let http_metrics t =
     ~help:"Number of HTTP requests currently being processed" () in
   { requests_total; request_duration; requests_in_flight }
 
+(** Normalize dynamic path segments to prevent label cardinality explosion.
+    Replaces UUIDs and numeric segments with [:id]. *)
+let default_normalize_path path =
+  let segs = String.split_on_char '/' path in
+  let is_numeric s = s <> "" && String.for_all (fun c -> c >= '0' && c <= '9') s in
+  let is_uuid s =
+    String.length s >= 32 &&
+    String.for_all (fun c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c = '-') s
+  in
+  String.concat "/" (List.map (fun seg ->
+    if is_numeric seg || is_uuid seg then ":id" else seg
+  ) segs)
+
 (** Metrics middleware *)
-let middleware http_metrics handler req =
+let middleware ?(normalize_path = default_normalize_path) http_metrics handler req =
   let meth = Http.Method.to_string (Request.meth req) in
-  let path = Request.path req in
+  let path = normalize_path (Request.path req) in
 
   Metric_gauge.inc http_metrics.requests_in_flight;
 

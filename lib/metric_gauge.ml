@@ -37,3 +37,11 @@ let get ?(labels = []) t =
   Metric_common.with_lock t.mutex (fun () ->
     Hashtbl.find_opt t.values labels |> Option.value ~default:0.0
   )
+
+let name t = t.name
+let help t = t.help
+let label_names t = t.label_names
+let iter_values f t =
+  Metric_common.with_lock t.mutex (fun () ->
+    Hashtbl.iter (fun labels value -> f labels value) t.values
+  )

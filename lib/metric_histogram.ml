@@ -63,3 +63,11 @@ let time ?(labels = []) t f =
   let elapsed = Time_compat.now () -. start in
   observe ~labels t elapsed;
   result
+
+let name t = t.name
+let help t = t.help
+let label_names t = t.label_names
+let iter_values f t =
+  Metric_common.with_lock t.mutex (fun () ->
+    Hashtbl.iter (fun labels data -> f labels data) t.values
+  )

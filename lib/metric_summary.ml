@@ -57,3 +57,9 @@ let quantile t q =
       let idx = min (n - 1) (int_of_float (float_of_int n *. q)) in
       sorted.(idx)
   )
+
+let name t = t.name
+let help t = t.help
+let label_names t = t.label_names
+let sum t = Metric_common.with_lock t.mutex (fun () -> t.sum)
+let count t = Metric_common.with_lock t.mutex (fun () -> t.count)
