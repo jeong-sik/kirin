@@ -205,9 +205,12 @@ type http_metrics = {
     - [http_requests_in_flight] (gauge) *)
 val http_metrics : t -> http_metrics
 
-(** [middleware http_metrics handler req] wraps a handler with automatic
-    HTTP metrics collection. Tracks request count, latency, and in-flight requests. *)
+(** [middleware ?normalize_path http_metrics handler req] wraps a handler with automatic
+    HTTP metrics collection. Tracks request count, latency, and in-flight requests.
+    [normalize_path] replaces dynamic path segments (UUIDs, numbers) with [:id]
+    to prevent Prometheus label cardinality explosion. *)
 val middleware :
+  ?normalize_path:(string -> string) ->
   http_metrics ->
   (Request.t -> Response.t) ->
   Request.t ->
