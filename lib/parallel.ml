@@ -203,32 +203,32 @@ module Pool = struct
 
   type t = {
     size : int;
-    mutable active : bool;
+    active : bool Atomic.t;
   }
 
   (** Create a domain pool *)
   let create ?(size = recommended_domains ()) () = {
     size;
-    active = true;
+    active = Atomic.make true;
   }
 
   (** Map using domain pool *)
   let map pool f items =
-    if not pool.active then
+    if not (Atomic.get pool.active) then
       failwith "Domain pool is shut down"
     else
       map ~domains:pool.size f items
 
   (** Iter using domain pool *)
   let iter pool f items =
-    if not pool.active then
+    if not (Atomic.get pool.active) then
       failwith "Domain pool is shut down"
     else
       iter ~domains:pool.size f items
 
   (** Reduce using domain pool *)
   let reduce pool combine init items =
-    if not pool.active then
+    if not (Atomic.get pool.active) then
       failwith "Domain pool is shut down"
     else
       reduce ~domains:pool.size combine init items
@@ -237,11 +237,11 @@ module Pool = struct
   let size pool = pool.size
 
   (** Check if pool is active *)
-  let is_active pool = pool.active
+  let is_active pool = Atomic.get pool.active
 
   (** Shutdown the pool *)
   let shutdown pool =
-    pool.active <- false
+    Atomic.set pool.active false
 end
 
 (** {1 Utilities} *)

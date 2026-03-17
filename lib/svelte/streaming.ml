@@ -13,11 +13,12 @@ type chunk =
   | Complete            (* Stream complete *)
   | Error of string     (* Error message *)
 
-(** Stream state *)
+(** Stream state (mutex-protected for concurrent access) *)
 type stream_state = {
   mutable chunks: chunk list;
   mutable completed: bool;
   mutable error: string option;
+  mutex: Mutex.t;
 }
 
 (** {1 Stream Creation} *)
@@ -27,23 +28,27 @@ let create () = {
   chunks = [];
   completed = false;
   error = None;
+  mutex = Mutex.create ();
 }
 
 (** Add chunk to stream *)
 let add_chunk stream chunk =
-  if not stream.completed then
-    stream.chunks <- stream.chunks @ [chunk]
+  Mutex.protect stream.mutex (fun () ->
+    if not stream.completed then
+      stream.chunks <- stream.chunks @ [chunk])
 
 (** Mark stream as complete *)
 let complete stream =
-  add_chunk stream Complete;
-  stream.completed <- true
+  Mutex.protect stream.mutex (fun () ->
+    stream.chunks <- stream.chunks @ [Complete];
+    stream.completed <- true)
 
 (** Mark stream as errored *)
 let fail stream msg =
-  stream.error <- Some msg;
-  add_chunk stream (Error msg);
-  stream.completed <- true
+  Mutex.protect stream.mutex (fun () ->
+    stream.error <- Some msg;
+    stream.chunks <- stream.chunks @ [Error msg];
+    stream.completed <- true)
 
 (** {1 Shell Generation} *)
 

@@ -38,7 +38,7 @@ type worker_state =
 (** Worker *)
 type worker = {
   mutable state: worker_state;
-  mutable request_count: int;
+  request_count: int Atomic.t;
   mutable last_error: string option;
 }
 
@@ -46,11 +46,11 @@ type worker = {
 type t = {
   config: ssr_config;
   workers: worker array;
-  mutable total_renders: int;
-  mutable errors: int;
-  mutable timeouts: int;
-  mutable cache_hits: int;
-  mutable cache_misses: int;
+  total_renders: int Atomic.t;
+  errors: int Atomic.t;
+  timeouts: int Atomic.t;
+  cache_hits: int Atomic.t;
+  cache_misses: int Atomic.t;
 }
 
 (** SSR statistics *)
@@ -69,17 +69,17 @@ type ssr_stats = {
 let create config =
   let workers = Array.init config.pool_size (fun _ -> {
     state = Idle;
-    request_count = 0;
+    request_count = Atomic.make 0;
     last_error = None;
   }) in
   {
     config;
     workers;
-    total_renders = 0;
-    errors = 0;
-    timeouts = 0;
-    cache_hits = 0;
-    cache_misses = 0;
+    total_renders = Atomic.make 0;
+    errors = Atomic.make 0;
+    timeouts = Atomic.make 0;
+    cache_hits = Atomic.make 0;
+    cache_misses = Atomic.make 0;
   }
 
 (** {1 Rendering} *)
@@ -136,8 +136,8 @@ let render_internal engine ~tag_name ?(props = `Null) ?(slots = []) () =
 
 (** Render component *)
 let render engine ~tag_name ?props ?slots () =
-  engine.total_renders <- engine.total_renders + 1;
-  engine.cache_misses <- engine.cache_misses + 1;
+  ignore (Atomic.fetch_and_add engine.total_renders 1);
+  ignore (Atomic.fetch_and_add engine.cache_misses 1);
   match render_internal engine ~tag_name ?props ?slots () with
   | Ok result ->
     let html = if engine.config.include_polyfill then
@@ -147,7 +147,7 @@ let render engine ~tag_name ?props ?slots () =
     in
     Ok html
   | Error msg ->
-    engine.errors <- engine.errors + 1;
+    ignore (Atomic.fetch_and_add engine.errors 1);
     Error msg
 
 (** Render with fallback *)
@@ -224,12 +224,14 @@ let stats engine =
   let active = Array.fold_left (fun acc w ->
     if w.state <> Dead then acc + 1 else acc
   ) 0 engine.workers in
-  let total = engine.cache_hits + engine.cache_misses in
-  let hit_rate = if total > 0 then float_of_int engine.cache_hits /. float_of_int total else 0.0 in
+  let hits = Atomic.get engine.cache_hits in
+  let misses = Atomic.get engine.cache_misses in
+  let total = hits + misses in
+  let hit_rate = if total > 0 then float_of_int hits /. float_of_int total else 0.0 in
   {
-    stat_total_renders = engine.total_renders;
-    stat_errors = engine.errors;
-    stat_timeouts = engine.timeouts;
+    stat_total_renders = Atomic.get engine.total_renders;
+    stat_errors = Atomic.get engine.errors;
+    stat_timeouts = Atomic.get engine.timeouts;
     stat_avg_time_ms = 0.0;  (* Would track actual times *)
     stat_cache_hit_rate = hit_rate;
     stat_active_workers = active;

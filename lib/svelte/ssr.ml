@@ -34,11 +34,12 @@ type cache_entry = {
   expires_at: float;
 }
 
-(** Simple LRU cache *)
+(** Simple LRU cache (mutex-protected for concurrent access) *)
 type cache = {
   mutable entries: (string, cache_entry) Hashtbl.t;
   max_size: int;
   ttl: int;
+  mutex: Mutex.t;
 }
 
 (** Create cache *)
@@ -46,6 +47,7 @@ let create_cache ~max_size ~ttl = {
   entries = Hashtbl.create max_size;
   max_size;
   ttl;
+  mutex = Mutex.create ();
 }
 
 (** Cache key from request *)
@@ -55,34 +57,36 @@ let cache_key url props =
 
 (** Get from cache *)
 let cache_get cache key =
-  match Hashtbl.find_opt cache.entries key with
-  | Some entry when entry.expires_at > Unix.gettimeofday () ->
-    Some entry.response
-  | Some _ ->
-    Hashtbl.remove cache.entries key;
-    None
-  | None -> None
+  Mutex.protect cache.mutex (fun () ->
+    match Hashtbl.find_opt cache.entries key with
+    | Some entry when entry.expires_at > Unix.gettimeofday () ->
+      Some entry.response
+    | Some _ ->
+      Hashtbl.remove cache.entries key;
+      None
+    | None -> None)
 
 (** Put in cache *)
 let cache_put cache key response =
-  (* Simple eviction: if full, clear half *)
-  if Hashtbl.length cache.entries >= cache.max_size then begin
-    let to_remove = ref [] in
-    let count = ref 0 in
-    Hashtbl.iter (fun k _ ->
-      if !count < cache.max_size / 2 then begin
-        to_remove := k :: !to_remove;
-        incr count
-      end
-    ) cache.entries;
-    List.iter (Hashtbl.remove cache.entries) !to_remove
-  end;
+  Mutex.protect cache.mutex (fun () ->
+    (* Simple eviction: if full, clear half *)
+    if Hashtbl.length cache.entries >= cache.max_size then begin
+      let to_remove = ref [] in
+      let count = ref 0 in
+      Hashtbl.iter (fun k _ ->
+        if !count < cache.max_size / 2 then begin
+          to_remove := k :: !to_remove;
+          incr count
+        end
+      ) cache.entries;
+      List.iter (Hashtbl.remove cache.entries) !to_remove
+    end;
 
-  let entry = {
-    response;
-    expires_at = Unix.gettimeofday () +. float_of_int cache.ttl;
-  } in
-  Hashtbl.replace cache.entries key entry
+    let entry = {
+      response;
+      expires_at = Unix.gettimeofday () +. float_of_int cache.ttl;
+    } in
+    Hashtbl.replace cache.entries key entry)
 
 (** {1 Worker Pool} *)
 
@@ -91,10 +95,10 @@ type t = {
   config: config;
   workers: Worker.t array;
   cache: cache;
-  mutable next_worker: int;
-  mutable total_renders: int;
-  mutable cache_hits: int;
-  mutable errors: int;
+  next_worker: int Atomic.t;
+  total_renders: int Atomic.t;
+  cache_hits: int Atomic.t;
+  errors: int Atomic.t;
 }
 
 (** Create SSR engine *)
@@ -111,22 +115,22 @@ let create config =
     config;
     workers;
     cache;
-    next_worker = 0;
-    total_renders = 0;
-    cache_hits = 0;
-    errors = 0;
+    next_worker = Atomic.make 0;
+    total_renders = Atomic.make 0;
+    cache_hits = Atomic.make 0;
+    errors = Atomic.make 0;
   }
 
 (** Get next available worker (round-robin) *)
 let get_worker engine =
-  let start = engine.next_worker in
+  let start = Atomic.get engine.next_worker in
   let rec find_worker i =
     if i >= Array.length engine.workers then None
     else
       let idx = (start + i) mod Array.length engine.workers in
       let worker = engine.workers.(idx) in
       if Worker.is_healthy worker then begin
-        engine.next_worker <- (idx + 1) mod Array.length engine.workers;
+        Atomic.set engine.next_worker ((idx + 1) mod Array.length engine.workers);
         Some worker
       end
       else find_worker (i + 1)
@@ -137,7 +141,7 @@ let get_worker engine =
 
 (** Render URL to HTML *)
 let render engine ~url ?(props=`Assoc []) ?route_id ?(use_cache=true) () =
-  engine.total_renders <- engine.total_renders + 1;
+  ignore (Atomic.fetch_and_add engine.total_renders 1);
 
   (* Check cache first *)
   let key = cache_key url props in
@@ -147,13 +151,13 @@ let render engine ~url ?(props=`Assoc []) ?route_id ?(use_cache=true) () =
   in
   match cached with
   | Some response ->
-    engine.cache_hits <- engine.cache_hits + 1;
+    ignore (Atomic.fetch_and_add engine.cache_hits 1);
     Ok response
   | None ->
     (* Get worker and render *)
     match get_worker engine with
     | None ->
-      engine.errors <- engine.errors + 1;
+      ignore (Atomic.fetch_and_add engine.errors 1);
       Error "No healthy workers available"
     | Some worker ->
       match Worker.render worker ~url ~props ~route_id ~cookies:[] ~headers:[] () with
@@ -161,7 +165,7 @@ let render engine ~url ?(props=`Assoc []) ?route_id ?(use_cache=true) () =
         if use_cache then cache_put engine.cache key response;
         Ok response
       | Error msg ->
-        engine.errors <- engine.errors + 1;
+        ignore (Atomic.fetch_and_add engine.errors 1);
         Error msg
 
 (** Render with fallback *)
@@ -182,18 +186,20 @@ let preload engine urls =
 
 (** Invalidate cache entry *)
 let invalidate engine url =
-  let prefix = url ^ ":" in
-  let to_remove = ref [] in
-  Hashtbl.iter (fun k _ ->
-    if String.length k >= String.length prefix &&
-       String.sub k 0 (String.length prefix) = prefix then
-      to_remove := k :: !to_remove
-  ) engine.cache.entries;
-  List.iter (Hashtbl.remove engine.cache.entries) !to_remove
+  Mutex.protect engine.cache.mutex (fun () ->
+    let prefix = url ^ ":" in
+    let to_remove = ref [] in
+    Hashtbl.iter (fun k _ ->
+      if String.length k >= String.length prefix &&
+         String.sub k 0 (String.length prefix) = prefix then
+        to_remove := k :: !to_remove
+    ) engine.cache.entries;
+    List.iter (Hashtbl.remove engine.cache.entries) !to_remove)
 
 (** Clear entire cache *)
 let clear_cache engine =
-  Hashtbl.clear engine.cache.entries
+  Mutex.protect engine.cache.mutex (fun () ->
+    Hashtbl.clear engine.cache.entries)
 
 (** {1 Worker Management} *)
 
@@ -225,15 +231,17 @@ type stats = {
 
 (** Get engine statistics *)
 let get_stats (engine : t) =
+  let total = Atomic.get engine.total_renders in
+  let hits = Atomic.get engine.cache_hits in
   let hit_rate =
-    if engine.total_renders = 0 then 0.0
-    else float_of_int engine.cache_hits /. float_of_int engine.total_renders
+    if total = 0 then 0.0
+    else float_of_int hits /. float_of_int total
   in
   {
-    total_renders = engine.total_renders;
-    cache_hits = engine.cache_hits;
+    total_renders = total;
+    cache_hits = hits;
     cache_hit_rate = hit_rate;
-    errors = engine.errors;
+    errors = Atomic.get engine.errors;
     cache_size = Hashtbl.length engine.cache.entries;
     workers_ready = ready_workers engine;
     workers_total = Array.length engine.workers;
