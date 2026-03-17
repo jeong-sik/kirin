@@ -70,7 +70,8 @@ type config = {
 (** LRU Cache *)
 type ('k, 'v) t = {
   entries : ('k, 'v entry) Hashtbl.t;
-  access_times : ('k, float) Hashtbl.t;  (* key -> last access timestamp *)
+  access_times : ('k, int) Hashtbl.t;  (* key -> monotonic access counter *)
+  mutable access_counter : int;        (* monotonically increasing counter *)
   config : config;
   mutable stats : stats;
   mutex : Eio.Mutex.t;
@@ -92,17 +93,18 @@ let now () = Unix.gettimeofday ()
 let with_lock mutex f =
   Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
 
-(** Update access timestamp for a key (O(1)) *)
+(** Update access counter for a key (O(1)) *)
 let touch_key cache key =
-  Hashtbl.replace cache.access_times key (now ())
+  cache.access_counter <- cache.access_counter + 1;
+  Hashtbl.replace cache.access_times key cache.access_counter
 
 (** Find the least recently used key by scanning access_times (O(n), only on eviction) *)
 let find_lru_key cache =
   let min_key = ref None in
-  let min_time = ref infinity in
-  Hashtbl.iter (fun k t ->
-    if t < !min_time then begin
-      min_time := t;
+  let min_counter = ref max_int in
+  Hashtbl.iter (fun k c ->
+    if c < !min_counter then begin
+      min_counter := c;
       min_key := Some k
     end
   ) cache.access_times;
@@ -134,6 +136,7 @@ let create ?(max_size = 1000) ?default_ttl ?(cleanup_interval = 60.0) () =
   {
     entries = Hashtbl.create max_size;
     access_times = Hashtbl.create max_size;
+    access_counter = 0;
     config;
     stats;
     mutex = Eio.Mutex.create ();
