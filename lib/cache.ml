@@ -69,8 +69,8 @@ type config = {
 
 (** LRU Cache *)
 type ('k, 'v) t = {
-  mutable entries : ('k, 'v entry) Hashtbl.t;
-  mutable access_order : 'k list;  (* Most recent first *)
+  entries : ('k, 'v entry) Hashtbl.t;
+  access_times : ('k, float) Hashtbl.t;  (* key -> last access timestamp *)
   config : config;
   mutable stats : stats;
   mutex : Eio.Mutex.t;
@@ -92,9 +92,21 @@ let now () = Unix.gettimeofday ()
 let with_lock mutex f =
   Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
 
-(** Move key to front of access order *)
-let touch_key key access_order =
-  key :: (List.filter (fun k -> k <> key) access_order)
+(** Update access timestamp for a key (O(1)) *)
+let touch_key cache key =
+  Hashtbl.replace cache.access_times key (now ())
+
+(** Find the least recently used key by scanning access_times (O(n), only on eviction) *)
+let find_lru_key cache =
+  let min_key = ref None in
+  let min_time = ref infinity in
+  Hashtbl.iter (fun k t ->
+    if t < !min_time then begin
+      min_time := t;
+      min_key := Some k
+    end
+  ) cache.access_times;
+  !min_key
 
 (** Check if entry is expired *)
 let is_expired entry =
@@ -121,7 +133,7 @@ let create ?(max_size = 1000) ?default_ttl ?(cleanup_interval = 60.0) () =
   } in
   {
     entries = Hashtbl.create max_size;
-    access_order = [];
+    access_times = Hashtbl.create max_size;
     config;
     stats;
     mutex = Eio.Mutex.create ();
@@ -143,7 +155,7 @@ let get cache key =
     | Some entry when is_expired entry ->
       (* Remove expired entry *)
       Hashtbl.remove cache.entries key;
-      cache.access_order <- List.filter (fun k -> k <> key) cache.access_order;
+      Hashtbl.remove cache.access_times key;
       cache.stats <- {
         cache.stats with
         misses = cache.stats.misses + 1;
@@ -152,10 +164,10 @@ let get cache key =
       };
       None
     | Some entry ->
-      (* Update access time and count *)
+      (* Update access time and count - O(1) *)
       entry.last_access <- now ();
       entry.access_count <- entry.access_count + 1;
-      cache.access_order <- touch_key key cache.access_order;
+      touch_key cache key;
       cache.stats <- { cache.stats with hits = cache.stats.hits + 1 };
       Some entry.value
   )
@@ -184,12 +196,12 @@ let set ?ttl cache key value =
 
     (* Evict if necessary (only for new entries) *)
     if is_new && Hashtbl.length cache.entries >= cache.config.max_size then begin
-      (* Remove least recently used (last in access_order) *)
-      match List.rev cache.access_order with
-      | [] -> ()
-      | lru_key :: rest ->
+      (* Remove least recently used - O(n) scan only on eviction *)
+      match find_lru_key cache with
+      | None -> ()
+      | Some lru_key ->
         Hashtbl.remove cache.entries lru_key;
-        cache.access_order <- List.rev rest;
+        Hashtbl.remove cache.access_times lru_key;
         cache.stats <- { cache.stats with
           evictions = cache.stats.evictions + 1;
           current_size = cache.stats.current_size - 1;
@@ -197,7 +209,7 @@ let set ?ttl cache key value =
     end;
 
     Hashtbl.replace cache.entries key entry;
-    cache.access_order <- touch_key key cache.access_order;
+    touch_key cache key;
     if is_new then
       cache.stats <- { cache.stats with current_size = cache.stats.current_size + 1 }
   )
@@ -207,7 +219,7 @@ let remove cache key =
   with_lock cache.mutex (fun () ->
     if Hashtbl.mem cache.entries key then begin
       Hashtbl.remove cache.entries key;
-      cache.access_order <- List.filter (fun k -> k <> key) cache.access_order;
+      Hashtbl.remove cache.access_times key;
       cache.stats <- { cache.stats with current_size = cache.stats.current_size - 1 };
       true
     end else
@@ -237,7 +249,7 @@ let get_or_set ?ttl cache key compute =
 let clear cache =
   with_lock cache.mutex (fun () ->
     Hashtbl.clear cache.entries;
-    cache.access_order <- [];
+    Hashtbl.clear cache.access_times;
     cache.stats <- { cache.stats with current_size = 0 }
   )
 
@@ -249,7 +261,7 @@ let cleanup cache =
     ) cache.entries [] in
     List.iter (fun k ->
       Hashtbl.remove cache.entries k;
-      cache.access_order <- List.filter (fun key -> key <> k) cache.access_order
+      Hashtbl.remove cache.access_times k
     ) expired_keys;
     let count = List.length expired_keys in
     cache.stats <- {

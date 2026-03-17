@@ -10,13 +10,8 @@
 
 (** {1 Types} *)
 
-(** Cache entry with metadata. *)
-type 'a entry = {
-  value : 'a;
-  expires_at : float option;
-  mutable last_access : float;
-  mutable access_count : int;
-}
+(** Cache entry with metadata. Abstract to hide internal representation. *)
+type 'a entry
 
 (** Cache statistics. *)
 type stats = {
@@ -35,14 +30,8 @@ type config = {
   cleanup_interval : float;
 }
 
-(** LRU cache keyed by ['k] with values of type ['v]. *)
-type ('k, 'v) t = {
-  mutable entries : ('k, 'v entry) Hashtbl.t;
-  mutable access_order : 'k list;
-  config : config;
-  mutable stats : stats;
-  mutex : Eio.Mutex.t;
-}
+(** LRU cache keyed by ['k] with values of type ['v]. Abstract to hide internal representation. *)
+type ('k, 'v) t
 
 (** {1 Configuration} *)
 
