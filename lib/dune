@@ -30,7 +30,8 @@
   unix
   threads
   str
-  dune-build-info)
+  dune-build-info
+  mcp_protocol_eio)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson))
  (instrumentation (backend bisect_ppx)))
