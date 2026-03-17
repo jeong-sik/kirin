@@ -1,6 +1,6 @@
 (** Prometheus text format export and HTTP handler *)
 
-type label = string * string
+type label = Metric_common.label
 
 (** Metric type *)
 type metric_type =
@@ -25,31 +25,28 @@ let create () = {
   mutex = Eio.Mutex.create ();
 }
 
-let with_lock t f =
-  Eio.Mutex.use_rw ~protect:true t.mutex f
-
 (** Register a counter *)
 let counter t name ~help ?(labels = []) () =
   let c = Metric_counter.create ~name ~help ~labels () in
-  with_lock t (fun () -> Hashtbl.replace t.metrics name (MCounter c));
+  Metric_common.with_lock t.mutex (fun () -> Hashtbl.replace t.metrics name (MCounter c));
   c
 
 (** Register a gauge *)
 let gauge t name ~help ?(labels = []) () =
   let g = Metric_gauge.create ~name ~help ~labels () in
-  with_lock t (fun () -> Hashtbl.replace t.metrics name (MGauge g));
+  Metric_common.with_lock t.mutex (fun () -> Hashtbl.replace t.metrics name (MGauge g));
   g
 
 (** Register a histogram *)
 let histogram t name ~help ?(labels = []) ?(buckets = Metric_histogram.default_buckets) () =
   let h = Metric_histogram.create ~name ~help ~labels ~buckets () in
-  with_lock t (fun () -> Hashtbl.replace t.metrics name (MHistogram h));
+  Metric_common.with_lock t.mutex (fun () -> Hashtbl.replace t.metrics name (MHistogram h));
   h
 
 (** Register a summary *)
 let summary t name ~help ?(labels = []) () =
   let s = Metric_summary.create ~name ~help ~labels () in
-  with_lock t (fun () -> Hashtbl.replace t.metrics name (MSummary s));
+  Metric_common.with_lock t.mutex (fun () -> Hashtbl.replace t.metrics name (MSummary s));
   s
 
 (** {1 Prometheus Format Export} *)
@@ -124,7 +121,7 @@ let export_summary buf (s : Metric_summary.t) =
 (** Export all metrics in Prometheus format *)
 let export t =
   let buf = Buffer.create 4096 in
-  with_lock t (fun () ->
+  Metric_common.with_lock t.mutex (fun () ->
     Hashtbl.iter (fun _ metric ->
       match metric with
       | MCounter c -> export_counter buf c

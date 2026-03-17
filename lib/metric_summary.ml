@@ -28,11 +28,8 @@ let create ~name ~help ?(labels = []) ?(max_samples = 1000) () = {
   mutex = Eio.Mutex.create ();
 }
 
-let with_lock t f =
-  Eio.Mutex.use_rw ~protect:true t.mutex f
-
 let observe t value =
-  with_lock t (fun () ->
+  Metric_common.with_lock t.mutex (fun () ->
     t.sum <- t.sum +. value;
     t.count <- t.count + 1;
     t.samples.(t.write_pos) <- value;
@@ -52,7 +49,7 @@ let get_sorted t =
     arr
 
 let quantile t q =
-  with_lock t (fun () ->
+  Metric_common.with_lock t.mutex (fun () ->
     if t.length = 0 then 0.0
     else
       let sorted = get_sorted t in

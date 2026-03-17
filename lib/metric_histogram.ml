@@ -1,6 +1,6 @@
 (** Histogram metric - distribution of values in buckets *)
 
-type label = string * string
+type label = Metric_common.label
 
 type bucket_data = {
   mutable count : int;
@@ -33,9 +33,6 @@ let create ~name ~help ?(labels = []) ?(buckets = default_buckets) () = {
   mutex = Eio.Mutex.create ();
 }
 
-let with_lock t f =
-  Eio.Mutex.use_rw ~protect:true t.mutex f
-
 let make_data buckets =
   {
     sum = 0.0;
@@ -44,7 +41,7 @@ let make_data buckets =
   }
 
 let observe ?(labels = []) t value =
-  with_lock t (fun () ->
+  Metric_common.with_lock t.mutex (fun () ->
     let data = match Hashtbl.find_opt t.values labels with
       | Some d -> d
       | None ->
