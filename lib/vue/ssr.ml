@@ -78,7 +78,7 @@ let empty_stats = {
 type t = {
   config: config;
   mutable stats: stats;
-  stats_mutex: Mutex.t;
+  stats_mutex: Eio.Mutex.t;
   mutable cache: (string, render_result * float) Hashtbl.t;
   mutable running: bool;
 }
@@ -87,7 +87,7 @@ type t = {
 let create config = {
   config;
   stats = empty_stats;
-  stats_mutex = Mutex.create ();
+  stats_mutex = Eio.Mutex.create ();
   cache = Hashtbl.create 256;
   running = true;
 }
@@ -134,7 +134,7 @@ let render t ~url ?(headers=[]) ?(payload=None) () =
     (* Check cache first *)
     match check_cache t url with
     | Some cached ->
-      Mutex.protect t.stats_mutex (fun () ->
+      Eio.Mutex.use_rw ~protect:true t.stats_mutex (fun () ->
         t.stats <- { t.stats with
           total_renders = t.stats.total_renders + 1;
           cache_hits = t.stats.cache_hits + 1;
@@ -166,7 +166,7 @@ let render t ~url ?(headers=[]) ?(payload=None) () =
       } in
 
       (* Update stats *)
-      Mutex.protect t.stats_mutex (fun () ->
+      Eio.Mutex.use_rw ~protect:true t.stats_mutex (fun () ->
         let total = t.stats.total_renders + 1 in
         let total_time = t.stats.avg_render_time_ms *. Float.of_int t.stats.total_renders +. render_time_ms in
         t.stats <- { t.stats with
@@ -186,7 +186,7 @@ let render_with_fallback t ~url ~fallback =
   match render t ~url () with
   | Ok result -> result.html
   | Error _ ->
-    Mutex.protect t.stats_mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.stats_mutex (fun () ->
       t.stats <- { t.stats with errors = t.stats.errors + 1 });
     fallback
 

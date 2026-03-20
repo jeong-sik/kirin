@@ -39,7 +39,7 @@ type cache = {
   mutable entries: (string, cache_entry) Hashtbl.t;
   max_size: int;
   ttl: int;
-  mutex: Mutex.t;
+  mutex: Eio.Mutex.t;
 }
 
 (** Create cache *)
@@ -47,7 +47,7 @@ let create_cache ~max_size ~ttl = {
   entries = Hashtbl.create max_size;
   max_size;
   ttl;
-  mutex = Mutex.create ();
+  mutex = Eio.Mutex.create ();
 }
 
 (** Cache key from request *)
@@ -57,7 +57,7 @@ let cache_key url props =
 
 (** Get from cache *)
 let cache_get cache key =
-  Mutex.protect cache.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true cache.mutex (fun () ->
     match Hashtbl.find_opt cache.entries key with
     | Some entry when entry.expires_at > Unix.gettimeofday () ->
       Some entry.response
@@ -68,7 +68,7 @@ let cache_get cache key =
 
 (** Put in cache *)
 let cache_put cache key response =
-  Mutex.protect cache.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true cache.mutex (fun () ->
     (* Simple eviction: if full, clear half *)
     if Hashtbl.length cache.entries >= cache.max_size then begin
       let to_remove = ref [] in
@@ -186,7 +186,7 @@ let preload engine urls =
 
 (** Invalidate cache entry *)
 let invalidate engine url =
-  Mutex.protect engine.cache.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true engine.cache.mutex (fun () ->
     let prefix = url ^ ":" in
     let to_remove = ref [] in
     Hashtbl.iter (fun k _ ->
@@ -198,7 +198,7 @@ let invalidate engine url =
 
 (** Clear entire cache *)
 let clear_cache engine =
-  Mutex.protect engine.cache.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true engine.cache.mutex (fun () ->
     Hashtbl.clear engine.cache.entries)
 
 (** {1 Worker Management} *)

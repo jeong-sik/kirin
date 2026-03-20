@@ -139,7 +139,7 @@ type context = {
   mutable bytes_sent: int;
   mutable suspense_pending: string list;
   mutable islands_pending: string list;
-  mutex: Mutex.t;
+  mutex: Eio.Mutex.t;
 }
 
 (** Create stream context *)
@@ -150,37 +150,37 @@ let create_context ?(config=default_config) () = {
   bytes_sent = 0;
   suspense_pending = [];
   islands_pending = [];
-  mutex = Mutex.create ();
+  mutex = Eio.Mutex.create ();
 }
 
 (** Start streaming *)
 let start ctx =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.state <- Streaming)
 
 (** Mark suspense as pending *)
 let add_suspense ctx id =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.suspense_pending <- id :: ctx.suspense_pending)
 
 (** Mark island as pending *)
 let add_island ctx id =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.islands_pending <- id :: ctx.islands_pending)
 
 (** Resolve suspense *)
 let resolve_suspense ctx id =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.suspense_pending <- List.filter (fun i -> i <> id) ctx.suspense_pending)
 
 (** Resolve island *)
 let resolve_island ctx id =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.islands_pending <- List.filter (fun i -> i <> id) ctx.islands_pending)
 
 (** Send chunk *)
 let send_chunk ctx chunk =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.chunks_sent <- ctx.chunks_sent + 1;
     let html = render_chunk chunk in
     ctx.bytes_sent <- ctx.bytes_sent + String.length html;
@@ -188,7 +188,7 @@ let send_chunk ctx chunk =
 
 (** Finish streaming *)
 let finish ctx =
-  Mutex.protect ctx.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true ctx.mutex (fun () ->
     ctx.state <- Complete);
   encode_chunked_end ()
 

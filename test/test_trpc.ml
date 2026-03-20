@@ -15,6 +15,9 @@ let test name f =
     incr tests_failed;
     Printf.printf "✗ %s: %s\n" name (Printexc.to_string e)
 
+let test_eio name f =
+  test name (fun () -> Eio_main.run @@ fun _env -> f ())
+
 let assert_eq msg expected actual =
   if expected <> actual then
     failwith (Printf.sprintf "%s: expected %s, got %s" msg expected actual)
@@ -353,22 +356,22 @@ let test_subscription () =
     assert_true "has event:" (String.sub event 0 7 = "event: ");
     assert_true "has data:" (String.length event > 20)
   );
-  test "Registry create" (fun () ->
+  test_eio "Registry create" (fun () ->
     let reg = Subscription.Registry.create () in
     assert_eq "count" "0" (string_of_int (Subscription.Registry.count reg))
   );
-  test "Registry add and count" (fun () ->
+  test_eio "Registry add and count" (fun () ->
     let reg = Subscription.Registry.create () in
     Subscription.Registry.add reg ~id:"sub_1" ~cancel:(fun () -> ());
     assert_eq "count" "1" (string_of_int (Subscription.Registry.count reg))
   );
-  test "Registry has" (fun () ->
+  test_eio "Registry has" (fun () ->
     let reg = Subscription.Registry.create () in
     Subscription.Registry.add reg ~id:"sub_1" ~cancel:(fun () -> ());
     assert_true "has sub_1" (Subscription.Registry.has reg "sub_1");
     assert_true "not has sub_2" (not (Subscription.Registry.has reg "sub_2"))
   );
-  test "Registry remove" (fun () ->
+  test_eio "Registry remove" (fun () ->
     let cancelled = ref false in
     let reg = Subscription.Registry.create () in
     Subscription.Registry.add reg ~id:"sub_1" ~cancel:(fun () -> cancelled := true);
