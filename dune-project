@@ -2,7 +2,7 @@
 
 (name kirin)
 
-(version 1.3.0)
+(version 1.4.0)
 
 (generate_opam_files true)
 
