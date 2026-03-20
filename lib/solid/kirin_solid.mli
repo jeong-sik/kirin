@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Meta = Meta
 module Data = Data
 module Hydrate = Hydrate

@@ -7,7 +7,11 @@
     - MCP Server with Streamable HTTP transport (2025-11-25 spec)
     - Tool, Resource, and Prompt registration
     - Kirin handler to MCP tool conversion
-    - Direct-style async (Eio-native) *)
+    - Direct-style async (Eio-native)
+
+    @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
 
 (** {1 Re-exports from MCP library} *)
 

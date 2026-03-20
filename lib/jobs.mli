@@ -3,6 +3,9 @@
     Job queue using Eio fibers for concurrent task processing.
     Workers run as lightweight fibers within a shared Eio switch.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Fiber-based worker pool (no OS threads)
     - Eio.Mutex for fiber-safe state access

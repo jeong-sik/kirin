@@ -3,6 +3,9 @@
     Flow control for streaming data between producers and consumers.
     Prevents fast producers from overwhelming slow consumers.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Bounded buffers with configurable capacity
     - Async channels for producer-consumer patterns

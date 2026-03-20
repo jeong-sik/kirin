@@ -1,4 +1,7 @@
-(** Response module - HTTP response construction. *)
+(** Response module - HTTP response construction.
+
+    @since 1.0.0
+    @status stable *)
 
 (** Response body variants. *)
 type body =

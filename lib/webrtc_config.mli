@@ -2,7 +2,11 @@
 
     Types are bridged between Kirin's signaling layer and the ocaml-webrtc
     protocol stack. Peer-level connection state is re-exported from
-    {!Webrtc.Webrtc_eio} to ensure type equality with {!Peer.get_state}. *)
+    {!Webrtc.Webrtc_eio} to ensure type equality with {!Peer.get_state}.
+
+    @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
 
 (** {1 Connection State}
 

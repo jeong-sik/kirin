@@ -1,5 +1,8 @@
 (** Kirin Logger - Async Structured Logging (Domain-safe)
 
+    @since 1.0.0
+    @status stable
+
     Architecture:
     - Any domain can emit logs (no Eio effect handlers required).
     - A dedicated logger domain pops entries from a bounded queue and writes to I/O.

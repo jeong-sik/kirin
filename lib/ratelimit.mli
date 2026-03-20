@@ -2,7 +2,10 @@
 
     Provides per-client rate limiting with configurable rates, burst sizes,
     and client identification. Supports custom storage backends for
-    distributed deployments. *)
+    distributed deployments.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

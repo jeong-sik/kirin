@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Element = Element
 module Template = Template
 module Shadow_dom = Shadow_dom

@@ -3,6 +3,9 @@
     Automatic API documentation generation with Swagger UI integration.
     Re-exports all types and builders from {!Openapi_schema}.
 
+    @since 1.0.0
+    @status stable
+
     Type definitions and builder functions are in {!Openapi_schema}.
     UI rendering is in {!Openapi_ui}. *)
 

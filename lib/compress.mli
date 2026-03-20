@@ -2,7 +2,10 @@
 
     Supports gzip and deflate compression. Automatically negotiates encoding
     via the Accept-Encoding header. Skips already-compressed content types
-    (images, video, audio, archives) and payloads below a minimum size. *)
+    (images, video, audio, archives) and payloads below a minimum size.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

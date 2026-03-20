@@ -1,7 +1,10 @@
 (** Relay Support for Kirin GraphQL.
 
     Provides helpers for building Relay-compliant GraphQL APIs, including
-    Global Object Identification, Connections (Pagination), and Node interface. *)
+    Global Object Identification, Connections (Pagination), and Node interface.
+
+    @since 1.0.0
+    @status stable *)
 
 module Schema = Graphql.Schema
 

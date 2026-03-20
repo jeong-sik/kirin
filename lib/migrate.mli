@@ -6,7 +6,11 @@
     - Version-tracked migrations
     - Up/Down migration support
     - Transaction-safe migrations
-    - Migration status tracking *)
+    - Migration status tracking
+
+    @since 1.0.0
+    @status needs-work
+    Functional but lacks CLI tooling and dry-run support. *)
 
 (** {1 Types} *)
 

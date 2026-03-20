@@ -1,7 +1,10 @@
 (** Cookie handling module.
 
     Provides parsing, setting, and deletion of HTTP cookies,
-    including HMAC-signed cookies for tamper detection. *)
+    including HMAC-signed cookies for tamper detection.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

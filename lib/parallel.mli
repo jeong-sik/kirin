@@ -3,6 +3,9 @@
     OCaml 5 Domain-based parallel computation for CPU-bound tasks.
     True parallelism without GIL limitations.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Parallel map/iter over collections
     - Configurable domain pool

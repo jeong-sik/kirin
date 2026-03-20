@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 type element = Js_of_ocaml.Dom_html.element Js_of_ocaml.Js.t
 type event = Js_of_ocaml.Dom_html.event Js_of_ocaml.Js.t
 type location = { pathname : string; search : string; hash : string; }

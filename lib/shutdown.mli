@@ -1,4 +1,7 @@
-(** Graceful shutdown with signal handling and connection draining. *)
+(** Graceful shutdown with signal handling and connection draining.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

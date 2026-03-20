@@ -6,7 +6,11 @@
 
     Protocol modules ({!Sdp}, {!Ice}, {!Dcep}, etc.) are re-exported
     from ocaml-webrtc. The {!Peer} module provides the full Eio-based
-    WebRTC stack. Kirin helpers bridge Kirin types with protocol types. *)
+    WebRTC stack. Kirin helpers bridge Kirin types with protocol types.
+
+    @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
 
 (** {1 Re-exported Types}
 

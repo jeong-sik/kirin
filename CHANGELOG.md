@@ -5,6 +5,23 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-20
+
+### Breaking Changes
+
+See [BREAKING-CHANGES.md](./BREAKING-CHANGES.md) for migration guide.
+
+- **WebRTC**: `PeerConnection` and `DataChannel` modules removed. Use `create_peer`, `create_datachannel`, and `Peer` instead.
+- **WebRTC Type Rename**: `webrtc_ice_state` renamed to `webrtc_connection_state`.
+- **Stream EOS**: `string Eio.Stream.t` changed to `string option Eio.Stream.t`. `None` signals end-of-stream.
+
+### Added
+- **Maturity Annotations**: All `.mli` files annotated with `@status stable`, `@status needs-work`, or `@status experimental`.
+- **BREAKING-CHANGES.md**: Migration guide for v1.x to v2.0.0.
+
+### Changed
+- **Version**: Bumped from 1.4.0 to 2.0.0.
+
 ## [1.0.0] - Unreleased
 
 ### Changed

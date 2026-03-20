@@ -5,7 +5,10 @@
     {b Features:}
     - Channel-based broadcasting
     - Automatic keep-alive (ping)
-    - Last-Event-ID support *)
+    - Last-Event-ID support
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

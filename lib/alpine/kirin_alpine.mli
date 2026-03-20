@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Directive = Directive
 module Component = Component
 module Store = Store

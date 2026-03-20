@@ -1,4 +1,7 @@
-(** Router module - Route matching and dispatch. *)
+(** Router module - Route matching and dispatch.
+
+    @since 1.0.0
+    @status stable *)
 
 (** Handler type - processes a request and returns a response. *)
 type handler = Request.t -> Response.t

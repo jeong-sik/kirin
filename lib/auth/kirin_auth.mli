@@ -1,3 +1,6 @@
+(** @since 1.0.0
+    @status stable *)
+
 module Jwt = Jwt
 module Session = Session
 module Password = Password

@@ -1,7 +1,10 @@
 (** Multipart form-data parsing for file uploads.
 
     Parses multipart/form-data request bodies into structured parts,
-    supporting both form fields and file uploads. *)
+    supporting both form fields and file uploads.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

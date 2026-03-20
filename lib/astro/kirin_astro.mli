@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Island = Island
 module Route_def = Route_def
 module File_router = File_router

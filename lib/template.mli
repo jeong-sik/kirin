@@ -1,7 +1,10 @@
 (** Simple HTML Template Engine (Mustache-like syntax)
 
     Supports variable interpolation, conditionals, iteration,
-    partials, and HTML escaping. *)
+    partials, and HTML escaping.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

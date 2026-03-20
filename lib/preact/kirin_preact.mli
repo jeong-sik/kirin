@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Signals = Signals
 module Compat = Compat
 module Manifest = Manifest

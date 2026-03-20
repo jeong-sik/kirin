@@ -3,6 +3,9 @@
     Provides GraphQL API support for Kirin applications using
     ocaml-graphql-server with synchronous execution.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Schema-first development
     - HTTP endpoint (POST /graphql, GET for introspection)

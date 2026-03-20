@@ -6,7 +6,11 @@
     - Connection pooling with automatic management
     - Transaction support with rollback
     - Direct-style async queries (Eio)
-    - Support for PostgreSQL, SQLite, MariaDB *)
+    - Support for PostgreSQL, SQLite, MariaDB
+
+    @since 1.0.0
+    @status needs-work
+    Core functionality works but error handling and pool management need refinement. *)
 
 (** {1 Types} *)
 

@@ -1,4 +1,7 @@
-(** Request module - Incoming HTTP request representation and accessors. *)
+(** Request module - Incoming HTTP request representation and accessors.
+
+    @since 1.0.0
+    @status stable *)
 
 (** Path parameters extracted from route matching. *)
 type params = (string * string) list

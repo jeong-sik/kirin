@@ -1,7 +1,10 @@
 (** WebSocket support per RFC 6455.
 
     Handles the HTTP upgrade handshake, frame encoding/decoding,
-    and provides a middleware for routing WebSocket connections. *)
+    and provides a middleware for routing WebSocket connections.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

@@ -2,6 +2,9 @@
 
     Kubernetes-style health checks (Liveness/Readiness probes).
 
+    @since 1.0.0
+    @status stable
+
     {b Example:}
     {[
       let health = Health.create () in
