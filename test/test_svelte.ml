@@ -9,6 +9,11 @@ open Kirin_svelte
 let test name f =
   Alcotest.test_case name `Quick f
 
+(* Eio context wrapper for tests that use Eio.Mutex *)
+let test_eio name f =
+  Alcotest.test_case name `Quick (fun () ->
+    Eio_main.run @@ fun _env -> f ())
+
 (** {1 Route Definition Tests} *)
 
 let route_def_tests = [
@@ -482,12 +487,12 @@ let ssr_tests = [
     let key2 = Ssr.cache_key "/test" (`Assoc [("a", `Int 1)]) in
     Alcotest.(check bool) "different keys" true (key1 <> key2));
 
-  test "cache get empty" (fun () ->
+  test_eio "cache get empty" (fun () ->
     let cache = Ssr.create_cache ~max_size:100 ~ttl:60 in
     let result = Ssr.cache_get cache "missing" in
     Alcotest.(check bool) "none" true (Option.is_none result));
 
-  test "cache put and get" (fun () ->
+  test_eio "cache put and get" (fun () ->
     let cache = Ssr.create_cache ~max_size:100 ~ttl:60 in
     let response = Protocol.{
       html = "<div>test</div>";
@@ -502,7 +507,7 @@ let ssr_tests = [
     let result = Ssr.cache_get cache "key1" in
     Alcotest.(check bool) "found" true (Option.is_some result));
 
-  test "cache eviction" (fun () ->
+  test_eio "cache eviction" (fun () ->
     let cache = Ssr.create_cache ~max_size:2 ~ttl:60 in
     let response = Protocol.{
       html = ""; head = ""; css = None; error = None;
@@ -536,17 +541,17 @@ let streaming_tests = [
     let stream = Streaming.create () in
     Alcotest.(check bool) "not completed" false stream.Streaming.completed);
 
-  test "add chunk" (fun () ->
+  test_eio "add chunk" (fun () ->
     let stream = Streaming.create () in
     Streaming.add_chunk stream (Streaming.Html "<div>test</div>");
     Alcotest.(check int) "chunk count" 1 (List.length stream.Streaming.chunks));
 
-  test "complete stream" (fun () ->
+  test_eio "complete stream" (fun () ->
     let stream = Streaming.create () in
     Streaming.complete stream;
     Alcotest.(check bool) "completed" true stream.Streaming.completed);
 
-  test "fail stream" (fun () ->
+  test_eio "fail stream" (fun () ->
     let stream = Streaming.create () in
     Streaming.fail stream "error";
     Alcotest.(check bool) "has error" true (Option.is_some stream.Streaming.error));

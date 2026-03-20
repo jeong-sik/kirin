@@ -2,6 +2,9 @@
 
 open Alcotest
 
+(* Eio context wrapper for tests that use Eio.Mutex *)
+let with_eio f () = Eio_main.run @@ fun _env -> f ()
+
 (* Route Definition Tests *)
 
 let test_route_def_page () =
@@ -566,10 +569,10 @@ let ssr_tests = [
   "config", `Quick, test_ssr_config;
   "create", `Quick, test_ssr_create;
   "stats", `Quick, test_ssr_stats;
-  "render", `Quick, test_ssr_render;
-  "cache hit", `Quick, test_ssr_cache;
-  "cache hit rate", `Quick, test_ssr_cache_hit_rate;
-  "prerender", `Quick, test_ssr_prerender;
+  "render", `Quick, with_eio test_ssr_render;
+  "cache hit", `Quick, with_eio test_ssr_cache;
+  "cache hit rate", `Quick, with_eio test_ssr_cache_hit_rate;
+  "prerender", `Quick, with_eio test_ssr_prerender;
   "shutdown", `Quick, test_ssr_shutdown;
 ]
 
@@ -578,7 +581,7 @@ let streaming_tests = [
   "context", `Quick, test_streaming_context;
   "shell chunk", `Quick, test_streaming_shell;
   "suspense chunk", `Quick, test_streaming_suspense;
-  "finish", `Quick, test_streaming_finish;
+  "finish", `Quick, with_eio test_streaming_finish;
 ]
 
 let handler_tests = [

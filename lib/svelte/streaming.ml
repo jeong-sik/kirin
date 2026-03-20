@@ -18,7 +18,7 @@ type stream_state = {
   mutable chunks: chunk list;
   mutable completed: bool;
   mutable error: string option;
-  mutex: Mutex.t;
+  mutex: Eio.Mutex.t;
 }
 
 (** {1 Stream Creation} *)
@@ -28,24 +28,24 @@ let create () = {
   chunks = [];
   completed = false;
   error = None;
-  mutex = Mutex.create ();
+  mutex = Eio.Mutex.create ();
 }
 
 (** Add chunk to stream *)
 let add_chunk stream chunk =
-  Mutex.protect stream.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true stream.mutex (fun () ->
     if not stream.completed then
       stream.chunks <- stream.chunks @ [chunk])
 
 (** Mark stream as complete *)
 let complete stream =
-  Mutex.protect stream.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true stream.mutex (fun () ->
     stream.chunks <- stream.chunks @ [Complete];
     stream.completed <- true)
 
 (** Mark stream as errored *)
 let fail stream msg =
-  Mutex.protect stream.mutex (fun () ->
+  Eio.Mutex.use_rw ~protect:true stream.mutex (fun () ->
     stream.error <- Some msg;
     stream.chunks <- stream.chunks @ [Error msg];
     stream.completed <- true)

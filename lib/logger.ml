@@ -42,6 +42,10 @@ let current_config = ref {
 (** Shared log queue (bounded to avoid unbounded memory growth). *)
 let max_queue_size = 65536
 
+(* Stdlib.Mutex is intentional here: the logger uses Domain.spawn for a
+   dedicated OS thread. Cross-domain synchronization requires OS-level mutexes,
+   not Eio.Mutex (which is fiber-cooperative). The lock duration is bounded to
+   queue push/pop operations (microseconds), so Eio fiber blocking is minimal. *)
 let queue_mutex = Mutex.create ()
 let queue_cond = Condition.create ()
 let queue : entry Queue.t = Queue.create ()

@@ -36,7 +36,7 @@
 
 (test
  (name test_trpc)
- (libraries kirin kirin.trpc alcotest str unix))
+ (libraries kirin kirin.trpc alcotest str unix eio_main))
 
 (test
  (name test_tanstack)
@@ -48,11 +48,11 @@
 
 (test
  (name test_svelte)
- (libraries kirin kirin.svelte alcotest str unix))
+ (libraries kirin kirin.svelte alcotest str unix eio_main))
 
 (test
  (name test_vue)
- (libraries kirin kirin.vue alcotest str unix))
+ (libraries kirin kirin.vue alcotest str unix eio_main))
 
 (test
  (name test_angular)

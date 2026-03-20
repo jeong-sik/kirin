@@ -88,17 +88,17 @@ module Registry = struct
 
   type t = {
     mutable subscriptions: (sub_id * cancel_fn) list;
-    mutex: Mutex.t;
+    mutex: Eio.Mutex.t;
   }
 
-  let create () = { subscriptions = []; mutex = Mutex.create () }
+  let create () = { subscriptions = []; mutex = Eio.Mutex.create () }
 
   let add t ~id ~cancel =
-    Mutex.protect t.mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       t.subscriptions <- (id, cancel) :: t.subscriptions)
 
   let remove t id =
-    Mutex.protect t.mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       match List.assoc_opt id t.subscriptions with
       | Some cancel ->
         cancel ();
@@ -107,16 +107,16 @@ module Registry = struct
       | None -> false)
 
   let cancel_all t =
-    Mutex.protect t.mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       List.iter (fun (_, cancel) -> cancel ()) t.subscriptions;
       t.subscriptions <- [])
 
   let count t =
-    Mutex.protect t.mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       List.length t.subscriptions)
 
   let has t id =
-    Mutex.protect t.mutex (fun () ->
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       List.mem_assoc id t.subscriptions)
 end
 
