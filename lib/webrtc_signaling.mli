@@ -1,7 +1,11 @@
 (** WebRTC Signaling server implementation.
 
     Manages signaling rooms where peers exchange SDP offers/answers
-    and ICE candidates for WebRTC connection establishment. *)
+    and ICE candidates for WebRTC connection establishment.
+
+    @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
 
 (** {1 Message Types} *)
 

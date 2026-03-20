@@ -1,7 +1,10 @@
 (** Static file serving middleware.
 
     Serves files from a local directory under a URL prefix.
-    Includes MIME type detection and directory traversal protection. *)
+    Includes MIME type detection and directory traversal protection.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 MIME Types} *)
 

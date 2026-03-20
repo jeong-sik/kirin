@@ -2,6 +2,9 @@
 
     LRU cache with TTL support. Thread-safe via Eio.Mutex.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - LRU eviction policy
     - Optional TTL (time-to-live) per entry

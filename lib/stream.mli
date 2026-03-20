@@ -1,7 +1,10 @@
 (** Kirin Streaming Module
 
     High-performance streaming I/O for large data handling.
-    Uses Eio's direct-style async for chunked transfers. *)
+    Uses Eio's direct-style async for chunked transfers.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

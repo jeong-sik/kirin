@@ -2,6 +2,9 @@
 
     Prometheus-compatible metrics for monitoring.
 
+    @since 1.0.0
+    @status stable
+
     {b Metric Types:}
     - Counter: Monotonically increasing value
     - Gauge: Value that can go up or down

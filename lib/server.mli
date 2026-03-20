@@ -1,4 +1,7 @@
-(** Server module - Eio-based HTTP server with multicore support. *)
+(** Server module - Eio-based HTTP server with multicore support.
+
+    @since 1.0.0
+    @status stable *)
 
 (** Server configuration. *)
 type config = {

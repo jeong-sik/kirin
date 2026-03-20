@@ -1,4 +1,7 @@
-(** Middleware module - Handler composition and built-in middlewares. *)
+(** Middleware module - Handler composition and built-in middlewares.
+
+    @since 1.0.0
+    @status stable *)
 
 (** Middleware type: transforms a handler into another handler. *)
 type t = Router.handler -> Router.handler

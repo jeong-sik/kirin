@@ -2,6 +2,9 @@
 
     Type-safe SQL query builder with a fluent API.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Fluent API for SELECT, INSERT, UPDATE, DELETE
     - Type-safe parameter binding

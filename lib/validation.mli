@@ -2,6 +2,9 @@
 
     Schema-based validation with clear error messages.
 
+    @since 1.0.0
+    @status stable
+
     {b Quick Start:}
     {[
       open Kirin

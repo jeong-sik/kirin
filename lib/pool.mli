@@ -1,7 +1,10 @@
 (** Kirin Connection Pool
 
     Generic, high-performance connection pool for managing expensive resources
-    like database connections, HTTP clients, or any reusable connections. *)
+    like database connections, HTTP clients, or any reusable connections.
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

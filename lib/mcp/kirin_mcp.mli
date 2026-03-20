@@ -1,3 +1,7 @@
+(** @since 1.0.0
+    @status experimental
+    This module's API may change in future versions. *)
+
 module Jsonrpc = Jsonrpc
 module Protocol = Protocol
 module Schema = Schema

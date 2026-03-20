@@ -2,6 +2,9 @@
 
     Multi-language support with locale detection and translation loading.
 
+    @since 1.0.0
+    @status stable
+
     {b Features:}
     - Mustache-style variable interpolation ([\{\{name\}\}])
     - Plural rules (CLDR-based)

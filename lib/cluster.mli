@@ -6,7 +6,11 @@
     {b Benefits:}
     - Resilience: If one worker crashes, others keep running.
     - Isolation: Independent GC heaps per worker.
-    - Performance: True parallelism without GC pauses affecting peers. *)
+    - Performance: True parallelism without GC pauses affecting peers.
+
+    @since 1.0.0
+    @status needs-work
+    Functional but lacks configuration options and signal handling refinements. *)
 
 (** {1 Types} *)
 

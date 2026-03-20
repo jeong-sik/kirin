@@ -2,7 +2,10 @@
 
     Provides ETag generation, parsing, comparison, and a middleware that
     automatically adds ETags to responses and handles conditional requests
-    (If-None-Match, If-Match). *)
+    (If-None-Match, If-Match).
+
+    @since 1.0.0
+    @status stable *)
 
 (** {1 Types} *)
 

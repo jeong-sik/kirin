@@ -10,6 +10,9 @@
     - Streaming RPC support (unary, server, client, bidi)
     - Health check and reflection
 
+    @since 1.0.0
+    @status needs-work
+    Thin wrapper over grpc-direct. API surface may be refined.
     @see <https://github.com/jeong-sik/grpc-direct> grpc-direct library *)
 
 (** {1 Re-exports from grpc-direct} *)

@@ -1,3 +1,6 @@
+(** @since 1.0.0
+    @status stable *)
+
 module Test_request :
   sig
     type t =

@@ -3,6 +3,9 @@
     Provides span-based tracing without OpenTelemetry SDK dependency.
     Spans are stored in the request context (Hmap) via {!middleware}.
 
+    @since 0.8.0
+    @status stable
+
     {b Usage:}
     {[
       let app = Middleware.pipeline [
