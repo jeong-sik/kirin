@@ -106,3 +106,31 @@
  (name test_no_shell_node_worker)
  (deps ../lib/react/node_worker.ml)
  (action (run %{exe:test_no_shell_node_worker.exe} %{dep:../lib/react/node_worker.ml})))
+
+(test
+ (name test_cache)
+ (libraries kirin alcotest eio_main unix))
+
+(test
+ (name test_pool)
+ (libraries kirin alcotest eio_main unix))
+
+(test
+ (name test_websocket)
+ (libraries kirin alcotest))
+
+(test
+ (name test_sse)
+ (libraries kirin alcotest eio eio_main))
+
+(test
+ (name test_router)
+ (libraries kirin alcotest eio eio_main))
+
+(test
+ (name test_middleware)
+ (libraries kirin alcotest eio eio_main unix))
+
+(test
+ (name test_cookie)
+ (libraries kirin alcotest eio eio_main))
