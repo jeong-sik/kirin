@@ -44,7 +44,9 @@ let logger : t = fun handler req ->
 (** Error catcher middleware *)
 let catch (error_handler : exn -> Request.t -> Response.t) : t = fun handler req ->
   try handler req
-  with exn -> error_handler exn req
+  with
+  | Eio.Cancel.Cancelled _ as exn -> raise exn
+  | exn -> error_handler exn req
 
 (** Default error handler *)
 let default_error_handler exn _req =

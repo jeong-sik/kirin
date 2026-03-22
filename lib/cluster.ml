@@ -49,7 +49,9 @@ let spawn_worker id entry_point =
   match fork () with 
   | 0 -> (* Child *)
     Printf.printf "[Worker %d] Started (PID: %d)\n%!" id (getpid ());
-    (try entry_point () with e -> 
+    (try entry_point () with
+     | Eio.Cancel.Cancelled _ as e -> raise e
+     | e ->
       Printf.eprintf "[Worker %d] Crashed: %s\n%!" id (Printexc.to_string e));
     exit 0
   | pid -> (* Parent *)

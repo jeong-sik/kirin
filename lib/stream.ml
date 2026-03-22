@@ -203,7 +203,9 @@ let read_with_progress ~(request : Request.t) ~chunk_size ~(progress : progress_
       progress.on_progress ~bytes_sent:!bytes_sent ~total_bytes:total_opt
     );
     progress.on_complete ()
-  with e -> 
+  with
+  | Eio.Cancel.Cancelled _ as e -> raise e
+  | e ->
     progress.on_error e;
     raise e
 

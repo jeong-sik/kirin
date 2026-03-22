@@ -188,7 +188,9 @@ let middleware ?(normalize_path = default_normalize_path) http_metrics handler r
   Metric_gauge.inc http_metrics.requests_in_flight;
 
   let start = Time_compat.now () in
-  let resp = try handler req with exn ->
+  let resp = try handler req with
+  | Eio.Cancel.Cancelled _ as exn -> raise exn
+  | exn ->
     Metric_gauge.dec http_metrics.requests_in_flight;
     raise exn
   in

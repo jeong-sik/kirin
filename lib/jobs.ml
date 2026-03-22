@@ -132,7 +132,9 @@ let take_job t =
 let process_job t job =
   let result =
     try Ok (job.task ())
-    with exn -> Error exn
+    with
+    | Eio.Cancel.Cancelled _ as exn -> raise exn
+    | exn -> Error exn
   in
   Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
     match result with
