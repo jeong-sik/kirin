@@ -145,7 +145,7 @@ let run_hooks t =
     with
     | Eio.Cancel.Cancelled _ as exn -> raise exn
     | exn ->
-      Printf.eprintf "Shutdown hook error: %s\n%!" (Printexc.to_string exn)
+      Logger.warn "Shutdown hook error: %s" (Printexc.to_string exn)
   ) hooks
 
 (** {1 Shutdown Process} *)
@@ -216,7 +216,7 @@ let run t server_fn =
   with
   | Eio.Cancel.Cancelled _ as exn -> raise exn
   | exn ->
-    Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn);
+    Logger.error "Server error: %s" (Printexc.to_string exn);
     initiate t
 
 (** Middleware that tracks connections and handles shutdown *)

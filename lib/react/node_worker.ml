@@ -93,7 +93,7 @@ let start_process config =
       close_noerr stdout_w;
       raise e
   with Unix.Unix_error (err, _, _) ->
-    Printf.eprintf "Failed to start Node.js: %s\n%!" (Unix.error_message err);
+    Kirin.Logger.error "Failed to start Node.js: %s" (Unix.error_message err);
     None
 
 (** Create new worker *)

@@ -64,7 +64,7 @@ let start engine =
     match Worker.start worker with
     | Ok () -> ()
     | Error msg ->
-      Printf.eprintf "Failed to start SSR worker: %s\n" msg
+      Kirin.Logger.error "Failed to start SSR worker: %s" msg
   ) engine.pool
 
 (** Stop all workers *)

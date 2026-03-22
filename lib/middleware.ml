@@ -25,19 +25,11 @@ let logger : t = fun handler req ->
   let start_time = Unix.gettimeofday () in
   let meth = Http.Method.to_string (Request.meth req) in
   let path = Request.path req in
-  Printf.eprintf "[%s] %s %s\n%!"
-    (let tm = Unix.localtime start_time in
-     Printf.sprintf "%02d:%02d:%02d" tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec)
-    meth path;
-
+  Logger.info "%s %s" meth path;
   let response = handler req in
-
   let elapsed = Unix.gettimeofday () -. start_time in
   let status = Http.Status.to_int (Response.status response) in
-  Printf.eprintf "[%s] %s %s -> %d (%.3fms)\n%!"
-    (let tm = Unix.localtime (Unix.gettimeofday ()) in
-     Printf.sprintf "%02d:%02d:%02d" tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec)
-    meth path status (elapsed *. 1000.0);
+  Logger.info "%s %s -> %d (%.3fms)" meth path status (elapsed *. 1000.0);
 
   response
 
@@ -50,7 +42,7 @@ let catch (error_handler : exn -> Request.t -> Response.t) : t = fun handler req
 
 (** Default error handler *)
 let default_error_handler exn _req =
-  Printf.eprintf "Error: %s\n%!" (Printexc.to_string exn);
+  Logger.error "Unhandled: %s" (Printexc.to_string exn);
   Response.server_error ()
 
 (** Catch with default error handler *)
