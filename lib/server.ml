@@ -142,7 +142,7 @@ let run ?(config = default_config) ~sw ~env handler =
 
   let server = Cohttp_eio.Server.make ~callback:(make_cohttp_handler ~clock ~config sw handler) () in
   Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
-    Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn)
+    Logger.error "Server error: %s" (Printexc.to_string exn)
   )
 
 (** Main entry point - sets up Eio and runs multicore server
