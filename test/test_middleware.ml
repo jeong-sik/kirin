@@ -152,8 +152,11 @@ let test_cors_restricted_origins () =
     (Kirin.Response.header "Access-Control-Allow-Origin" resp_allowed);
   let req_denied = make_req ~headers:[("origin", "http://denied.com")] "/" in
   let resp_denied = handler req_denied in
-  check (option string) "denied origin" (Some "")
-    (Kirin.Response.header "Access-Control-Allow-Origin" resp_denied)
+  (* Denied origin: no CORS headers at all *)
+  check (option string) "denied origin omitted" None
+    (Kirin.Response.header "Access-Control-Allow-Origin" resp_denied);
+  check (option string) "denied: no methods header" None
+    (Kirin.Response.header "Access-Control-Allow-Methods" resp_denied)
 
 (* -- cors: issue #45 regressions ------------------------------------- *)
 
@@ -184,9 +187,29 @@ let test_cors_credentials_wildcard_no_star () =
   let resp = handler req in
   let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
   let allow_creds = Kirin.Response.header "Access-Control-Allow-Credentials" resp in
+  let vary = Kirin.Response.header "Vary" resp in
   (* Must reflect the concrete origin, not "*" *)
   check (option string) "reflects origin" (Some "http://example.com") allow_origin;
-  check (option string) "credentials set" (Some "true") allow_creds
+  check (option string) "credentials set" (Some "true") allow_creds;
+  (* Vary: Origin required when reflecting a specific origin *)
+  check (option string) "vary origin" (Some "Origin") vary
+
+(* Vary: Origin must be set when reflecting a specific origin *)
+let test_cors_vary_origin_on_reflect () =
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ()) base_handler in
+  let req = make_req ~headers:[("origin", "http://example.com")] "/" in
+  let resp = handler req in
+  (* Wildcard config reflects the concrete origin, so Vary is required *)
+  check (option string) "vary header set" (Some "Origin")
+    (Kirin.Response.header "Vary" resp)
+
+(* Vary: Origin must NOT be set when Allow-Origin is "*" *)
+let test_cors_no_vary_on_wildcard_without_origin () =
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ()) base_handler in
+  let req = make_req "/" in  (* no Origin header -> Allow-Origin: * *)
+  let resp = handler req in
+  check (option string) "no vary on wildcard" None
+    (Kirin.Response.header "Vary" resp)
 
 let test_cors_credentials_no_origin () =
   let config = { Kirin.Middleware.default_cors_config with
@@ -197,9 +220,9 @@ let test_cors_credentials_no_origin () =
   let resp = handler req in
   let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
   let allow_creds = Kirin.Response.header "Access-Control-Allow-Credentials" resp in
-  (* No origin + credentials: empty allow-origin, no credentials header *)
-  check (option string) "no origin reflected" (Some "") allow_origin;
-  check (option string) "no credentials header" None allow_creds
+  (* No origin + credentials: no CORS headers at all *)
+  check (option string) "no origin: no allow-origin header" None allow_origin;
+  check (option string) "no origin: no credentials header" None allow_creds
 
 (* -- run ----------------------------------------------------------- *)
 
@@ -230,6 +253,8 @@ let () =
       test_case "no origin header" `Quick test_cors_no_origin_header;
       test_case "empty origin header" `Quick test_cors_empty_origin_header;
       test_case "credentials+wildcard no star" `Quick test_cors_credentials_wildcard_no_star;
+      test_case "vary origin on reflect" `Quick test_cors_vary_origin_on_reflect;
+      test_case "no vary on wildcard" `Quick test_cors_no_vary_on_wildcard_without_origin;
       test_case "credentials without origin" `Quick test_cors_credentials_no_origin;
     ]);
   ]
