@@ -1103,6 +1103,96 @@ let graphql_tests = [
 ]
 
 (* ============================================================
+   GraphQL Introspection Control Tests (#47)
+   ============================================================ *)
+
+let test_schema_for_introspection () =
+  Kirin.Graphql.schema [
+    Kirin.Graphql.field "hello"
+      ~typ:(Kirin.Graphql.non_null Kirin.Graphql.string)
+      ~args:Kirin.Graphql.Arg.[]
+      ~resolve:(fun _info () -> "world")
+  ]
+
+let test_introspection_enabled_get () =
+  let schema = test_schema_for_introspection () in
+  let mw = Kirin.Graphql.middleware ~enable_introspection:true schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let req = make_test_request ~meth:`GET "/graphql" in
+  let resp = mw fallback req in
+  (* When enabled, GET /graphql returns the playground (200 HTML) *)
+  check int "GET returns 200 when enabled" 200
+    (Kirin.Response.status_code resp)
+
+let test_introspection_disabled_get () =
+  let schema = test_schema_for_introspection () in
+  let mw = Kirin.Graphql.middleware ~enable_introspection:false schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let req = make_test_request ~meth:`GET "/graphql" in
+  let resp = mw fallback req in
+  check int "GET returns 403 when disabled" 403
+    (Kirin.Response.status_code resp)
+
+let test_introspection_disabled_post_schema_query () =
+  let schema = test_schema_for_introspection () in
+  let mw = Kirin.Graphql.middleware ~enable_introspection:false schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let body = Yojson.Safe.to_string
+    (`Assoc [("query", `String "{ __schema { types { name } } }")]) in
+  let req = make_test_request ~meth:`POST
+    ~headers:[("content-type", "application/json")]
+    ~body "/graphql" in
+  let resp = mw fallback req in
+  check int "POST __schema returns 403 when disabled" 403
+    (Kirin.Response.status_code resp)
+
+let test_introspection_disabled_post_type_query () =
+  let schema = test_schema_for_introspection () in
+  let mw = Kirin.Graphql.middleware ~enable_introspection:false schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let body = Yojson.Safe.to_string
+    (`Assoc [("query", `String "{ __type(name: \"Query\") { name } }")]) in
+  let req = make_test_request ~meth:`POST
+    ~headers:[("content-type", "application/json")]
+    ~body "/graphql" in
+  let resp = mw fallback req in
+  check int "POST __type returns 403 when disabled" 403
+    (Kirin.Response.status_code resp)
+
+let test_introspection_disabled_post_normal_query () =
+  let schema = test_schema_for_introspection () in
+  let mw = Kirin.Graphql.middleware ~enable_introspection:false schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let body = Yojson.Safe.to_string
+    (`Assoc [("query", `String "{ hello }")]) in
+  let req = make_test_request ~meth:`POST
+    ~headers:[("content-type", "application/json")]
+    ~body "/graphql" in
+  let resp = mw fallback req in
+  (* Normal queries should still work when introspection is disabled *)
+  check int "POST normal query returns 200" 200
+    (Kirin.Response.status_code resp)
+
+let test_introspection_default_enabled () =
+  let schema = test_schema_for_introspection () in
+  (* Default: introspection should be enabled *)
+  let mw = Kirin.Graphql.middleware schema in
+  let fallback _req = Kirin.Response.text "fallback" in
+  let req = make_test_request ~meth:`GET "/graphql" in
+  let resp = mw fallback req in
+  check int "GET returns 200 by default" 200
+    (Kirin.Response.status_code resp)
+
+let introspection_tests = [
+  test_case "enabled GET" `Quick test_introspection_enabled_get;
+  test_case "disabled GET" `Quick test_introspection_disabled_get;
+  test_case "disabled POST __schema" `Quick test_introspection_disabled_post_schema_query;
+  test_case "disabled POST __type" `Quick test_introspection_disabled_post_type_query;
+  test_case "disabled POST normal query" `Quick test_introspection_disabled_post_normal_query;
+  test_case "default enabled" `Quick test_introspection_default_enabled;
+]
+
+(* ============================================================
    Streaming Tests (Phase 9) -> Moved to test_streaming.ml
    ============================================================ *)
 
@@ -2377,6 +2467,7 @@ let () =
     ("TLS", tls_tests);
     ("gRPC", grpc_tests);
     ("GraphQL", graphql_tests);
+    ("Introspection", introspection_tests);
     (* Streaming tests moved to test_streaming.ml due to Eio requirement *)
     ("Pool", pool_tests);
     ("Backpressure", backpressure_tests);

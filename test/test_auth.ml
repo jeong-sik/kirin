@@ -339,6 +339,113 @@ let middleware_tests = [
   test_case "api_key" `Quick test_middleware_api_key;
 ]
 
+(** {1 Auth Middleware Tests (any_of)} *)
+
+let make_test_request ?(meth=`GET) ?(headers=[]) ?(body="") path =
+  let raw = Http.Request.make ~meth ~headers:(Http.Header.of_list headers) path in
+  let body_source = Eio.Flow.string_source body |> Eio.Buf_read.of_flow ~max_size:(max 1024 (String.length body + 1)) in
+  Kirin.Request.make ~raw ~body_source
+
+(** Count how many times the handler is invoked *)
+let test_any_of_no_double_execution () =
+  (* Create a valid JWT token *)
+  let secret = "test-secret" in
+  let payload = `Assoc [("role", `String "user")] in
+  let token = Kirin_auth.Jwt.encode ~secret ~payload
+    ~sub:"user-42" ~exp:(Unix.gettimeofday () +. 3600.) () in
+
+  let call_count = ref 0 in
+  let handler _req =
+    incr call_count;
+    (* Return a 404 -- a business logic error, NOT auth failure *)
+    Kirin.Response.json ~status:`Not_found
+      (`Assoc [("error", `String "User not found")])
+  in
+
+  let auth_jwt = Kirin_auth.Middleware.jwt ~secret in
+  let protected = Kirin_auth.Middleware.any_of [auth_jwt] handler in
+
+  let req = make_test_request ~headers:[("authorization", "Bearer " ^ token)] "/api/user" in
+  let resp = protected req in
+
+  (* Handler should be called exactly once *)
+  check int "handler called once" 1 !call_count;
+  (* Response should be the 404 from handler, not a 401 from auth *)
+  check int "status is 404 (business logic)" 404
+    (Http.Status.to_int (Kirin.Response.status resp))
+
+(** When auth fails, handler should never be called *)
+let test_any_of_no_execution_on_auth_failure () =
+  let call_count = ref 0 in
+  let handler _req =
+    incr call_count;
+    Kirin.Response.text "should not reach here"
+  in
+
+  let auth_jwt = Kirin_auth.Middleware.jwt ~secret:"test-secret" in
+  let protected = Kirin_auth.Middleware.any_of [auth_jwt] handler in
+
+  (* Request without auth token *)
+  let req = make_test_request "/api/user" in
+  let resp = protected req in
+
+  check int "handler never called" 0 !call_count;
+  check int "status is 401" 401
+    (Http.Status.to_int (Kirin.Response.status resp))
+
+(** First successful auth wins, handler called once *)
+let test_any_of_first_success_wins () =
+  let secret1 = "secret1" in
+  let secret2 = "secret2" in
+  let payload = `Assoc [] in
+  let token2 = Kirin_auth.Jwt.encode ~secret:secret2 ~payload
+    ~sub:"user-99" ~exp:(Unix.gettimeofday () +. 3600.) () in
+
+  let call_count = ref 0 in
+  let handler _req =
+    incr call_count;
+    let uid = Kirin_auth.Middleware.get_user_id _req in
+    Kirin.Response.text (Option.value uid ~default:"none")
+  in
+
+  (* First strategy uses wrong secret, second matches *)
+  let auth1 = Kirin_auth.Middleware.jwt ~secret:secret1 in
+  let auth2 = Kirin_auth.Middleware.jwt ~secret:secret2 in
+  let protected = Kirin_auth.Middleware.any_of [auth1; auth2] handler in
+
+  let req = make_test_request ~headers:[("authorization", "Bearer " ^ token2)] "/api" in
+  let resp = protected req in
+
+  check int "handler called once" 1 !call_count;
+  check int "status 200" 200 (Http.Status.to_int (Kirin.Response.status resp))
+
+(** auth_info is available in handler after any_of succeeds *)
+let test_any_of_preserves_auth_info () =
+  let secret = "test-secret" in
+  let payload = `Assoc [("admin", `Bool true)] in
+  let token = Kirin_auth.Jwt.encode ~secret ~payload
+    ~sub:"admin-1" ~exp:(Unix.gettimeofday () +. 3600.) () in
+
+  let handler _req =
+    let uid = Kirin_auth.Middleware.get_user_id _req in
+    check (option string) "user_id set" (Some "admin-1") uid;
+    Kirin.Response.text "ok"
+  in
+
+  let auth_jwt = Kirin_auth.Middleware.jwt ~secret in
+  let protected = Kirin_auth.Middleware.any_of [auth_jwt] handler in
+
+  let req = make_test_request ~headers:[("authorization", "Bearer " ^ token)] "/api" in
+  let _resp = protected req in
+  ()
+
+let any_of_tests = [
+  test_case "no double execution on 4xx" `Quick test_any_of_no_double_execution;
+  test_case "no execution on auth failure" `Quick test_any_of_no_execution_on_auth_failure;
+  test_case "first success wins" `Quick test_any_of_first_success_wins;
+  test_case "preserves auth_info" `Quick test_any_of_preserves_auth_info;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -349,4 +456,5 @@ let () =
     ("Csrf", csrf_tests);
     ("Oauth2", oauth2_tests);
     ("Middleware", middleware_tests);
+    ("Any_of", any_of_tests);
   ]
