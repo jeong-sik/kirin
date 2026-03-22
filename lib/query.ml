@@ -208,6 +208,25 @@ let returning columns t = { t with returning = columns }
 
 (** {1 SQL Generation} *)
 
+(** Build WHERE conditions list.
+    The first clause always drops any leading OR/AND keyword so that
+    [or_where] used as the first clause produces valid SQL. *)
+let build_where_conditions clauses =
+  if clauses = [] then [], []
+  else
+    let is_or cond =
+      String.length cond > 3 && String.sub cond 0 3 = "OR " in
+    let strip_or cond = String.sub cond 3 (String.length cond - 3) in
+    let conditions = List.mapi (fun i (cond, _) ->
+      if i = 0 then
+        (* First clause: strip any leading OR keyword *)
+        if is_or cond then strip_or cond else cond
+      else if is_or cond then cond
+      else "AND " ^ cond
+    ) clauses in
+    let params = List.concat (List.map snd clauses) in
+    ["WHERE " ^ String.concat " " conditions], params
+
 (** Convert join type to SQL *)
 let join_type_to_sql = function
   | Inner -> "INNER JOIN"
@@ -235,17 +254,7 @@ let build_select t =
   ) t.joins in
 
   (* WHERE *)
-  let where_parts, where_params =
-    if t.where_clauses = [] then [], []
-    else
-      let conditions = List.mapi (fun i (cond, _) ->
-        if i = 0 then cond
-        else if String.length cond > 3 && String.sub cond 0 3 = "OR " then cond
-        else "AND " ^ cond
-      ) t.where_clauses in
-      let params = List.concat (List.map snd t.where_clauses) in
-      ["WHERE " ^ String.concat " " conditions], params
-  in
+  let where_parts, where_params = build_where_conditions t.where_clauses in
   let parts = parts @ where_parts in
 
   (* GROUP BY *)
@@ -319,17 +328,7 @@ let build_update t =
   let parts = [Printf.sprintf "UPDATE %s SET %s" table set_str] in
 
   (* WHERE *)
-  let where_parts, where_params =
-    if t.where_clauses = [] then [], []
-    else
-      let conditions = List.mapi (fun i (cond, _) ->
-        if i = 0 then cond
-        else if String.length cond > 3 && String.sub cond 0 3 = "OR " then cond
-        else "AND " ^ cond
-      ) t.where_clauses in
-      let params = List.concat (List.map snd t.where_clauses) in
-      ["WHERE " ^ String.concat " " conditions], params
-  in
+  let where_parts, where_params = build_where_conditions t.where_clauses in
   let parts = parts @ where_parts in
 
   (* RETURNING *)
@@ -345,17 +344,7 @@ let build_delete t =
   let parts = [Printf.sprintf "DELETE FROM %s" table] in
 
   (* WHERE *)
-  let where_parts, where_params =
-    if t.where_clauses = [] then [], []
-    else
-      let conditions = List.mapi (fun i (cond, _) ->
-        if i = 0 then cond
-        else if String.length cond > 3 && String.sub cond 0 3 = "OR " then cond
-        else "AND " ^ cond
-      ) t.where_clauses in
-      let params = List.concat (List.map snd t.where_clauses) in
-      ["WHERE " ^ String.concat " " conditions], params
-  in
+  let where_parts, where_params = build_where_conditions t.where_clauses in
   let parts = parts @ where_parts in
 
   (* RETURNING *)

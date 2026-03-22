@@ -210,9 +210,12 @@ val error_with_path : string -> string list -> graphql_error
 
 (** {1 Batched Queries} *)
 
-(** [batched_handler ?make_ctx schema req] handles batched GraphQL queries.
-    Accepts both single requests and arrays of requests. *)
+(** [batched_handler ?max_batch ?make_ctx schema req] handles batched GraphQL queries.
+    Accepts both single requests and arrays of requests.
+    @param max_batch Maximum number of queries in a single batch (default: 10).
+      Returns 400 if exceeded. *)
 val batched_handler :
+  ?max_batch:int ->
   ?make_ctx:(Request.t -> unit) ->
   unit Schema.schema ->
   Request.t ->

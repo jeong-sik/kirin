@@ -185,7 +185,15 @@ let rec yojson_to_const_value : Yojson.Safe.t -> Graphql_parser.const_value = fu
   | `String s -> `String s
   | `List items -> `List (List.map yojson_to_const_value items)
   | `Assoc fields -> `Assoc (List.map (fun (k, v) -> (k, yojson_to_const_value v)) fields)
-  | `Intlit s -> `Int (int_of_string_opt s |> Option.value ~default:0)
+  | `Intlit s ->
+    (* Attempt exact int conversion; fall back to float for large integers
+       that exceed OCaml's native int range rather than silently mapping to 0. *)
+    (match int_of_string_opt s with
+     | Some i -> `Int i
+     | None ->
+       match float_of_string_opt s with
+       | Some f -> `Float f
+       | None -> `String s)
 
 (** Convert variables to Graphql format *)
 let convert_variables (vars : Yojson.Safe.t option) : (string * Graphql_parser.const_value) list =
@@ -417,11 +425,20 @@ let error_with_path message path =
 
     Some clients (like Apollo) send multiple queries in a single request.
 *)
-let batched_handler ?(make_ctx = fun _req -> ()) schema req =
+(** Maximum number of queries in a single batched request.
+    Prevents resource exhaustion from unbounded batch payloads. *)
+let max_batch_size = 10
+
+let batched_handler ?(max_batch = max_batch_size) ?(make_ctx = fun _req -> ()) schema req =
   let body = Request.body req in
   try
     let json = Yojson.Safe.from_string body in
     match json with
+    | `List requests when List.length requests > max_batch ->
+      Response.json ~status:`Bad_request
+        (`Assoc [("errors", `List [`Assoc [
+          ("message", `String (Printf.sprintf "Batch size %d exceeds maximum of %d" (List.length requests) max_batch))
+        ]])])
     | `List requests ->
       (* Batched request *)
       let results = List.map (fun request_json ->

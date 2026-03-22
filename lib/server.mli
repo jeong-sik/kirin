@@ -10,6 +10,7 @@ type config = {
   backlog : int;
   request_timeout : float;
   stream_read_timeout : float;
+  max_body_size : int;
 }
 
 (** Default server configuration (port 8000, 30s request timeout). *)
@@ -24,13 +25,15 @@ val run :
   Router.handler ->
   unit
 
-(** [start ?port ?request_timeout ?stream_read_timeout ?domains handler]
+(** [start ?port ?request_timeout ?stream_read_timeout ?max_body_size ?domains handler]
     is the main entry point. Sets up Eio, multicore domains, and starts serving.
-    Blocks until the server shuts down. *)
+    Blocks until the server shuts down.
+    @param max_body_size Maximum request body size in bytes (default: 10 MB). *)
 val start :
   ?port:int ->
   ?request_timeout:float ->
   ?stream_read_timeout:float ->
+  ?max_body_size:int ->
   ?domains:int ->
   Router.handler ->
   unit

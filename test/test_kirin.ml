@@ -63,9 +63,9 @@ let response_tests = [
    Router Tests (test routing logic)
    ============================================================ *)
 
-let make_test_request ?(meth=`GET) ?(headers=[]) path =
+let make_test_request ?(meth=`GET) ?(headers=[]) ?(body="") path =
   let raw = Http.Request.make ~meth ~headers:(Http.Header.of_list headers) path in
-  let body_source = Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024 in
+  let body_source = Eio.Flow.string_source body |> Eio.Buf_read.of_flow ~max_size:(max 1024 (String.length body + 1)) in
   Kirin.Request.make ~raw ~body_source
 
 let test_router_static_match () =
@@ -539,10 +539,12 @@ let test_ratelimit_middleware_limits () =
   check bool "has retry-after" true
     (Option.is_some (Kirin.Response.header "retry-after" resp2))
 
+let with_eio_rl f () = Eio_main.run @@ fun _env -> f ()
+
 let ratelimit_tests = [
   test_case "default config" `Quick test_ratelimit_default_config;
-  test_case "middleware allows" `Quick test_ratelimit_middleware_allows;
-  test_case "middleware limits" `Quick test_ratelimit_middleware_limits;
+  test_case "middleware allows" `Quick (with_eio_rl test_ratelimit_middleware_allows);
+  test_case "middleware limits" `Quick (with_eio_rl test_ratelimit_middleware_limits);
 ]
 
 (* ============================================================
@@ -1037,6 +1039,54 @@ let test_graphql_playground () =
   let body = response_body_to_string (Kirin.Response.body resp) in
   check Alcotest.bool "contains doctype" true (String.length body > 100 && String.sub body 0 15 = "<!DOCTYPE html>")
 
+(* Issue #44: yojson_to_const_value must not silently map large int to 0 *)
+let test_graphql_intlit_large () =
+  (* Yojson.Safe uses `Intlit for integers that overflow OCaml int *)
+  let large_int_json = `Intlit "9999999999999999999" in
+  let result = Kirin.Graphql.yojson_to_const_value large_int_json in
+  (* Must not produce `Int 0; should fall back to `Float or `String *)
+  (match result with
+   | `Int 0 -> Alcotest.fail "large Intlit silently mapped to 0"
+   | `Float _ | `String _ -> ()  (* acceptable fallbacks *)
+   | `Int _ -> ()  (* if it somehow fits, that's fine *)
+   | _ -> Alcotest.fail "unexpected const_value type")
+
+let test_graphql_intlit_small () =
+  (* Small integers via Intlit should still parse correctly *)
+  let small_json = `Intlit "42" in
+  let result = Kirin.Graphql.yojson_to_const_value small_json in
+  check bool "small Intlit parsed as Int 42" true
+    (result = `Int 42)
+
+(* Issue #46: batched GraphQL handler must reject oversized batches *)
+let test_graphql_batch_size_cap () =
+  let schema = Kirin.Graphql.schema [
+    Kirin.Graphql.field "hello"
+      ~typ:(Kirin.Graphql.non_null Kirin.Graphql.string)
+      ~args:Kirin.Graphql.Arg.[]
+      ~resolve:(fun _info () -> "world")
+  ] in
+  (* Create a batch with 11 queries (default max is 10) *)
+  let queries = List.init 11 (fun _ -> `Assoc [("query", `String "{ hello }")]) in
+  let body_json = Yojson.Safe.to_string (`List queries) in
+  let req = make_test_request ~meth:`POST ~body:body_json "/graphql" in
+  let resp = Kirin.Graphql.batched_handler schema req in
+  check int "oversized batch returns 400" 400 (Kirin.Response.status_code resp)
+
+let test_graphql_batch_within_limit () =
+  let schema = Kirin.Graphql.schema [
+    Kirin.Graphql.field "hello"
+      ~typ:(Kirin.Graphql.non_null Kirin.Graphql.string)
+      ~args:Kirin.Graphql.Arg.[]
+      ~resolve:(fun _info () -> "world")
+  ] in
+  (* Create a batch with 3 queries (within default limit) *)
+  let queries = List.init 3 (fun _ -> `Assoc [("query", `String "{ hello }")]) in
+  let body_json = Yojson.Safe.to_string (`List queries) in
+  let req = make_test_request ~meth:`POST ~body:body_json "/graphql" in
+  let resp = Kirin.Graphql.batched_handler schema req in
+  check int "valid batch returns 200" 200 (Kirin.Response.status_code resp)
+
 let graphql_tests = [
   test_case "schema create" `Quick test_graphql_schema_create;
   test_case "execute query" `Quick test_graphql_execute;
@@ -1046,6 +1096,10 @@ let graphql_tests = [
   test_case "parse request minimal" `Quick test_graphql_parse_request_minimal;
   test_case "error helpers" `Quick test_graphql_error_helpers;
   test_case "playground handler" `Quick test_graphql_playground;
+  test_case "intlit large" `Quick test_graphql_intlit_large;
+  test_case "intlit small" `Quick test_graphql_intlit_small;
+  test_case "batch size cap" `Quick test_graphql_batch_size_cap;
+  test_case "batch within limit" `Quick test_graphql_batch_within_limit;
 ]
 
 (* ============================================================
@@ -2122,6 +2176,50 @@ let test_query_where_like () =
   check string "where_like sql"
     "SELECT * FROM users WHERE name LIKE ?" q.sql
 
+(* Issue #43: or_where as first clause should produce valid SQL *)
+let test_query_or_where_first_clause () =
+  let q = Q.(
+    select ["*"]
+    |> from "users"
+    |> or_where "age > ?" [Int 18]
+    |> build
+  ) in
+  (* Must produce "WHERE age > ?", not "WHERE OR age > ?" *)
+  check string "or_where first clause sql"
+    "SELECT * FROM users WHERE age > ?" q.sql
+
+let test_query_or_where_after_where () =
+  let q = Q.(
+    select ["*"]
+    |> from "users"
+    |> where "name = ?" [String "alice"]
+    |> or_where "name = ?" [String "bob"]
+    |> build
+  ) in
+  check string "or_where after where sql"
+    "SELECT * FROM users WHERE name = ? OR name = ?" q.sql
+
+let test_query_or_where_first_clause_update () =
+  let q = Q.(
+    update "users"
+    |> set "active" (Bool true)
+    |> or_where "role = ?" [String "admin"]
+    |> build
+  ) in
+  check bool "update or_where first clause valid"
+    true (not (String.sub q.sql 0 (String.length q.sql) |> fun s ->
+      try ignore (Str.search_forward (Str.regexp "WHERE OR") s 0); true
+      with Not_found -> false))
+
+let test_query_or_where_first_clause_delete () =
+  let q = Q.(
+    delete_from "users"
+    |> or_where "status = ?" [String "banned"]
+    |> build
+  ) in
+  check string "delete or_where first clause sql"
+    "DELETE FROM users WHERE status = ?" q.sql
+
 let query_tests = [
   test_case "select" `Quick test_query_select;
   test_case "select distinct" `Quick test_query_select_distinct;
@@ -2141,6 +2239,10 @@ let query_tests = [
   test_case "where_in" `Quick test_query_where_in;
   test_case "where_null" `Quick test_query_where_null;
   test_case "where_like" `Quick test_query_where_like;
+  test_case "or_where first clause" `Quick test_query_or_where_first_clause;
+  test_case "or_where after where" `Quick test_query_or_where_after_where;
+  test_case "or_where first clause update" `Quick test_query_or_where_first_clause_update;
+  test_case "or_where first clause delete" `Quick test_query_or_where_first_clause_delete;
 ]
 
 (* ============================================================

@@ -7,6 +7,7 @@ type config = {
   backlog : int;
   request_timeout : float;  (** Timeout for individual requests in seconds *)
   stream_read_timeout : float;  (** Timeout for reading stream chunks in seconds *)
+  max_body_size : int;  (** Maximum request body size in bytes. Default 10 MB. *)
 }
 
 let default_config = {
@@ -15,6 +16,7 @@ let default_config = {
   backlog = 128;
   request_timeout = 30.0;  (** 30 seconds default request timeout *)
   stream_read_timeout = 5.0;  (** 5 seconds default stream read timeout *)
+  max_body_size = 10_485_760;  (** 10 MB *)
 }
 
 (** Adapter: Eio.Stream.t string -> Eio.Flow.source for true chunked streaming.
@@ -56,11 +58,11 @@ let make_stream_source (stream : string option Eio.Stream.t) : Eio.Flow.source_t
   Eio.Resource.T ({ Stream_source.stream; buf = ""; pos = 0 }, stream_source_handler)
 
 (** Convert Kirin handler to cohttp-eio handler *)
-let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
+let make_cohttp_handler ~clock ~config _sw (handler : Router.handler) =
   fun _socket request body ->
     (* Create Kirin request with raw body source (Zero-Copy) *)
     (* Cohttp_eio passes body as Flow source, convert to Buf_read *)
-    let body_buf = Eio.Buf_read.of_flow body ~initial_size:4096 ~max_size:max_int in
+    let body_buf = Eio.Buf_read.of_flow body ~initial_size:4096 ~max_size:config.max_body_size in
     let req = Request.make ~raw:request ~body_source:body_buf in
 
     (* Call handler with request timeout to prevent hanging requests *)
@@ -98,9 +100,13 @@ let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
         Cohttp_eio.Server.respond ~status ~headers ~body ()
 
     | Response.Producer p ->
-        (* Create stream, fork producer, stream chunks to client *)
+        (* Create a per-request switch so the producer fiber is cancelled
+           when the response finishes (e.g. client disconnect). Without
+           this, the fiber lives on the server switch and outlives the
+           request. *)
+        Eio.Switch.run @@ fun request_sw ->
         let stream = Eio.Stream.create 16 in
-        Eio.Fiber.fork ~sw (fun () ->
+        Eio.Fiber.fork ~sw:request_sw (fun () ->
           try p stream with
           | Eio.Cancel.Cancelled _ as exn -> raise exn
           | exn ->
@@ -131,13 +137,14 @@ let run ?(config = default_config) ~sw ~env handler =
     In OCaml 5, we use Domain_manager to distribute request handling across cores.
     Shared-socket pattern is used for optimal efficiency.
 *)
-let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) ?(domains = Domain.recommended_domain_count ()) handler =
+let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) ?(max_body_size = 10_485_760) ?(domains = Domain.recommended_domain_count ()) handler =
   Printf.printf "🦒 Kirin scaling up across %d domains (shared socket)...\n%!" domains;
 
   let config = { default_config with
     port;
     request_timeout;
-    stream_read_timeout
+    stream_read_timeout;
+    max_body_size;
   } in
 
   Eio_main.run @@ fun env ->

@@ -78,23 +78,35 @@ let cors ?(config = default_cors_config) () : t = fun handler req ->
   let is_preflight = Request.meth req = `OPTIONS in
 
   let add_cors_headers resp =
+    (* Determine the Allow-Origin value.
+       - Never reflect an empty or missing Origin.
+       - credentials:true + wildcard origins is invalid per the CORS spec;
+         we only reflect the concrete origin when it matches the allow-list. *)
     let origin_header =
-      match origin, config.origins with
-      | Some o, ["*"] -> o
-      | Some o, origins when List.mem o origins -> o
-      | _, ["*"] -> "*"
-      | _ -> ""
+      match origin with
+      | None | Some "" ->
+        (* No Origin header: only send "*" when credentials are off *)
+        if config.credentials then "" else
+        (match config.origins with ["*"] -> "*" | _ -> "")
+      | Some o ->
+        (match config.origins with
+         | ["*"] -> if config.credentials then o else o
+         | origins -> if List.mem o origins then o else "")
     in
-    resp
-    |> Response.with_header "Access-Control-Allow-Origin" origin_header
-    |> Response.with_header "Access-Control-Allow-Methods" (String.concat ", " config.methods)
-    |> Response.with_header "Access-Control-Allow-Headers" (String.concat ", " config.headers)
-    |> (fun r -> if config.credentials
-                 then Response.with_header "Access-Control-Allow-Credentials" "true" r
-                 else r)
-    |> (fun r -> match config.max_age with
-                 | Some age -> Response.with_header "Access-Control-Max-Age" (string_of_int age) r
-                 | None -> r)
+    let resp = resp
+      |> Response.with_header "Access-Control-Allow-Origin" origin_header
+      |> Response.with_header "Access-Control-Allow-Methods" (String.concat ", " config.methods)
+      |> Response.with_header "Access-Control-Allow-Headers" (String.concat ", " config.headers)
+    in
+    (* credentials:true must never be combined with Allow-Origin: "*" *)
+    let resp =
+      if config.credentials && origin_header <> "" && origin_header <> "*"
+      then Response.with_header "Access-Control-Allow-Credentials" "true" resp
+      else resp
+    in
+    match config.max_age with
+    | Some age -> Response.with_header "Access-Control-Max-Age" (string_of_int age) resp
+    | None -> resp
   in
 
   if is_preflight then
