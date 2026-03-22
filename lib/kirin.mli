@@ -89,6 +89,7 @@ val start :
   ?port:int ->
   ?request_timeout:float ->
   ?stream_read_timeout:float ->
+  ?max_body_size:int ->
   ?domains:int -> Router.handler -> unit
 val run :
   ?config:Server.config ->

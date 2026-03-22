@@ -30,25 +30,31 @@ type limited_info = {
   limit : int;
 }
 
-(** In-memory storage for rate limiting *)
+(** In-memory storage for rate limiting.
+    All operations are protected by an Eio.Mutex to prevent data races
+    under concurrent Eio fibers. Stdlib.Mutex must not be used here
+    because it blocks the entire Eio thread and can cause EDEADLK. *)
 module Store = struct
   let buckets : (string, bucket) Hashtbl.t = Hashtbl.create 1024
+  let mu = Eio.Mutex.create ()
 
   let get key =
-    Hashtbl.find_opt buckets key
+    Eio.Mutex.use_ro mu (fun () -> Hashtbl.find_opt buckets key)
 
   let set key bucket =
-    Hashtbl.replace buckets key bucket
+    Eio.Mutex.use_rw ~protect:true mu (fun () ->
+      Hashtbl.replace buckets key bucket)
 
   (* Cleanup old entries periodically *)
   let cleanup ~older_than =
-    let now = Unix.gettimeofday () in
-    let to_remove = ref [] in
-    Hashtbl.iter (fun key bucket ->
-      if now -. bucket.last_update > older_than then
-        to_remove := key :: !to_remove
-    ) buckets;
-    List.iter (Hashtbl.remove buckets) !to_remove
+    Eio.Mutex.use_rw ~protect:true mu (fun () ->
+      let now = Unix.gettimeofday () in
+      let to_remove = ref [] in
+      Hashtbl.iter (fun key bucket ->
+        if now -. bucket.last_update > older_than then
+          to_remove := key :: !to_remove
+      ) buckets;
+      List.iter (Hashtbl.remove buckets) !to_remove)
 end
 
 (** Get client identifier from request (IP address) *)
@@ -65,40 +71,43 @@ let get_client_id req =
     | Some ip -> ip
     | None -> "unknown"
 
-(** Check if request is allowed and consume a token *)
+(** Check if request is allowed and consume a token.
+    The entire read-modify-write is performed under Store.mu so that
+    concurrent fibers cannot see a partially-updated bucket. *)
 let check_rate_limit config client_id =
-  let now = Unix.gettimeofday () in
+  Eio.Mutex.use_rw ~protect:true Store.mu (fun () ->
+    let now = Unix.gettimeofday () in
 
-  let bucket = match Store.get client_id with
-    | Some b -> b
-    | None ->
-      let b = { tokens = float_of_int config.burst_size; last_update = now } in
-      Store.set client_id b;
-      b
-  in
+    let bucket = match Hashtbl.find_opt Store.buckets client_id with
+      | Some b -> b
+      | None ->
+        let b = { tokens = float_of_int config.burst_size; last_update = now } in
+        Hashtbl.replace Store.buckets client_id b;
+        b
+    in
 
-  (* Replenish tokens based on time elapsed *)
-  let elapsed = now -. bucket.last_update in
-  let new_tokens = bucket.tokens +. (elapsed *. config.requests_per_second) in
-  bucket.tokens <- min (float_of_int config.burst_size) new_tokens;
-  bucket.last_update <- now;
+    (* Replenish tokens based on time elapsed *)
+    let elapsed = now -. bucket.last_update in
+    let new_tokens = bucket.tokens +. (elapsed *. config.requests_per_second) in
+    bucket.tokens <- min (float_of_int config.burst_size) new_tokens;
+    bucket.last_update <- now;
 
-  (* Try to consume one token *)
-  if bucket.tokens >= 1.0 then begin
-    bucket.tokens <- bucket.tokens -. 1.0;
-    Store.set client_id bucket;
-    `Allowed {
-      remaining = int_of_float bucket.tokens;
-      limit = config.burst_size;
-      reset_after = (1.0 -. (bucket.tokens -. floor bucket.tokens)) /. config.requests_per_second;
-    }
-  end else begin
-    Store.set client_id bucket;
-    `Limited {
-      retry_after = (1.0 -. bucket.tokens) /. config.requests_per_second;
-      limit = config.burst_size;
-    }
-  end
+    (* Try to consume one token *)
+    if bucket.tokens >= 1.0 then begin
+      bucket.tokens <- bucket.tokens -. 1.0;
+      Hashtbl.replace Store.buckets client_id bucket;
+      `Allowed {
+        remaining = int_of_float bucket.tokens;
+        limit = config.burst_size;
+        reset_after = (1.0 -. (bucket.tokens -. floor bucket.tokens)) /. config.requests_per_second;
+      }
+    end else begin
+      Hashtbl.replace Store.buckets client_id bucket;
+      `Limited {
+        retry_after = (1.0 -. bucket.tokens) /. config.requests_per_second;
+        limit = config.burst_size;
+      }
+    end)
 
 (** Add rate limit headers to response *)
 let add_rate_limit_headers ~limit ~remaining ~reset_after resp =

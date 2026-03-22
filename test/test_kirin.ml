@@ -539,10 +539,12 @@ let test_ratelimit_middleware_limits () =
   check bool "has retry-after" true
     (Option.is_some (Kirin.Response.header "retry-after" resp2))
 
+let with_eio_rl f () = Eio_main.run @@ fun _env -> f ()
+
 let ratelimit_tests = [
   test_case "default config" `Quick test_ratelimit_default_config;
-  test_case "middleware allows" `Quick test_ratelimit_middleware_allows;
-  test_case "middleware limits" `Quick test_ratelimit_middleware_limits;
+  test_case "middleware allows" `Quick (with_eio_rl test_ratelimit_middleware_allows);
+  test_case "middleware limits" `Quick (with_eio_rl test_ratelimit_middleware_limits);
 ]
 
 (* ============================================================

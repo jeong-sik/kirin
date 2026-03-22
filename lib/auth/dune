@@ -5,6 +5,7 @@
   kirin
   http            ; HTTP types
   digestif        ; SHA256, HMAC
+  eqaf            ; constant-time comparison
   base64          ; Base64 encoding
   yojson          ; JSON handling
   uri             ; URL encoding for OAuth2
