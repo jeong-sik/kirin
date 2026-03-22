@@ -84,6 +84,37 @@ let flow_response ?(status = `OK) ?(headers = Http.Header.init ()) _writer =
   let headers = Http.Header.add headers "transfer-encoding" "chunked" in  (* Flow response not fully supported with new Producer type yet, fallback to String *)
   Response.make ~status ~headers (`String "") 
 
+(** Read file in chunks and push to an Eio.Stream.
+    Uses Eio.Path when Fs_compat.get_fs is set, blocking Unix otherwise. *)
+let read_file_to_stream ~path ~chunk_size stream =
+  match Fs_compat.get_fs () with
+  | Some fs ->
+    let p = Eio.Path.(fs / path) in
+    Eio.Path.with_open_in p (fun flow ->
+      let buf = Cstruct.create chunk_size in
+      let rec loop () =
+        match Eio.Flow.single_read flow buf with
+        | n ->
+          let chunk = Cstruct.to_string ~off:0 ~len:n buf in
+          Eio.Stream.add stream (Some chunk);
+          loop ()
+        | exception End_of_file -> ()
+      in
+      loop ())
+  | None ->
+    let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+      let buffer = Bytes.create chunk_size in
+      let rec loop () =
+        let n = Unix.read fd buffer 0 chunk_size in
+        if n > 0 then begin
+          let chunk = Bytes.sub_string buffer 0 n in
+          Eio.Stream.add stream (Some chunk);
+          loop ()
+        end
+      in
+      loop ())
+
 (** Create a file download response with streaming. *)
 let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) path = 
   let filename = match filename with 
@@ -105,20 +136,7 @@ let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) pat
     Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
       (fun () ->
         let chunk_size = min chunk_size max_chunk_size in
-        let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
-        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
-          let buffer = Bytes.create chunk_size in
-          let rec loop () =
-            let n = Unix.read fd buffer 0 chunk_size in
-            if n > 0 then begin
-              let chunk = Bytes.sub_string buffer 0 n in
-              Eio.Stream.add stream (Some chunk);
-              loop ()
-            end
-          in
-          loop ()
-        )
-      )
+        read_file_to_stream ~path ~chunk_size stream)
   in
 
   Response.make ~status:`OK ~headers (`Producer stream_producer)
@@ -138,20 +156,7 @@ let file_inline ?content_type ?(chunk_size = default_chunk_size) path =
     Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
       (fun () ->
         let chunk_size = min chunk_size max_chunk_size in
-        let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
-        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
-          let buffer = Bytes.create chunk_size in
-          let rec loop () =
-            let n = Unix.read fd buffer 0 chunk_size in
-            if n > 0 then begin
-              let chunk = Bytes.sub_string buffer 0 n in
-              Eio.Stream.add stream (Some chunk);
-              loop ()
-            end
-          in
-          loop ()
-        )
-      )
+        read_file_to_stream ~path ~chunk_size stream)
   in
 
   Response.make ~status:`OK ~headers (`Producer stream_producer)
@@ -211,33 +216,52 @@ let read_with_progress ~(request : Request.t) ~chunk_size ~(progress : progress_
 
 (** {1 File Upload Handling} *)
 
-let save_upload ~(request : Request.t) ~dest_path ?(chunk_size = default_chunk_size) () = 
-  let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in 
-  let total = ref 0 in 
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-    read_chunks ~request ~chunk_size (fun chunk -> 
-      let len = String.length chunk in 
-      let written = Unix.write_substring fd chunk 0 len in 
-      total := !total + written
-    );
-    !total
-  )
+let save_upload ~(request : Request.t) ~dest_path ?(chunk_size = default_chunk_size) () =
+  let total = ref 0 in
+  let write_chunks sink =
+    read_chunks ~request ~chunk_size (fun chunk ->
+      Eio.Flow.copy_string chunk sink;
+      total := !total + String.length chunk)
+  in
+  (match Fs_compat.get_fs () with
+   | Some fs ->
+     let p = Eio.Path.(fs / dest_path) in
+     Eio.Path.with_open_out ~create:(`Or_truncate 0o644) p (fun flow ->
+       write_chunks (flow :> Eio.Flow.sink_ty Eio.Resource.t))
+   | None ->
+     let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in
+     Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+       read_chunks ~request ~chunk_size (fun chunk ->
+         let len = String.length chunk in
+         let written = Unix.write_substring fd chunk 0 len in
+         total := !total + written)));
+  !total
 
-let save_upload_with_progress ~(request : Request.t) ~dest_path 
-    ?(chunk_size = default_chunk_size) ~(progress : progress_callback) () = 
-  let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in 
-  let total = ref 0 in 
-  let body_size = String.length (Request.body request) in 
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> 
-    read_chunks ~request ~chunk_size (fun chunk -> 
-      let len = String.length chunk in 
-      let written = Unix.write_substring fd chunk 0 len in 
-      total := !total + written;
-      progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size)
-    );
-    progress.on_complete ();
-    !total
-  )
+let save_upload_with_progress ~(request : Request.t) ~dest_path
+    ?(chunk_size = default_chunk_size) ~(progress : progress_callback) () =
+  let total = ref 0 in
+  let body_size = String.length (Request.body request) in
+  let write_chunks sink =
+    read_chunks ~request ~chunk_size (fun chunk ->
+      Eio.Flow.copy_string chunk sink;
+      total := !total + String.length chunk;
+      progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size))
+  in
+  (match Fs_compat.get_fs () with
+   | Some fs ->
+     let p = Eio.Path.(fs / dest_path) in
+     Eio.Path.with_open_out ~create:(`Or_truncate 0o644) p (fun flow ->
+       write_chunks (flow :> Eio.Flow.sink_ty Eio.Resource.t))
+   | None ->
+     let fd = Unix.openfile dest_path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o644 in
+     Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
+       read_chunks ~request ~chunk_size (fun chunk ->
+         let len = String.length chunk in
+         let written = Unix.write_substring fd chunk 0 len in
+         total := !total + written;
+         progress.on_progress ~bytes_sent:!total ~total_bytes:(Some body_size))));
+  progress.on_complete ();
+  !total
 
 (** {1 Utilities} *)
 
