@@ -168,7 +168,7 @@ let decode ~secret token =
                 let signing_input = header_b64 ^ "." ^ payload_b64 in
                 let expected_sig = sign ~algorithm ~secret signing_input in
                 let expected_sig_b64 = base64url_encode expected_sig in
-                if not (String.equal signature_b64 expected_sig_b64) then
+                if not (Csrf.constant_time_compare signature_b64 expected_sig_b64) then
                   Error "Invalid signature"
                 else
                   (* Decode payload *)
