@@ -192,24 +192,40 @@ let require_role ~role_claim ~required_roles ?(on_error = fun _req ->
 
 (** {1 Composite Middleware} *)
 
-(** Chain multiple auth methods (first success wins) *)
+(** Chain multiple auth methods (first success wins).
+
+    Each auth middleware is probed with a lightweight sentinel handler to
+    determine whether authentication succeeded (i.e. the sentinel was called
+    with an auth-enriched request).  Only when a strategy succeeds is the
+    real [handler] called -- exactly once -- preventing double execution of
+    side-effectful handlers when a business-logic 4xx was previously
+    misinterpreted as auth failure. *)
 let any_of auth_middlewares ?(on_error = fun _req ->
     Kirin.Response.json ~status:`Unauthorized
       (`Assoc [("error", `String "Authentication required")])) handler =
   fun req ->
+    (* Capture the auth-enriched request from a successful probe.
+       Auth middlewares may modify the request (e.g. set_auth_info) before
+       calling the inner handler, so we need to forward that modified
+       request to the real handler.  The ref is typed via the sentinel
+       closure to hold the enriched request type ('a). *)
+    let authed_req : _ option ref = ref None in
+    let sentinel enriched_req =
+      authed_req := Some enriched_req;
+      Kirin.Response.text "__auth_probe__"
+    in
     let rec try_auth = function
       | [] -> on_error req
       | auth :: rest ->
-          let resp = auth (fun req ->
-            (* Check if auth was successful *)
-            match get_auth_info req with
-            | Some _ -> handler req
-            | None -> Kirin.Response.text ""  (* Dummy, shouldn't happen *)
-          ) req in
-          (* Check if it was an error response *)
-          if Http.Status.to_int (Kirin.Response.status resp) >= 400 then
-            try_auth rest
-          else
-            resp
+          authed_req := None;
+          let _probe_resp = auth sentinel req in
+          match !authed_req with
+          | Some req' ->
+              (* Auth succeeded: sentinel was called with the enriched request
+                 carrying auth_info in its Hmap context. *)
+              handler req'
+          | None ->
+              (* Auth middleware never called sentinel -- auth failed. *)
+              try_auth rest
     in
     try_auth auth_middlewares

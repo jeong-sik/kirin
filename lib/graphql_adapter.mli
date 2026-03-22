@@ -165,11 +165,15 @@ val introspection_handler : unit Schema.schema -> Request.t -> Response.t
 
 (** {1 Middleware} *)
 
-(** [middleware ?path ?make_ctx schema] creates GraphQL middleware.
-    Adds both POST and GET handlers at the specified path (default: "/graphql"). *)
+(** [middleware ?path ?make_ctx ?enable_introspection schema] creates GraphQL middleware.
+    Adds both POST and GET handlers at the specified path (default: "/graphql").
+    @param enable_introspection When [false], GET requests to the GraphQL endpoint
+    return 403 instead of serving the Playground and introspection queries.
+    Default: [true]. *)
 val middleware :
   ?path:string ->
   ?make_ctx:(Request.t -> unit) ->
+  ?enable_introspection:bool ->
   unit Schema.schema ->
   (Request.t -> Response.t) ->
   Request.t ->

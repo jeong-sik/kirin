@@ -358,7 +358,34 @@ let introspection_handler schema req =
         @@ routes
     ]}
 *)
-let middleware ?(path = "/graphql") ?(make_ctx = fun _req -> ()) schema =
+(** Return [true] when [query] contains an introspection field
+    ([__schema] or [__type]) at the operation level. *)
+let is_introspection_query query =
+  (* Lightweight substring check: avoids a full parse for the common case.
+     Introspection field names are reserved by the spec and cannot appear
+     as user-defined fields, so a substring match is sufficient.
+     Uses plain String operations instead of Str to avoid global state. *)
+  let contains_substring haystack needle =
+    let nlen = String.length needle in
+    let hlen = String.length haystack in
+    if nlen > hlen then false
+    else
+      let rec check i =
+        if i > hlen - nlen then false
+        else if String.sub haystack i nlen = needle then true
+        else check (i + 1)
+      in
+      check 0
+  in
+  contains_substring query "__schema" || contains_substring query "__type"
+
+let introspection_forbidden_response =
+  Response.json ~status:`Forbidden
+    (`Assoc [("errors", `List [
+      `Assoc [("message", `String "Introspection is disabled")]
+    ])])
+
+let middleware ?(path = "/graphql") ?(make_ctx = fun _req -> ()) ?(enable_introspection = true) schema =
   let post_handler = handler ~make_ctx schema in
   let get_handler = introspection_handler schema in
   fun next req ->
@@ -366,8 +393,21 @@ let middleware ?(path = "/graphql") ?(make_ctx = fun _req -> ()) schema =
     let method_ = Request.meth req in
     if req_path = path then
       match method_ with
-      | `POST -> post_handler req
-      | `GET -> get_handler req
+      | `POST ->
+        if (not enable_introspection) then
+          (* Check if the POST body contains an introspection query *)
+          let body = Request.body req in
+          match parse_request body with
+          | Some gql_req when is_introspection_query gql_req.query ->
+            introspection_forbidden_response
+          | _ -> post_handler req
+        else
+          post_handler req
+      | `GET ->
+        if enable_introspection then
+          get_handler req
+        else
+          introspection_forbidden_response
       | _ ->
         Response.empty `Method_not_allowed
         |> Response.with_header "allow" "GET, POST"
