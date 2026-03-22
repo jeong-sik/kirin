@@ -215,6 +215,130 @@ let oauth2_tests = [
   test_case "pkce" `Quick test_oauth2_pkce;
 ]
 
+(** {1 Auth Middleware Tests (Hmap context, no global ref)} *)
+
+let make_req ?(meth = `GET) ?(headers = []) path =
+  let raw = Http.Request.make ~meth ~headers:(Http.Header.of_list headers) path in
+  let body_source = Eio.Buf_read.of_flow ~max_size:1024 (Eio.Flow.string_source "") in
+  Kirin.Request.make ~raw ~body_source
+
+(** set_auth_info stores into Hmap, get_auth_info reads back *)
+let test_middleware_set_get_auth_info () =
+  let req = make_req "/" in
+  check (option string) "no auth initially" None
+    (Kirin_auth.Middleware.get_user_id req);
+  let info : Kirin_auth.Middleware.auth_info =
+    { user_id = "u-42"; claims = None; token_type = "test" }
+  in
+  let req2 = Kirin_auth.Middleware.set_auth_info req info in
+  check (option string) "user_id present after set" (Some "u-42")
+    (Kirin_auth.Middleware.get_user_id req2);
+  (* Original request is unchanged (immutable Hmap) *)
+  check (option string) "original req unaffected" None
+    (Kirin_auth.Middleware.get_user_id req)
+
+(** JWT middleware stores auth info in per-request context *)
+let test_middleware_jwt_success () =
+  let payload = `Assoc [("role", `String "admin")] in
+  let token = Kirin_auth.Jwt.encode ~secret:jwt_secret ~payload
+    ~sub:"user-99" ~exp:(Unix.gettimeofday () +. 3600.) () in
+  let req = make_req ~headers:[("Authorization", "Bearer " ^ token)] "/api" in
+  let captured_uid = ref None in
+  let handler req =
+    captured_uid := Kirin_auth.Middleware.get_user_id req;
+    Kirin.Response.text "ok"
+  in
+  let protected = Kirin_auth.Middleware.jwt ~secret:jwt_secret handler in
+  let _resp = protected req in
+  check (option string) "handler sees user_id" (Some "user-99") !captured_uid
+
+(** JWT middleware returns 401 on missing token *)
+let test_middleware_jwt_missing_token () =
+  let req = make_req "/api" in
+  let handler _req = Kirin.Response.text "ok" in
+  let protected = Kirin_auth.Middleware.jwt ~secret:jwt_secret handler in
+  let resp = protected req in
+  check int "401 on missing token" 401
+    (Http.Status.to_int (Kirin.Response.status resp))
+
+(** Two fibers with different auth info do not interfere.
+    This is the scenario that the old global ref got wrong. *)
+let test_middleware_concurrent_isolation () =
+  Eio_main.run @@ fun _env ->
+    let token_a = Kirin_auth.Jwt.encode ~secret:jwt_secret
+      ~payload:(`Assoc []) ~sub:"alice" ~exp:(Unix.gettimeofday () +. 3600.) () in
+    let token_b = Kirin_auth.Jwt.encode ~secret:jwt_secret
+      ~payload:(`Assoc []) ~sub:"bob" ~exp:(Unix.gettimeofday () +. 3600.) () in
+    let req_a = make_req ~headers:[("Authorization", "Bearer " ^ token_a)] "/" in
+    let req_b = make_req ~headers:[("Authorization", "Bearer " ^ token_b)] "/" in
+    let uid_a = ref None in
+    let uid_b = ref None in
+    let handler_a req =
+      (* Yield to let fiber B run and set its own auth *)
+      Eio.Fiber.yield ();
+      uid_a := Kirin_auth.Middleware.get_user_id req;
+      Kirin.Response.text "a"
+    in
+    let handler_b req =
+      uid_b := Kirin_auth.Middleware.get_user_id req;
+      Kirin.Response.text "b"
+    in
+    Eio.Fiber.both
+      (fun () ->
+        ignore (Kirin_auth.Middleware.jwt ~secret:jwt_secret handler_a req_a))
+      (fun () ->
+        ignore (Kirin_auth.Middleware.jwt ~secret:jwt_secret handler_b req_b));
+    (* Each fiber must see its own user, never the other *)
+    check (option string) "fiber A sees alice" (Some "alice") !uid_a;
+    check (option string) "fiber B sees bob" (Some "bob") !uid_b
+
+(** get_claims returns claims from Hmap context *)
+let test_middleware_get_claims () =
+  let payload = `Assoc [("role", `String "admin")] in
+  let token = Kirin_auth.Jwt.encode ~secret:jwt_secret ~payload
+    ~sub:"user-1" ~exp:(Unix.gettimeofday () +. 3600.) () in
+  let req = make_req ~headers:[("Authorization", "Bearer " ^ token)] "/" in
+  let captured_claims = ref None in
+  let handler req =
+    captured_claims := Kirin_auth.Middleware.get_claims req;
+    Kirin.Response.text "ok"
+  in
+  ignore (Kirin_auth.Middleware.jwt ~secret:jwt_secret handler req);
+  match !captured_claims with
+  | None -> fail "claims should be present"
+  | Some claims ->
+    (match Yojson.Safe.Util.member "role" claims with
+     | `String "admin" -> ()
+     | _ -> fail "role claim missing")
+
+(** API key middleware stores auth info in request context *)
+let test_middleware_api_key () =
+  let validate = function
+    | "valid-key-123" -> Some "api-user-7"
+    | _ -> None
+  in
+  let req = make_req ~headers:[("X-API-Key", "valid-key-123")] "/" in
+  let captured = ref None in
+  let handler req =
+    captured := Kirin_auth.Middleware.get_auth_info req;
+    Kirin.Response.text "ok"
+  in
+  ignore (Kirin_auth.Middleware.api_key ~validate handler req);
+  match !captured with
+  | None -> fail "auth_info should be set for valid API key"
+  | Some info ->
+    check string "user_id from api key" "api-user-7" info.user_id;
+    check string "token_type" "api_key" info.token_type
+
+let middleware_tests = [
+  test_case "set/get auth info via Hmap" `Quick test_middleware_set_get_auth_info;
+  test_case "jwt success" `Quick test_middleware_jwt_success;
+  test_case "jwt missing token" `Quick test_middleware_jwt_missing_token;
+  test_case "concurrent fiber isolation" `Quick test_middleware_concurrent_isolation;
+  test_case "get_claims" `Quick test_middleware_get_claims;
+  test_case "api_key" `Quick test_middleware_api_key;
+]
+
 (** {1 Main} *)
 
 let () =
@@ -224,4 +348,5 @@ let () =
     ("Session", session_tests);
     ("Csrf", csrf_tests);
     ("Oauth2", oauth2_tests);
+    ("Middleware", middleware_tests);
   ]

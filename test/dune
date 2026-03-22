@@ -4,7 +4,7 @@
 
 (test
  (name test_auth)
- (libraries kirin kirin.auth alcotest str unix eio_main))
+ (libraries kirin kirin.auth alcotest str unix eio eio_main hmap))
 
 (test
  (name test_mcp)
