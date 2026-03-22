@@ -81,32 +81,45 @@ let cors ?(config = default_cors_config) () : t = fun handler req ->
     (* Determine the Allow-Origin value.
        - Never reflect an empty or missing Origin.
        - credentials:true + wildcard origins is invalid per the CORS spec;
-         we only reflect the concrete origin when it matches the allow-list. *)
-    let origin_header =
+         we only reflect the concrete origin when it matches the allow-list.
+       - When origin is not allowed, return None so no CORS headers are added. *)
+    let origin_value =
       match origin with
       | None | Some "" ->
-        (* No Origin header: only send "*" when credentials are off *)
-        if config.credentials then "" else
-        (match config.origins with ["*"] -> "*" | _ -> "")
+        (* No Origin header: only send "*" when credentials are off and
+           origins are wildcard. Otherwise, deny. *)
+        if config.credentials then None
+        else (match config.origins with ["*"] -> Some "*" | _ -> None)
       | Some o ->
         (match config.origins with
-         | ["*"] -> if config.credentials then o else o
-         | origins -> if List.mem o origins then o else "")
+         | ["*"] -> Some o  (* Always reflect concrete origin, never "*" with a real Origin *)
+         | origins -> if List.mem o origins then Some o else None)
     in
-    let resp = resp
-      |> Response.with_header "Access-Control-Allow-Origin" origin_header
-      |> Response.with_header "Access-Control-Allow-Methods" (String.concat ", " config.methods)
-      |> Response.with_header "Access-Control-Allow-Headers" (String.concat ", " config.headers)
-    in
-    (* credentials:true must never be combined with Allow-Origin: "*" *)
-    let resp =
-      if config.credentials && origin_header <> "" && origin_header <> "*"
-      then Response.with_header "Access-Control-Allow-Credentials" "true" resp
-      else resp
-    in
-    match config.max_age with
-    | Some age -> Response.with_header "Access-Control-Max-Age" (string_of_int age) resp
-    | None -> resp
+    match origin_value with
+    | None ->
+      (* Origin not allowed: do not add any CORS headers.
+         Add common non-CORS headers (methods, max-age) only on preflight. *)
+      resp
+    | Some ov ->
+      let resp = resp
+        |> Response.with_header "Access-Control-Allow-Origin" ov
+        |> Response.with_header "Access-Control-Allow-Methods" (String.concat ", " config.methods)
+        |> Response.with_header "Access-Control-Allow-Headers" (String.concat ", " config.headers)
+      in
+      (* When reflecting a specific origin (not "*"), add Vary: Origin
+         to prevent cache poisoning. *)
+      let resp =
+        if ov <> "*" then Response.with_header "Vary" "Origin" resp else resp
+      in
+      (* credentials:true must never be combined with Allow-Origin: "*" *)
+      let resp =
+        if config.credentials && ov <> "*"
+        then Response.with_header "Access-Control-Allow-Credentials" "true" resp
+        else resp
+      in
+      (match config.max_age with
+       | Some age -> Response.with_header "Access-Control-Max-Age" (string_of_int age) resp
+       | None -> resp)
   in
 
   if is_preflight then

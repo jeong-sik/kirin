@@ -61,7 +61,9 @@ let make_stream_source (stream : string option Eio.Stream.t) : Eio.Flow.source_t
 let make_cohttp_handler ~clock ~config _sw (handler : Router.handler) =
   fun _socket request body ->
     (* Create Kirin request with raw body source (Zero-Copy) *)
-    (* Cohttp_eio passes body as Flow source, convert to Buf_read *)
+    (* Cohttp_eio passes body as Flow source, convert to Buf_read.
+       max_size enforces the body limit; Buf_read.Buffer_limit_exceeded
+       is raised lazily when the handler reads beyond the limit. *)
     let body_buf = Eio.Buf_read.of_flow body ~initial_size:4096 ~max_size:config.max_body_size in
     let req = Request.make ~raw:request ~body_source:body_buf in
 
@@ -83,7 +85,18 @@ let make_cohttp_handler ~clock ~config _sw (handler : Router.handler) =
             (`String "{\"error\":\"Request timeout\"}")
     in
 
-    let resp = handle_with_timeout () in
+    let resp =
+      try handle_with_timeout ()
+      with Eio.Buf_read.Buffer_limit_exceeded ->
+        Logger.warn "Request body too large (limit %d bytes): %s %s"
+          config.max_body_size
+          (Http.Method.to_string (Cohttp.Request.meth request))
+          (Cohttp.Request.resource request);
+        Response.make
+          ~status:`Request_entity_too_large
+          ~headers:(Cohttp.Header.of_list [("content-type", "application/json")])
+          (`String (Printf.sprintf "{\"error\":\"Request body too large\",\"max_bytes\":%d}" config.max_body_size))
+    in
 
     (* Convert to cohttp-eio response *)
     let status = Response.status resp in
