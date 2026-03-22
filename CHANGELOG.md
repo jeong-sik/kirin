@@ -5,6 +5,23 @@ All notable changes to Kirin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-22
+
+### Security
+- **JWT**: Constant-time comparison for JWT signature verification (#51).
+- **CORS**: Fixed empty origin omission; body size 413 response (#53).
+- **Auth**: Replaced global ref with per-request Hmap context to fix auth race condition (#56).
+- **Critical sweep**: 7 security and correctness fixes (#52).
+
+### Fixed
+- **Auth**: Resolved double-execution of auth middleware (#57).
+- **GraphQL introspection**: Added introspection control toggle (#57).
+- **Stream producer**: Fixed producer lifecycle for proper cleanup (#57).
+
+### Changed
+- **Stream I/O**: Converted blocking Unix I/O to Eio.Path operations (#55).
+- **Version**: Bumped from 2.0.3 to 2.1.0.
+
 ## [2.0.0] - 2026-03-20
 
 ### Breaking Changes
