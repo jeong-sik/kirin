@@ -119,46 +119,85 @@ type connection_args = {
 let get_args first after last before =
   { first; after; last; before }
 
-(** Create a simple connection from a list (in-memory pagination) 
-    Note: For large datasets, use database-level pagination instead.
+(** Create a simple connection from a list (in-memory pagination).
+
+    Implements the Relay Connection Specification pagination algorithm:
+    {ol
+      {- If [after] is set, remove edges before and including that cursor.}
+      {- If [before] is set, remove edges after and including that cursor.}
+      {- If [first] is set, keep only the first [first] edges from the slice.}
+      {- If [last] is set, keep only the last [last] edges from the slice.}
+    }
+
+    For large datasets, use database-level pagination instead.
 *)
 let connection_from_list ?(total_count) list args =
   let count = List.length list in
   let total = Option.value total_count ~default:count in
-  
-  let decode_cursor c = 
+
+  let decode_cursor c =
     try Base64.decode_exn c |> int_of_string with Failure _ | Invalid_argument _ -> 0
   in
-  let encode_cursor i = 
+  let encode_cursor i =
     Base64.encode_string (string_of_int i)
   in
 
-  let start_idx = match args.after with
+  (* Step 1-2: apply after/before to narrow the index range *)
+  let after_idx = match args.after with
     | Some cursor -> decode_cursor cursor + 1
     | None -> 0
   in
-  
-  let count_to_take = match args.first with
-    | Some f -> f
+  let before_idx = match args.before with
+    | Some cursor -> decode_cursor cursor  (* exclusive: up to but not including *)
     | None -> count
   in
-  
-  let sliced = 
-    list 
-    |> List.filteri (fun i _ -> i >= start_idx && i < start_idx + count_to_take)
+  let range_start = after_idx in
+  let range_end = min before_idx count in  (* clamp to list length *)
+
+  (* Step 3: apply first to the narrowed range *)
+  let range_start, range_end =
+    match args.first with
+    | Some f when range_start + f < range_end -> (range_start, range_start + f)
+    | _ -> (range_start, range_end)
   in
-  
+  (* Step 4: apply last to the narrowed range *)
+  let range_start, range_end =
+    match args.last with
+    | Some l when range_end - l > range_start -> (range_end - l, range_end)
+    | _ -> (range_start, range_end)
+  in
+
+  let sliced =
+    list
+    |> List.filteri (fun i _ -> i >= range_start && i < range_end)
+  in
+
   let edges = List.mapi (fun i node ->
-    { cursor = encode_cursor (start_idx + i); node }
+    { cursor = encode_cursor (range_start + i); node }
   ) sliced in
-  
+
+  (* Relay spec: hasPreviousPage is true when last is set and more edges
+     exist before the returned slice within the after..before range.
+     hasNextPage is true when first is set and more edges exist after
+     the returned slice within the after..before range. *)
+  let has_previous_page =
+    match args.last with
+    | Some _ -> range_start > after_idx
+    | None -> range_start > 0
+  in
+  let has_next_page =
+    match args.first with
+    | Some _ -> range_end < (min before_idx count)
+    | None -> range_end < count
+  in
+
   let page_info = {
-    has_next_page = (start_idx + count_to_take) < count;
-    has_previous_page = start_idx > 0;
-    start_cursor = if edges = [] then None else Some (List.hd edges).cursor;
-    end_cursor = if edges = [] then None else Some (List.rev edges |> List.hd).cursor;
+    has_next_page;
+    has_previous_page;
+    start_cursor = (match edges with [] -> None | e :: _ -> Some e.cursor);
+    end_cursor = (match List.rev edges with [] -> None | e :: _ -> Some e.cursor);
   } in
-  
+
   { edges; page_info; total_count = Some total }
 
 (** {1 Node Interface} *)
