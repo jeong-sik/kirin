@@ -155,6 +155,52 @@ let test_cors_restricted_origins () =
   check (option string) "denied origin" (Some "")
     (Kirin.Response.header "Access-Control-Allow-Origin" resp_denied)
 
+(* -- cors: issue #45 regressions ------------------------------------- *)
+
+(* Issue #45: empty origin must not be reflected *)
+let test_cors_no_origin_header () =
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ()) base_handler in
+  let req = make_req "/" in  (* no Origin header *)
+  let resp = handler req in
+  let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
+  (* With wildcard config + no credentials, "*" is acceptable *)
+  check (option string) "wildcard without origin" (Some "*") allow_origin
+
+let test_cors_empty_origin_header () =
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ()) base_handler in
+  let req = make_req ~headers:[("origin", "")] "/" in
+  let resp = handler req in
+  let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
+  (* Empty origin must get "*" (no credentials), not reflect "" *)
+  check (option string) "wildcard with empty origin" (Some "*") allow_origin
+
+(* Issue #45: credentials:true + wildcard must not produce Allow-Origin: * *)
+let test_cors_credentials_wildcard_no_star () =
+  let config = { Kirin.Middleware.default_cors_config with
+    credentials = true;
+  } in
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ~config ()) base_handler in
+  let req = make_req ~headers:[("origin", "http://example.com")] "/" in
+  let resp = handler req in
+  let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
+  let allow_creds = Kirin.Response.header "Access-Control-Allow-Credentials" resp in
+  (* Must reflect the concrete origin, not "*" *)
+  check (option string) "reflects origin" (Some "http://example.com") allow_origin;
+  check (option string) "credentials set" (Some "true") allow_creds
+
+let test_cors_credentials_no_origin () =
+  let config = { Kirin.Middleware.default_cors_config with
+    credentials = true;
+  } in
+  let handler = Kirin.Middleware.apply (Kirin.Middleware.cors ~config ()) base_handler in
+  let req = make_req "/" in  (* no Origin header *)
+  let resp = handler req in
+  let allow_origin = Kirin.Response.header "Access-Control-Allow-Origin" resp in
+  let allow_creds = Kirin.Response.header "Access-Control-Allow-Credentials" resp in
+  (* No origin + credentials: empty allow-origin, no credentials header *)
+  check (option string) "no origin reflected" (Some "") allow_origin;
+  check (option string) "no credentials header" None allow_creds
+
 (* -- run ----------------------------------------------------------- *)
 
 let () =
@@ -181,5 +227,9 @@ let () =
       test_case "preflight response" `Quick test_cors_default_preflight;
       test_case "normal request cors" `Quick test_cors_normal_request;
       test_case "restricted origins" `Quick test_cors_restricted_origins;
+      test_case "no origin header" `Quick test_cors_no_origin_header;
+      test_case "empty origin header" `Quick test_cors_empty_origin_header;
+      test_case "credentials+wildcard no star" `Quick test_cors_credentials_wildcard_no_star;
+      test_case "credentials without origin" `Quick test_cors_credentials_no_origin;
     ]);
   ]
