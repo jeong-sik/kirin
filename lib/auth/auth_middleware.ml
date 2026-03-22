@@ -3,6 +3,9 @@
     Middleware for protecting routes with various authentication strategies.
     Supports JWT Bearer tokens, Session-based auth, and API keys.
 
+    Auth info is stored in the per-request Hmap context, so concurrent
+    fibers serving different requests never share state.
+
     {b Example:}
     {[
       (* JWT protected route *)
@@ -30,17 +33,19 @@ type auth_info = {
 (** Header for storing auth info *)
 let auth_header = "X-Auth-Info"
 
-(** Internal ref to pass auth info through handler chain *)
-let current_auth : auth_info option ref = ref None
+(** Hmap key for storing auth_info in Request.ctx.
+    Each request carries its own Hmap, eliminating data races
+    that the previous global ref caused under concurrent fibers. *)
+let auth_key : auth_info Hmap.key = Hmap.Key.create ()
 
-(** Store auth info for current request *)
-let set_auth_info _req info =
-  current_auth := Some info;
-  _req  (* Return unchanged request *)
+(** Store auth info in the request context. Returns a new request. *)
+let set_auth_info req info =
+  let ctx = Hmap.add auth_key info (Kirin.Request.ctx req) in
+  Kirin.Request.with_ctx ctx req
 
-(** Get auth info from current request *)
-let get_auth_info _req =
-  !current_auth
+(** Get auth info from request context *)
+let get_auth_info req =
+  Hmap.find auth_key (Kirin.Request.ctx req)
 
 (** Get user ID from authenticated request *)
 let get_user_id req =
@@ -71,7 +76,6 @@ let jwt ~secret ?(on_error = fun _req msg ->
     Kirin.Response.json ~status:`Unauthorized
       (`Assoc [("error", `String msg)])) handler =
   fun req ->
-    current_auth := None;  (* Reset auth for each request *)
     match extract_bearer_token req with
     | None -> on_error req "Missing or invalid Authorization header"
     | Some token ->
@@ -88,7 +92,6 @@ let jwt_with_claims ~secret ~extract_user_id ?on_error handler =
   let on_error = Option.value on_error ~default:(fun _req msg ->
     Kirin.Response.json ~status:`Unauthorized (`Assoc [("error", `String msg)])) in
   fun req ->
-    current_auth := None;  (* Reset auth for each request *)
     match extract_bearer_token req with
     | None -> on_error req "Missing Authorization header"
     | Some token ->
