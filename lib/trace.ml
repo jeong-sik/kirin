@@ -191,7 +191,9 @@ let middleware ?(exporter : (module EXPORTER) option) () : Middleware.t =
     (* Call handler *)
     let resp =
       try handler req
-      with exn ->
+      with
+      | Eio.Cancel.Cancelled _ as exn -> raise exn
+      | exn ->
         set_error span (Printexc.to_string exn);
         finish span;
         (match exporter with Some (module E : EXPORTER) -> E.export span | None -> ());

@@ -111,7 +111,9 @@ let decode_response str =
       let code = error |> member "code" |> to_int in
       let message = error |> member "message" |> to_string in
       Failure { id; code; message }
-  with e ->
+  with
+  | Eio.Cancel.Cancelled _ as e -> raise e
+  | e ->
     Failure { id = 0; code = -32700; message = Printexc.to_string e }
 
 (** {1 Health Check} *)
@@ -143,7 +145,9 @@ let decode_batch str =
     | `List items ->
       List.map (fun item -> decode_response (Yojson.Safe.to_string item)) items
     | _ -> [Failure { id = 0; code = -32600; message = "Invalid batch response" }]
-  with e ->
+  with
+  | Eio.Cancel.Cancelled _ as e -> raise e
+  | e ->
     [Failure { id = 0; code = -32700; message = Printexc.to_string e }]
 
 (** {1 Serialization} *)

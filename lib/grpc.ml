@@ -178,7 +178,9 @@ let timing_interceptor () =
 let catch_interceptor ~on_error () =
   make_interceptor "kirin-catch" (fun ctx next ->
     try next ctx
-    with exn ->
+    with
+    | Eio.Cancel.Cancelled _ as exn -> raise exn
+    | exn ->
       let status = on_error exn in
       { Interceptor.value = ""; trailers = [("grpc-status", string_of_int status)] })
 

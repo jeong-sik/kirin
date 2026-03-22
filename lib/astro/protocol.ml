@@ -109,7 +109,9 @@ let decode_response s =
         | d -> Some d
       in
       Error { id; code; message; data }
-  with e ->
+  with
+  | Eio.Cancel.Cancelled _ as e -> raise e
+  | e ->
     Error { id = 0; code = parse_error; message = Printexc.to_string e; data = None }
 
 (** {1 Response Construction} *)

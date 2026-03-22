@@ -142,7 +142,9 @@ let run_hooks t =
   let hooks = with_lock t (fun () -> t.hooks) in
   List.iter (fun hook ->
     try hook ()
-    with exn ->
+    with
+    | Eio.Cancel.Cancelled _ as exn -> raise exn
+    | exn ->
       Printf.eprintf "Shutdown hook error: %s\n%!" (Printexc.to_string exn)
   ) hooks
 
@@ -211,7 +213,9 @@ let run t server_fn =
   setup_signals t;
   try
     server_fn ()
-  with exn ->
+  with
+  | Eio.Cancel.Cancelled _ as exn -> raise exn
+  | exn ->
     Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn);
     initiate t
 

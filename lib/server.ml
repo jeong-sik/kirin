@@ -101,7 +101,9 @@ let make_cohttp_handler ~clock ~config sw (handler : Router.handler) =
         (* Create stream, fork producer, stream chunks to client *)
         let stream = Eio.Stream.create 16 in
         Eio.Fiber.fork ~sw (fun () ->
-          try p stream with exn ->
+          try p stream with
+          | Eio.Cancel.Cancelled _ as exn -> raise exn
+          | exn ->
             Logger.error "Stream producer error: %s" (Printexc.to_string exn);
             (* Signal end of stream on error *)
             Eio.Stream.add stream None
@@ -168,7 +170,9 @@ let start ?(port = 8000) ?(request_timeout = 30.0) ?(stream_read_timeout = 5.0) 
       Cohttp_eio.Server.run socket server ~on_error:(fun exn ->
         Logger.error "Worker error on domain %d: %s" (Domain.self () :> int) (Printexc.to_string exn)
       )
-    with e ->
+    with
+    | Eio.Cancel.Cancelled _ as e -> raise e
+    | e ->
       Logger.error "Fatal worker error: %s" (Printexc.to_string e)
   in
 
