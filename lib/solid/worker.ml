@@ -65,9 +65,9 @@ let start worker =
       Atomic.set worker.request_count 0;
       worker.last_health_check <- Unix.time ();
       Ok ()
-    with e ->
+    with Unix.Unix_error (code, fn, arg) ->
       worker.state <- Stopped;
-      Error (Printexc.to_string e)
+      Error (Printf.sprintf "%s(%s): %s" fn arg (Unix.error_message code))
   end
 
 (** Stop worker *)
@@ -113,9 +113,13 @@ let send_request worker request =
          ignore (restart worker);
 
        Ok response
-     with e ->
+     with
+     | Sys_error msg ->
        worker.state <- Unhealthy;
-       Error (Printexc.to_string e))
+       Error msg
+     | End_of_file ->
+       worker.state <- Unhealthy;
+       Error "worker process closed connection")
   | _ ->
     Error "Worker not ready"
 
