@@ -235,12 +235,9 @@ module Db_events = Db_events
 module Graphql = Graphql_adapter
 module Graphql_relay = Graphql_relay
 module Openapi = Openapi
-module Grpc = Grpc
-module Mcp = Mcp_adapter
-module WebRTC = Webrtc_adapter
-
-type webrtc_connection_state = Webrtc_adapter.connection_state =
-  | New | Connecting | Connected | Disconnected | Failed | Closed
+(* Grpc, Mcp, WebRTC moved to optional sub-libraries:
+   kirin.grpc (Kirin_grpc), kirin.webrtc (Kirin_webrtc), kirin.ext_mcp (Kirin_ext_mcp).
+   Install the corresponding opam depopts to use them. *)
 module Sync = Sync
 module I18n = I18n
 module Validation = Validation

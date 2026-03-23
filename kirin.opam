@@ -55,16 +55,19 @@ depends: [
   "caqti-eio" {>= "2.1"}
   "ppx_deriving" {>= "5.0"}
   "ppx_deriving_yojson" {>= "3.0"}
-  "grpc-direct" {>= "0.1.0"}
-  "grpc-direct-core" {>= "0.1.0"}
-  "ocaml-webrtc" {>= "0.2.3"}
   "graphql" {>= "0.14.0"}
   "graphql_parser" {>= "0.14.0"}
   "hmap" {>= "0.8"}
-  "mcp_protocol_eio" {>= "0.15.0"}
+  "dune-build-info"
   "bisect_ppx" {>= "2.8" & with-dev-setup}
   "alcotest" {with-test}
   "odoc" {with-doc}
+]
+depopts: [
+  "grpc-direct" {>= "0.1.0"}
+  "grpc-direct-core" {>= "0.1.0"}
+  "ocaml-webrtc" {>= "0.2.3"}
+  "mcp_protocol_eio" {>= "0.15.0"}
 ]
 build: [
   ["dune" "subst"] {dev}

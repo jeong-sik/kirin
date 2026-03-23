@@ -1,3 +1,4 @@
+open Kirin
 (** Kirin WebRTC Adapter.
 
     Thin wrapper around ocaml-webrtc providing Kirin-style APIs for

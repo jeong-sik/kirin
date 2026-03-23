@@ -18,12 +18,9 @@
   decompress.gz
   decompress.zl
   bigstringaf
-  grpc-direct
-  grpc-direct-core
   graphql
   graphql_parser
   kirin_mcp
-  ocaml-webrtc
   hmap
   caqti
   caqti-eio
@@ -31,8 +28,7 @@
   unix
   threads
   str
-  dune-build-info
-  mcp_protocol_eio)
+  dune-build-info)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson))
  (instrumentation (backend bisect_ppx)))

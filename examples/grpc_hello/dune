@@ -1,3 +1,4 @@
 (executable
+ (optional)
  (name main)
- (libraries kirin eio_main yojson))
+ (libraries kirin kirin.grpc eio_main yojson))

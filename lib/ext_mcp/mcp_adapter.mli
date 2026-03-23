@@ -1,3 +1,4 @@
+open Kirin
 (** Kirin MCP Integration
 
     Provides MCP (Model Context Protocol) support for Kirin applications.

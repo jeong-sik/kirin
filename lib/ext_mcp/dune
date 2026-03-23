@@ -1,0 +1,9 @@
+(library
+ (name kirin_ext_mcp)
+ (public_name kirin.ext_mcp)
+ (optional)
+ (wrapped false)
+ (libraries kirin kirin_mcp mcp_protocol_eio yojson)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving_yojson))
+ (instrumentation (backend bisect_ppx)))

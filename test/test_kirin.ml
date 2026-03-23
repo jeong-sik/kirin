@@ -879,19 +879,19 @@ let tls_tests = [
    ============================================================ *)
 
 let test_grpc_service_create () =
-  let svc = Kirin.Grpc.service "test.TestService" in
+  let svc = Grpc.service "test.TestService" in
   (* Service created successfully - check name field *)
-  check string "service name" "test.TestService" svc.Kirin.Grpc.Service.name
+  check string "service name" "test.TestService" svc.Grpc.Service.name
 
 let test_grpc_service_with_unary () =
-  let svc = Kirin.Grpc.service "test.Greeter"
-    |> Kirin.Grpc.unary "SayHello" (fun req -> "Hello, " ^ req)
+  let svc = Grpc.service "test.Greeter"
+    |> Grpc.unary "SayHello" (fun req -> "Hello, " ^ req)
   in
   (* Service with unary method - check name is preserved *)
-  check string "service name" "test.Greeter" svc.Kirin.Grpc.Service.name
+  check string "service name" "test.Greeter" svc.Grpc.Service.name
 
 let test_grpc_interceptor () =
-  let _interceptor = Kirin.Grpc.make_interceptor "test" (fun ctx next ->
+  let _interceptor = Grpc.make_interceptor "test" (fun ctx next ->
     (* Just pass through *)
     next ctx)
   in
@@ -899,31 +899,31 @@ let test_grpc_interceptor () =
   check bool "interceptor created" true true
 
 let test_grpc_logging_interceptor () =
-  let _interceptor = Kirin.Grpc.logging_interceptor () in
+  let _interceptor = Grpc.logging_interceptor () in
   (* Logging interceptor created successfully *)
   check bool "logging interceptor created" true true
 
 let test_grpc_timing_interceptor () =
-  let _interceptor = Kirin.Grpc.timing_interceptor () in
+  let _interceptor = Grpc.timing_interceptor () in
   (* Timing interceptor created successfully *)
   check bool "timing interceptor created" true true
 
 let test_grpc_status_codes () =
-  check bool "ok code" true (Kirin.Grpc.StatusCode.ok = Grpc_core.Status.OK);
-  check bool "not found code" true (Kirin.Grpc.StatusCode.not_found = Grpc_core.Status.Not_found);
-  check bool "internal code" true (Kirin.Grpc.StatusCode.internal = Grpc_core.Status.Internal)
+  check bool "ok code" true (Grpc.StatusCode.ok = Grpc_core.Status.OK);
+  check bool "not found code" true (Grpc.StatusCode.not_found = Grpc_core.Status.Not_found);
+  check bool "internal code" true (Grpc.StatusCode.internal = Grpc_core.Status.Internal)
 
 let test_grpc_status_create () =
-  let status = Kirin.Grpc.status ~code:Kirin.Grpc.StatusCode.ok ~message:"success" in
+  let status = Grpc.status ~code:Grpc.StatusCode.ok ~message:"success" in
   check string "status message" "success" status.message
 
 let test_grpc_stream () =
-  let stream = Kirin.Grpc.stream_create 5 in
-  check bool "stream empty" true (Kirin.Grpc.stream_is_empty stream);
-  Kirin.Grpc.stream_add stream "test";
-  check bool "stream not empty" false (Kirin.Grpc.stream_is_empty stream);
-  Kirin.Grpc.stream_close stream;
-  check bool "stream closed" true (Kirin.Grpc.stream_is_closed stream)
+  let stream = Grpc.stream_create 5 in
+  check bool "stream empty" true (Grpc.stream_is_empty stream);
+  Grpc.stream_add stream "test";
+  check bool "stream not empty" false (Grpc.stream_is_empty stream);
+  Grpc.stream_close stream;
+  check bool "stream closed" true (Grpc.stream_is_closed stream)
 
 let grpc_tests = [
   test_case "service create" `Quick test_grpc_service_create;
@@ -1963,11 +1963,11 @@ let shutdown_tests = [
    WebRTC Tests (Phase 11) — v1.0.0 real ocaml-webrtc API
    ============================================================ *)
 
-module WR = Kirin.WebRTC
+module WR = Webrtc_adapter
 
 (* Test connection state types *)
 let test_webrtc_ice_states () =
-  let states : Kirin.webrtc_connection_state list = [
+  let states : Webrtc_adapter.connection_state list = [
     New; Connecting; Connected; Disconnected; Failed; Closed
   ] in
   check int "connection states count" 6 (List.length states)
@@ -2046,7 +2046,7 @@ let test_webrtc_signaling_decode_error () =
 
 (* Test ICE candidate encoding/decoding *)
 let test_webrtc_ice_candidate () =
-  let candidate : WR.ice_candidate = {
+  let candidate : Webrtc_config.ice_candidate = {
     candidate = "candidate:1 1 UDP 2122252543 192.168.1.1 12345 typ host";
     sdp_mid = Some "0";
     sdp_mline_index = Some 0;

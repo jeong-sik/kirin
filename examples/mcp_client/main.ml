@@ -9,7 +9,6 @@
     This example shows the client API structure.
 *)
 
-open Kirin
 
 (** Demo showing MCP client API usage *)
 let () =
@@ -17,32 +16,32 @@ let () =
   Printf.printf "========================\n\n";
 
   (* Create Streamable HTTP transport (for web-based MCP servers) *)
-  let transport = Mcp.Transport.create_streamable_http () in
+  let transport = Mcp_adapter.Transport.create_streamable_http () in
   Printf.printf "Created Streamable HTTP transport\n";
 
   (* Create client *)
-  let client = Mcp.Client.create transport in
+  let client = Mcp_adapter.Client.create transport in
   Printf.printf "Created MCP client\n";
 
   (* Show client API *)
   Printf.printf "\nAvailable client methods:\n";
-  Printf.printf "  - Mcp.Client.initialize client ()\n";
-  Printf.printf "  - Mcp.Client.list_tools client\n";
-  Printf.printf "  - Mcp.Client.call_tool client ~name ~arguments ()\n";
-  Printf.printf "  - Mcp.Client.list_resources client\n";
-  Printf.printf "  - Mcp.Client.read_resource client ~uri\n";
-  Printf.printf "  - Mcp.Client.list_prompts client\n";
-  Printf.printf "  - Mcp.Client.get_prompt client ~name ~arguments ()\n";
+  Printf.printf "  - Mcp_adapter.Client.initialize client ()\n";
+  Printf.printf "  - Mcp_adapter.Client.list_tools client\n";
+  Printf.printf "  - Mcp_adapter.Client.call_tool client ~name ~arguments ()\n";
+  Printf.printf "  - Mcp_adapter.Client.list_resources client\n";
+  Printf.printf "  - Mcp_adapter.Client.read_resource client ~uri\n";
+  Printf.printf "  - Mcp_adapter.Client.list_prompts client\n";
+  Printf.printf "  - Mcp_adapter.Client.get_prompt client ~name ~arguments ()\n";
 
   Printf.printf "\nExample: Calling a tool\n";
   Printf.printf {|
-  let result = Mcp.Client.call_tool client
+  let result = Mcp_adapter.Client.call_tool client
     ~name:"greet"
     ~arguments:(`Assoc ["name", `String "World"])
     ()
   in
   List.iter (function
-    | Mcp.Protocol.Text s -> print_endline s
+    | Mcp_adapter.Protocol.Text s -> print_endline s
     | _ -> ()
   ) result.content
 |};
@@ -55,7 +54,7 @@ let () =
 
   (* Show transport check *)
   Printf.printf "\nTransport type: %s\n"
-    (if Mcp.Transport.is_streamable_http transport then "Streamable HTTP" else "stdio");
+    (if Mcp_adapter.Transport.is_streamable_http transport then "Streamable HTTP" else "stdio");
 
   ignore client;
   Printf.printf "\nMCP client demo complete.\n"

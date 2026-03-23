@@ -1,0 +1,9 @@
+(library
+ (name kirin_grpc)
+ (public_name kirin.grpc)
+ (optional)
+ (wrapped false)
+ (libraries kirin grpc-direct grpc-direct-core)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving_yojson))
+ (instrumentation (backend bisect_ppx)))
