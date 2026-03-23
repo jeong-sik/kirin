@@ -13,6 +13,7 @@
   cstruct
   base64
   digestif
+  eqaf
   decompress.de
   decompress.gz
   decompress.zl
