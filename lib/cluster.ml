@@ -45,14 +45,14 @@ let create_socket _port =
   sock
 
 (** Spawn a worker process *)
-let spawn_worker id entry_point = 
-  match fork () with 
+let spawn_worker id entry_point =
+  match fork () with
   | 0 -> (* Child *)
-    Printf.printf "[Worker %d] Started (PID: %d)\n%!" id (getpid ());
+    Logger.info "[Worker %d] Started (PID: %d)" id (getpid ());
     (try entry_point () with
      | Eio.Cancel.Cancelled _ as e -> raise e
      | e ->
-      Printf.eprintf "[Worker %d] Crashed: %s\n%!" id (Printexc.to_string e));
+      Logger.error "[Worker %d] Crashed: %s" id (Printexc.to_string e));
     exit 0
   | pid -> (* Parent *)
     { pid; id }
@@ -60,7 +60,7 @@ let spawn_worker id entry_point =
 (** Start the cluster *)
 let start ?(workers = 0) entry_point = 
   let num_workers = if workers > 0 then workers else Domain.recommended_domain_count () in
-  Printf.printf "[Master] Starting %d workers...\n%!" num_workers;
+  Logger.info "[Master] Starting %d workers..." num_workers;
   
   let cluster = {
     workers = Hashtbl.create num_workers;
@@ -85,7 +85,7 @@ let start ?(workers = 0) entry_point =
           | WSIGNALED s -> Printf.sprintf "signal %d" s
           | WSTOPPED s -> Printf.sprintf "stopped %d" s
         in 
-        Printf.eprintf "[Master] Worker %d (PID %d) died: %s. Respawning...\n%!" w.id pid reason;
+        Logger.warn "[Master] Worker %d (PID %d) died: %s. Respawning..." w.id pid reason;
         let new_w = spawn_worker w.id entry_point in 
         Hashtbl.add cluster.workers new_w.pid new_w;
         loop ()
@@ -93,7 +93,7 @@ let start ?(workers = 0) entry_point =
     with 
     | Unix_error (EINTR, _, _) -> loop ()
     | e -> 
-      Printf.eprintf "[Master] Supervisor error: %s\n%!" (Printexc.to_string e);
+      Logger.error "[Master] Supervisor error: %s" (Printexc.to_string e);
       loop ()
   in 
   loop () 
