@@ -82,12 +82,20 @@ let plural_category locale count =
     if count = 0 || count = 1 then One else Other
   | "ko" | "ja" | "zh" | "vi" | "th" ->
     Other  (* No plural distinction *)
-  | "ru" | "uk" | "pl" | "cs" | "sk" ->
+  | "ru" | "uk" ->
+    (* East Slavic: 1,21,31.. -> One; 2-4,22-24.. -> Few; rest -> Many *)
     let mod10 = count mod 10 in
     let mod100 = count mod 100 in
     if mod10 = 1 && mod100 <> 11 then One
-    else if mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20) then Few
+    else if mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) then Few
     else Many
+  | "pl" | "cs" | "sk" ->
+    (* West Slavic: exactly 1 -> One; 2-4,22-24.. -> Few; rest -> Other *)
+    let mod10 = count mod 10 in
+    let mod100 = count mod 100 in
+    if count = 1 then One
+    else if mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) then Few
+    else Other
   | "ar" ->
     if count = 0 then Zero
     else if count = 1 then One

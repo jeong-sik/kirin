@@ -143,6 +143,43 @@ let plural_tests = [
     Alcotest.(check string) "many" "5 элементов" msg5
   );
 
+  "polish plural (west slavic)", `Quick, (fun () ->
+    (* Polish: exactly 1 -> One, 2-4/22-24/32-34 -> Few, rest -> Other.
+       Unlike Russian where 21 -> One, Polish 21 -> Other. *)
+    let i18n = I18n.create ()
+      |> I18n.add_plural "pl" ~key:"items"
+           ~one:"{{count}} plik"
+           ~few:"{{count}} pliki"
+           ~other:"{{count}} plików" in
+    let msg1 = I18n.translate i18n ~locale:"pl" ~count:1 "items" in
+    let msg2 = I18n.translate i18n ~locale:"pl" ~count:2 "items" in
+    let msg5 = I18n.translate i18n ~locale:"pl" ~count:5 "items" in
+    let msg21 = I18n.translate i18n ~locale:"pl" ~count:21 "items" in
+    let msg22 = I18n.translate i18n ~locale:"pl" ~count:22 "items" in
+    Alcotest.(check string) "one" "1 plik" msg1;
+    Alcotest.(check string) "few" "2 pliki" msg2;
+    Alcotest.(check string) "other" "5 plików" msg5;
+    (* 21 in Polish is Other, not One (unlike Russian) *)
+    Alcotest.(check string) "21 other" "21 plików" msg21;
+    Alcotest.(check string) "22 few" "22 pliki" msg22
+  );
+
+  "russian 21 is one", `Quick, (fun () ->
+    (* Russian: 21 -> One (unlike Polish). Verify the split works both ways. *)
+    let i18n = I18n.create ()
+      |> I18n.add_plural "ru" ~key:"items"
+           ~one:"{{count}} элемент"
+           ~few:"{{count}} элемента"
+           ~many:"{{count}} элементов"
+           ~other:"{{count}} элементов" in
+    let msg21 = I18n.translate i18n ~locale:"ru" ~count:21 "items" in
+    let msg22 = I18n.translate i18n ~locale:"ru" ~count:22 "items" in
+    let msg11 = I18n.translate i18n ~locale:"ru" ~count:11 "items" in
+    Alcotest.(check string) "21 one" "21 элемент" msg21;
+    Alcotest.(check string) "22 few" "22 элемента" msg22;
+    Alcotest.(check string) "11 many" "11 элементов" msg11
+  );
+
   "arabic plural zero", `Quick, (fun () ->
     let i18n = I18n.create ()
       |> I18n.add_plural "ar" ~key:"items"
