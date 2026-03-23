@@ -1,3 +1,4 @@
+open Kirin
 (** Kirin gRPC Integration
 
     Provides gRPC support built on grpc-direct.

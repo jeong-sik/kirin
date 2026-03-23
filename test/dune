@@ -1,6 +1,7 @@
 (test
  (name test_kirin)
- (libraries kirin alcotest grpc-direct-core eio_main))
+ (enabled_if (and %{lib-available:grpc-direct} %{lib-available:ocaml-webrtc}))
+ (libraries kirin kirin.grpc kirin.webrtc alcotest grpc-direct-core eio_main))
 
 (test
  (name test_auth)
@@ -8,7 +9,8 @@
 
 (test
  (name test_mcp)
- (libraries kirin kirin.mcp alcotest str eio eio_main))
+ (enabled_if %{lib-available:mcp_protocol_eio})
+ (libraries kirin kirin.mcp kirin.ext_mcp alcotest str eio eio_main))
 
 (test
  (name test_openapi)

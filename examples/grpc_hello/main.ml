@@ -18,19 +18,19 @@ let decode_hello_request bytes =
 
 (* Create the Greeter service *)
 let greeter_service =
-  Kirin.Grpc.service "helloworld.Greeter"
-  |> Kirin.Grpc.unary "SayHello" (fun request ->
+  Grpc.service "helloworld.Greeter"
+  |> Grpc.unary "SayHello" (fun request ->
        let name = decode_hello_request request in
        encode_hello_reply name)
-  |> Kirin.Grpc.server_streaming "SayHelloStream" (fun request ->
+  |> Grpc.server_streaming "SayHelloStream" (fun request ->
        (* Stream multiple greetings *)
        let name = decode_hello_request request in
-       let stream = Kirin.Grpc.stream_create 10 in
+       let stream = Grpc.stream_create 10 in
        for i = 1 to 3 do
-         Kirin.Grpc.stream_add stream
+         Grpc.stream_add stream
            (Printf.sprintf "Hello %d, %s!" i name)
        done;
-       Kirin.Grpc.stream_close stream;
+       Grpc.stream_close stream;
        stream)
 
 (* HTTP routes for comparison - shown for reference *)
@@ -59,10 +59,10 @@ let () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let server =
-    Kirin.Grpc.grpc_server ()
-    |> Kirin.Grpc.add_service greeter_service
-    |> Kirin.Grpc.with_interceptor (Kirin.Grpc.logging_interceptor ())
-    |> Kirin.Grpc.with_interceptor (Kirin.Grpc.timing_interceptor ())
+    Grpc.grpc_server ()
+    |> Grpc.add_service greeter_service
+    |> Grpc.with_interceptor (Grpc.logging_interceptor ())
+    |> Grpc.with_interceptor (Grpc.timing_interceptor ())
   in
   Printf.printf "[Kirin] Starting gRPC server on 0.0.0.0:50051\n%!";
-  Kirin.Grpc.Server.serve ~sw ~env server
+  Grpc.Server.serve ~sw ~env server

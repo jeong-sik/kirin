@@ -1,3 +1,4 @@
+open Kirin
 (** Kirin MCP Integration
 
     This module provides MCP (Model Context Protocol) support for Kirin applications.

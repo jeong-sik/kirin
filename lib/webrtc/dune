@@ -1,0 +1,9 @@
+(library
+ (name kirin_webrtc)
+ (public_name kirin.webrtc)
+ (optional)
+ (wrapped false)
+ (libraries kirin ocaml-webrtc yojson)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving_yojson))
+ (instrumentation (backend bisect_ppx)))

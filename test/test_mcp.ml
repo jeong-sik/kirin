@@ -733,7 +733,7 @@ let capabilities_tests = [
 
 (** {1 Adapter (Streamable HTTP) Tests} *)
 
-module A = Kirin.Mcp
+module A = Mcp_adapter
 
 let test_adapter_session_header () =
   check string "header name" "mcp-session-id" A.session_header

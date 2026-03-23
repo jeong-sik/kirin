@@ -11,14 +11,14 @@ open Kirin
 
 let () =
   (* Create MCP server *)
-  let mcp = Mcp.Server.create ~name:"kirin-example" ~version:"1.0.0" () in
+  let mcp = Mcp_adapter.Server.create ~name:"kirin-example" ~version:"1.0.0" () in
 
   (* Register a greeting tool (synchronous) *)
-  Mcp.Server.add_tool_sync mcp
+  Mcp_adapter.Server.add_tool_sync mcp
     ~name:"greet"
     ~description:"Greet a person by name"
-    ~schema:(Mcp.Schema.object_ [
-      "name", Mcp.Schema.string ~description:"The name of the person to greet" ()
+    ~schema:(Mcp_adapter.Schema.object_ [
+      "name", Mcp_adapter.Schema.string ~description:"The name of the person to greet" ()
     ] ~required:["name"])
     ~handler:(fun params ->
       let open Yojson.Safe.Util in
@@ -27,12 +27,12 @@ let () =
     ) ();
 
   (* Register a calculator tool (synchronous) *)
-  Mcp.Server.add_tool_sync mcp
+  Mcp_adapter.Server.add_tool_sync mcp
     ~name:"add"
     ~description:"Add two numbers together"
-    ~schema:(Mcp.Schema.object_ [
-      "a", Mcp.Schema.number ~description:"First number" ();
-      "b", Mcp.Schema.number ~description:"Second number" ();
+    ~schema:(Mcp_adapter.Schema.object_ [
+      "a", Mcp_adapter.Schema.number ~description:"First number" ();
+      "b", Mcp_adapter.Schema.number ~description:"Second number" ();
     ] ~required:["a"; "b"])
     ~handler:(fun params ->
       let open Yojson.Safe.Util in
@@ -48,7 +48,7 @@ let () =
     ) ();
 
   (* Register a time resource *)
-  Mcp.Server.add_resource mcp
+  Mcp_adapter.Server.add_resource mcp
     ~uri:"time://current"
     ~name:"Current Time"
     ~mime_type:"text/plain"
@@ -67,7 +67,7 @@ let () =
   Eio.Switch.run @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
   let ctx = Kirin_mcp.Server.{ sw; clock } in
-  let mcp_routes = Mcp.routes ~ctx mcp in
+  let mcp_routes = Mcp_adapter.routes ~ctx mcp in
 
   let routes = router ([
     get "/" (fun _ -> html {|
