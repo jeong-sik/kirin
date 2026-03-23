@@ -237,14 +237,60 @@ let mem cache key =
     | Some entry -> not (is_expired entry)
   )
 
-(** Get value or compute and cache it *)
+(** Get value or compute and cache it.
+
+    Uses double-checked lookup to avoid redundant computation when
+    concurrent Eio fibers race on the same cache miss.  The [compute]
+    function runs outside the lock (so it may yield), but before
+    storing the result we re-check under the lock; if another fiber
+    already populated the entry we return the existing value. *)
 let get_or_set ?ttl cache key compute =
   match get cache key with
   | Some v -> v
   | None ->
     let v = compute () in
-    set ?ttl cache key v;
-    v
+    (* Re-check under lock: another fiber may have filled the entry
+       while [compute] was running. *)
+    with_lock cache.mutex (fun () ->
+      match Hashtbl.find_opt cache.entries key with
+      | Some entry when not (is_expired entry) ->
+        entry.last_access <- now ();
+        entry.access_count <- entry.access_count + 1;
+        touch_key cache key;
+        cache.stats <- { cache.stats with hits = cache.stats.hits + 1 };
+        entry.value
+      | _ ->
+        (* Either absent or expired -- store the freshly computed value. *)
+        let time = now () in
+        let effective_ttl = match ttl with
+          | Some t -> Some t
+          | None -> cache.config.default_ttl
+        in
+        let expires_at = Option.map (fun t -> time +. t) effective_ttl in
+        let entry = {
+          value = v;
+          expires_at;
+          last_access = time;
+          access_count = 1;
+        } in
+        let is_new = not (Hashtbl.mem cache.entries key) in
+        if is_new && Hashtbl.length cache.entries >= cache.config.max_size then begin
+          match find_lru_key cache with
+          | None -> ()
+          | Some lru_key ->
+            Hashtbl.remove cache.entries lru_key;
+            Hashtbl.remove cache.access_times lru_key;
+            cache.stats <- { cache.stats with
+              evictions = cache.stats.evictions + 1;
+              current_size = cache.stats.current_size - 1;
+            }
+        end;
+        Hashtbl.replace cache.entries key entry;
+        touch_key cache key;
+        if is_new then
+          cache.stats <- { cache.stats with current_size = cache.stats.current_size + 1 };
+        v
+    )
 
 (** {1 Bulk Operations} *)
 
