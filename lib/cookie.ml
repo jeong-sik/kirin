@@ -138,7 +138,7 @@ let verify signed_value =
       let value = String.sub signed_value 0 idx in
       let signature = String.sub signed_value (idx + 1) (String.length signed_value - idx - 1) in
       let expected_sig = sign value in
-      if signature = expected_sig then
+      if Eqaf.equal signature expected_sig then
         Some value
       else
         None
