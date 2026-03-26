@@ -65,6 +65,8 @@ Features:
   (mcp_protocol_eio (>= "0.15.0"))
   (bisect_ppx (and (>= 2.8) :with-dev-setup))
   (alcotest :with-test)
+  (qcheck-core (and (>= "0.21") :with-test))
+  (qcheck-alcotest (and (>= "0.21") :with-test))
   (odoc :with-doc))
  (tags
   (web eio http framework websocket sse templates grpc graphql)))
