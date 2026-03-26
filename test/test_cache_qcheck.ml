@@ -46,6 +46,7 @@ let test_capacity_invariant =
       Gen.(let* max_sz = int_range 1 10 in
            let* ops = list_size (int_range 0 50) cache_op_gen in
            return (max_sz, ops))
+      ~shrink:QCheck.Shrink.(pair int list)
       ~print:(fun (max_sz, ops) ->
         Printf.sprintf "max_size=%d, ops=[%s]"
           max_sz (String.concat "; " (List.map show_cache_op ops))))
@@ -67,6 +68,7 @@ let test_roundtrip_no_eviction =
       Gen.(let* k = key_gen in
            let* v = value_gen in
            return (k, v))
+      ~shrink:QCheck.Shrink.(pair string string)
       ~print:(fun (k, v) -> Printf.sprintf "key=%s, value=%s" k v))
     (fun (k, v) ->
        Eio_main.run @@ fun _env ->
@@ -82,6 +84,7 @@ let test_overwrite_latest =
            let* v1 = value_gen in
            let* v2 = value_gen in
            return (k, v1, v2))
+      ~shrink:QCheck.Shrink.(triple string string string)
       ~print:(fun (k, v1, v2) ->
         Printf.sprintf "key=%s, v1=%s, v2=%s" k v1 v2))
     (fun (k, _v1, v2) ->
@@ -96,6 +99,7 @@ let test_clear_empties =
   QCheck.Test.make ~count:300 ~name:"cache: clear then size = 0"
     QCheck.(make
       Gen.(list_size (int_range 0 30) cache_op_gen)
+      ~shrink:QCheck.Shrink.list
       ~print:(fun ops ->
         Printf.sprintf "ops=[%s]"
           (String.concat "; " (List.map show_cache_op ops))))
@@ -118,6 +122,7 @@ let test_remove_then_gone =
       Gen.(let* k = key_gen in
            let* v = value_gen in
            return (k, v))
+      ~shrink:QCheck.Shrink.(pair string string)
       ~print:(fun (k, v) -> Printf.sprintf "key=%s, value=%s" k v))
     (fun (k, v) ->
        Eio_main.run @@ fun _env ->
@@ -134,6 +139,7 @@ let test_lru_eviction_order =
     QCheck.(make
       Gen.(let* max_sz = int_range 2 8 in
            return max_sz)
+      ~shrink:QCheck.Shrink.int
       ~print:string_of_int)
     (fun max_sz ->
        Eio_main.run @@ fun _env ->
@@ -165,13 +171,16 @@ let test_expired_not_returned =
       Gen.(let* k = key_gen in
            let* v = value_gen in
            return (k, v))
+      ~shrink:QCheck.Shrink.(pair string string)
       ~print:(fun (k, v) -> Printf.sprintf "key=%s, value=%s" k v))
     (fun (k, v) ->
        Eio_main.run @@ fun _env ->
        let cache = Kirin.Cache.create ~max_size:100 () in
        (* Set with TTL that expires immediately *)
        Kirin.Cache.set ~ttl:0.0 cache k v;
-       (* Small busy-wait to ensure expiry (gettimeofday resolution) *)
+       (* Unix.sleepf is intentional: Cache uses Unix.gettimeofday internally,
+          so Eio.Time.sleep (which advances the Eio clock) would not help.
+          This brief pause ensures gettimeofday advances past the TTL. *)
        Unix.sleepf 0.001;
        Kirin.Cache.get cache k = None)
 
@@ -180,6 +189,7 @@ let test_stats_consistency =
   QCheck.Test.make ~count:300 ~name:"cache: hits + misses = total gets"
     QCheck.(make
       Gen.(list_size (int_range 1 40) cache_op_gen)
+      ~shrink:QCheck.Shrink.list
       ~print:(fun ops ->
         Printf.sprintf "ops=[%s]"
           (String.concat "; " (List.map show_cache_op ops))))
@@ -206,6 +216,7 @@ let test_mem_consistent_with_get =
            let* v = value_gen in
            let* ops = list_size (int_range 0 20) cache_op_gen in
            return (k, v, ops))
+      ~shrink:QCheck.Shrink.(triple string string list)
       ~print:(fun (k, v, ops) ->
         Printf.sprintf "key=%s, value=%s, ops=[%s]"
           k v (String.concat "; " (List.map show_cache_op ops))))

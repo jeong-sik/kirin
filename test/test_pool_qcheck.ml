@@ -53,6 +53,7 @@ let test_active_never_exceeds_max =
       Gen.(let* max_sz = int_range 1 8 in
            let* ops = list_size (int_range 1 30) pool_op_gen in
            return (max_sz, ops))
+      ~shrink:QCheck.Shrink.(pair int list)
       ~print:(fun (max_sz, ops) ->
         Printf.sprintf "max_size=%d, ops=[%s]"
           max_sz (String.concat "; " (List.map show_pool_op ops))))
@@ -90,6 +91,7 @@ let test_release_all_zeroes_active =
       Gen.(let* max_sz = int_range 1 8 in
            let* n_acq = int_range 1 max_sz in
            return (max_sz, n_acq))
+      ~shrink:QCheck.Shrink.(pair int int)
       ~print:(fun (max_sz, n) ->
         Printf.sprintf "max_size=%d, n_acquire=%d" max_sz n))
     (fun (max_sz, n_acq) ->
@@ -109,6 +111,7 @@ let test_release_increases_idle =
       Gen.(let* max_sz = int_range 1 8 in
            let* n_acq = int_range 1 max_sz in
            return (max_sz, n_acq))
+      ~shrink:QCheck.Shrink.(pair int int)
       ~print:(fun (max_sz, n) ->
         Printf.sprintf "max_size=%d, n_acquire=%d" max_sz n))
     (fun (max_sz, n_acq) ->
@@ -128,6 +131,7 @@ let test_use_auto_releases =
     QCheck.(make
       Gen.(let* max_sz = int_range 1 8 in
            return max_sz)
+      ~shrink:QCheck.Shrink.int
       ~print:string_of_int)
     (fun max_sz ->
        Eio_main.run @@ fun _env ->
@@ -144,6 +148,7 @@ let test_use_releases_on_exception =
     QCheck.(make
       Gen.(let* max_sz = int_range 1 8 in
            return max_sz)
+      ~shrink:QCheck.Shrink.int
       ~print:string_of_int)
     (fun max_sz ->
        Eio_main.run @@ fun _env ->
@@ -162,6 +167,7 @@ let test_shutdown_clears =
       Gen.(let* max_sz = int_range 1 8 in
            let* n_acq = int_range 1 max_sz in
            return (max_sz, n_acq))
+      ~shrink:QCheck.Shrink.(pair int int)
       ~print:(fun (max_sz, n) ->
         Printf.sprintf "max_size=%d, n_acquire=%d" max_sz n))
     (fun (max_sz, n_acq) ->
@@ -180,6 +186,7 @@ let test_has_available_consistent =
       Gen.(let* max_sz = int_range 2 8 in
            let* n_acq = int_range 0 (max_sz - 1) in
            return (max_sz, n_acq))
+      ~shrink:QCheck.Shrink.(pair int int)
       ~print:(fun (max_sz, n) ->
         Printf.sprintf "max_size=%d, n_acquire=%d" max_sz n))
     (fun (max_sz, n_acq) ->
@@ -198,6 +205,7 @@ let test_stats_acquisitions_count =
       Gen.(let* max_sz = int_range 1 8 in
            let* n_acq = int_range 1 max_sz in
            return (max_sz, n_acq))
+      ~shrink:QCheck.Shrink.(pair int int)
       ~print:(fun (max_sz, n) ->
         Printf.sprintf "max_size=%d, n_acquire=%d" max_sz n))
     (fun (max_sz, n_acq) ->
