@@ -34,7 +34,4 @@ val is_safe_path : string -> bool
     {[
       static "/assets" ~dir:"./public" next req
     ]} *)
-val static :
-  string ->
-  dir:string ->
-  (Request.t -> Response.t) -> (Request.t -> Response.t)
+val static : string -> dir:string -> (Request.t -> Response.t) -> Request.t -> Response.t

@@ -32,48 +32,48 @@ type 'a status =
 type job_id = string
 
 (** Job metadata. *)
-type 'a job = {
-  id : job_id;
-  task : unit -> 'a;
-  priority : priority;
-  mutable status : 'a status;
-  mutable retries : int;
-  max_retries : int;
-  created_at : float;
-  mutable started_at : float option;
-  mutable completed_at : float option;
-}
+type 'a job =
+  { id : job_id
+  ; task : unit -> 'a
+  ; priority : priority
+  ; mutable status : 'a status
+  ; mutable retries : int
+  ; max_retries : int
+  ; created_at : float
+  ; mutable started_at : float option
+  ; mutable completed_at : float option
+  }
 
 (** Job configuration. *)
-type config = {
-  workers : int;
-  max_queue_size : int;
-  default_max_retries : int;
-  retry_delay : float;
-}
+type config =
+  { workers : int
+  ; max_queue_size : int
+  ; default_max_retries : int
+  ; retry_delay : float
+  }
 
 (** Queue statistics. *)
-type stats = {
-  total_submitted : int;
-  total_completed : int;
-  total_failed : int;
-  currently_running : int;
-  queue_size : int;
-}
+type stats =
+  { total_submitted : int
+  ; total_completed : int
+  ; total_failed : int
+  ; currently_running : int
+  ; queue_size : int
+  }
 
 (** Job queue -- carries Eio resources for fiber-safe operation. *)
-type 'a t = {
-  config : config;
-  clock : float Eio.Time.clock_ty Eio.Resource.t;
-  mutable jobs : 'a job list;
-  mutable results : (job_id, 'a status) Hashtbl.t;
-  mutable running : bool;
-  mutable stats : stats;
-  mutable next_id : int;
-  mutex : Eio.Mutex.t;
-  job_available : Eio.Condition.t;
-  job_completed : Eio.Condition.t;
-}
+type 'a t =
+  { config : config
+  ; clock : float Eio.Time.clock_ty Eio.Resource.t
+  ; mutable jobs : 'a job list
+  ; mutable results : (job_id, 'a status) Hashtbl.t
+  ; mutable running : bool
+  ; mutable stats : stats
+  ; mutable next_id : int
+  ; mutex : Eio.Mutex.t
+  ; job_available : Eio.Condition.t
+  ; job_completed : Eio.Condition.t
+  }
 
 (** {1 Configuration} *)
 
@@ -94,15 +94,15 @@ val default_config : config
     @param max_queue_size Maximum pending jobs (default: 10000)
     @param default_max_retries Default retry count (default: 3)
     @param retry_delay Base delay between retries in seconds (default: 1.0) *)
-val create :
-  sw:Eio.Switch.t ->
-  clock:float Eio.Time.clock_ty Eio.Resource.t ->
-  ?workers:int ->
-  ?max_queue_size:int ->
-  ?default_max_retries:int ->
-  ?retry_delay:float ->
-  unit ->
-  'a t
+val create
+  :  sw:Eio.Switch.t
+  -> clock:float Eio.Time.clock_ty Eio.Resource.t
+  -> ?workers:int
+  -> ?max_queue_size:int
+  -> ?default_max_retries:int
+  -> ?retry_delay:float
+  -> unit
+  -> 'a t
 
 (** {1 Job Submission} *)
 
@@ -112,7 +112,12 @@ val create :
 val submit : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) -> job_id
 
 (** [submit_all ?priority ?max_retries t tasks] submits multiple jobs. *)
-val submit_all : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) list -> job_id list
+val submit_all
+  :  ?priority:priority
+  -> ?max_retries:int
+  -> 'a t
+  -> (unit -> 'a) list
+  -> job_id list
 
 (** {1 Job Status} *)
 
@@ -162,7 +167,12 @@ val run_sync : (unit -> 'a) -> 'a
 (** {1 Convenience} *)
 
 (** [submit_and_wait ?priority ?max_retries t task] submits a job and waits for completion. *)
-val submit_and_wait : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) -> 'a status
+val submit_and_wait
+  :  ?priority:priority
+  -> ?max_retries:int
+  -> 'a t
+  -> (unit -> 'a)
+  -> 'a status
 
 (** [run_once ~clock task] creates a one-shot queue, runs a single job,
     and returns the result. *)

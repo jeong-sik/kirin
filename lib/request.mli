@@ -7,16 +7,16 @@
 type params = (string * string) list
 
 (** The request type with all HTTP request data. *)
-type t = {
-  meth : Http.Method.t;
-  uri : Uri.t;
-  headers : Http.Header.t;
-  body_source : Eio.Buf_read.t;
-  mutable cached_body : string option;
-  params : params;
-  ctx : Hmap.t;
-  raw : Http.Request.t;
-}
+type t =
+  { meth : Http.Method.t
+  ; uri : Uri.t
+  ; headers : Http.Header.t
+  ; body_source : Eio.Buf_read.t
+  ; mutable cached_body : string option
+  ; params : params
+  ; ctx : Hmap.t
+  ; raw : Http.Request.t
+  }
 
 (** [make ~raw ~body_source] creates a new request from HTTP components. *)
 val make : raw:Http.Request.t -> body_source:Eio.Buf_read.t -> t

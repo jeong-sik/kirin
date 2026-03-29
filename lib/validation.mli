@@ -28,11 +28,11 @@
 (** {1 Types} *)
 
 (** Validation error. *)
-type error = {
-  path : string list;
-  message : string;
-  code : string;
-}
+type error =
+  { path : string list
+  ; message : string
+  ; code : string
+  }
 
 (** Validation result. *)
 type 'a result = ('a, error list) Result.t
@@ -40,28 +40,28 @@ type 'a result = ('a, error list) Result.t
 (** {1 Schema Types} *)
 
 (** String constraints. *)
-type string_constraints = {
-  min_length : int option;
-  max_length : int option;
-  pattern : string option;
-  format : string option;
-}
+type string_constraints =
+  { min_length : int option
+  ; max_length : int option
+  ; pattern : string option
+  ; format : string option
+  }
 
 (** Number constraints (shared by int and float). *)
-type number_constraints = {
-  minimum : float option;
-  maximum : float option;
-  exclusive_min : bool;
-  exclusive_max : bool;
-  multiple_of : float option;
-}
+type number_constraints =
+  { minimum : float option
+  ; maximum : float option
+  ; exclusive_min : bool
+  ; exclusive_max : bool
+  ; multiple_of : float option
+  }
 
 (** Array constraints. *)
-type array_constraints = {
-  min_items : int option;
-  max_items : int option;
-  unique_items : bool;
-}
+type array_constraints =
+  { min_items : int option
+  ; max_items : int option
+  ; unique_items : bool
+  }
 
 (** Validation schema. *)
 type schema =
@@ -81,11 +81,11 @@ type schema =
   | Custom of (Yojson.Safe.t -> (Yojson.Safe.t, string) Result.t)
 
 (** Object schema. *)
-and object_schema = {
-  properties : (string * schema) list;
-  required : string list;
-  additional_properties : bool;
-}
+and object_schema =
+  { properties : (string * schema) list
+  ; required : string list
+  ; additional_properties : bool
+  }
 
 (** {1 Default Constraints} *)
 
@@ -95,13 +95,42 @@ val empty_array_constraints : array_constraints
 
 (** {1 Schema Builders} *)
 
-val string : ?min_length:int -> ?max_length:int -> ?pattern:string -> ?format:string -> unit -> schema
-val int : ?minimum:int -> ?maximum:int -> ?exclusive_min:bool -> ?exclusive_max:bool -> ?multiple_of:int -> unit -> schema
-val float : ?minimum:float -> ?maximum:float -> ?exclusive_min:bool -> ?exclusive_max:bool -> ?multiple_of:float -> unit -> schema
+val string
+  :  ?min_length:int
+  -> ?max_length:int
+  -> ?pattern:string
+  -> ?format:string
+  -> unit
+  -> schema
+
+val int
+  :  ?minimum:int
+  -> ?maximum:int
+  -> ?exclusive_min:bool
+  -> ?exclusive_max:bool
+  -> ?multiple_of:int
+  -> unit
+  -> schema
+
+val float
+  :  ?minimum:float
+  -> ?maximum:float
+  -> ?exclusive_min:bool
+  -> ?exclusive_max:bool
+  -> ?multiple_of:float
+  -> unit
+  -> schema
+
 val bool : unit -> schema
 val null : unit -> schema
 val array : ?min_items:int -> ?max_items:int -> ?unique_items:bool -> schema -> schema
-val object_ : ?required:string list -> ?additional:bool -> (string * schema) list -> schema
+
+val object_
+  :  ?required:string list
+  -> ?additional:bool
+  -> (string * schema) list
+  -> schema
+
 val field : string -> schema -> string * schema
 val optional : schema -> schema
 val one_of : schema list -> schema
@@ -154,35 +183,56 @@ val non_empty_string : unit -> schema
 (** {1 Type-safe Validation} *)
 
 (** Validate and map to OCaml type via [of_yojson]. *)
-val validate_type :
-  (Yojson.Safe.t -> ('a, string) Result.t) ->
-  schema -> Yojson.Safe.t -> ('a, error list) Result.t
+val validate_type
+  :  (Yojson.Safe.t -> ('a, string) Result.t)
+  -> schema
+  -> Yojson.Safe.t
+  -> ('a, error list) Result.t
 
 (** Handler wrapper for automatic body validation. *)
-val validated_body :
-  (Yojson.Safe.t -> ('a, string) Result.t) ->
-  schema -> ('a -> Middleware.t) -> Middleware.t
+val validated_body
+  :  (Yojson.Safe.t -> ('a, string) Result.t)
+  -> schema
+  -> ('a -> Middleware.t)
+  -> Middleware.t
 
 (** {1 Kirin Type-safe DSL} *)
 
 (** Typed schema combining a schema with a deserializer. *)
-type 'a typed_schema = {
-  schema : schema;
-  of_json : Yojson.Safe.t -> ('a, string) Result.t;
-}
+type 'a typed_schema =
+  { schema : schema
+  ; of_json : Yojson.Safe.t -> ('a, string) Result.t
+  }
 
 (** Builder module for typed schemas. *)
 module Type : sig
   val make : schema -> (Yojson.Safe.t -> ('a, string) Result.t) -> 'a typed_schema
-  val string : ?min:int -> ?max:int -> ?pattern:string -> ?format:string -> unit -> string typed_schema
+
+  val string
+    :  ?min:int
+    -> ?max:int
+    -> ?pattern:string
+    -> ?format:string
+    -> unit
+    -> string typed_schema
+
   val int : ?min:int -> ?max:int -> unit -> int typed_schema
   val bool : unit -> bool typed_schema
-  val obj : (Yojson.Safe.t -> ('a, string) Result.t) -> (string * schema) list -> 'a typed_schema
+
+  val obj
+    :  (Yojson.Safe.t -> ('a, string) Result.t)
+    -> (string * schema) list
+    -> 'a typed_schema
+
   val ( %> ) : string -> 'a typed_schema -> string * schema
 end
 
 (** Handler with typed schema validation. *)
-val validated : 'a typed_schema -> ('a -> Request.t -> Response.t) -> Request.t -> Response.t
+val validated
+  :  'a typed_schema
+  -> ('a -> Request.t -> Response.t)
+  -> Request.t
+  -> Response.t
 
 (** {1 Request Helpers} *)
 
@@ -193,5 +243,7 @@ val validate_body : schema -> string -> Yojson.Safe.t result
 val coerce_string_to_json : schema -> string -> Yojson.Safe.t
 
 (** Validate query parameters. *)
-val validate_query_params :
-  (string * schema) list -> (string -> string option) -> (unit, error list) Result.t
+val validate_query_params
+  :  (string * schema) list
+  -> (string -> string option)
+  -> (unit, error list) Result.t

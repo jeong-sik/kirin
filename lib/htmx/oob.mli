@@ -1,5 +1,5 @@
 type swap_strategy =
-    True
+  | True
   | Inner_html
   | Outer_html
   | Before_begin
@@ -8,6 +8,7 @@ type swap_strategy =
   | After_end
   | Delete
   | None
+
 val strategy_to_string : swap_strategy -> string
 val attr : ?strategy:swap_strategy -> ?target:string -> unit -> string
 val div : ?strategy:swap_strategy -> id:string -> string -> string

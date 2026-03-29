@@ -5,8 +5,16 @@
 
 (** {1 Types} *)
 
-type state = Running | ShuttingDown | Stopped
-type config = { timeout : float; force_after : float; }
+type state =
+  | Running
+  | ShuttingDown
+  | Stopped
+
+type config =
+  { timeout : float
+  ; force_after : float
+  }
+
 type hook = unit -> unit
 type t
 
@@ -47,5 +55,4 @@ val middleware : t -> ('a -> Response.t) -> 'a -> Response.t
 
 (** {1 Status} *)
 
-val status_json :
-  t -> [> `Assoc of (string * [> `Int of int | `String of string ]) list ]
+val status_json : t -> [> `Assoc of (string * [> `Int of int | `String of string ]) list ]

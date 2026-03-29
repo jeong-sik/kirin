@@ -44,86 +44,86 @@ val bool : ('ctx, bool option) Schema.typ
 val id : ('ctx, string option) Schema.typ
 
 (** [obj name ~fields] creates an object type. *)
-val obj :
-  ?doc:string ->
-  string ->
-  fields:('ctx, 'src) Schema.field list ->
-  ('ctx, 'src option) Schema.typ
+val obj
+  :  ?doc:string
+  -> string
+  -> fields:('ctx, 'src) Schema.field list
+  -> ('ctx, 'src option) Schema.typ
 
 (** Create a field in an object type. *)
-val field :
-  ?doc:string ->
-  ?deprecated:Schema.deprecated ->
-  string ->
-  typ:('ctx, 'a) Schema.typ ->
-  args:('a, 'b) Arg.arg_list ->
-  resolve:('ctx Schema.resolve_info -> 'src -> 'b) ->
-  ('ctx, 'src) Schema.field
+val field
+  :  ?doc:string
+  -> ?deprecated:Schema.deprecated
+  -> string
+  -> typ:('ctx, 'a) Schema.typ
+  -> args:('a, 'b) Arg.arg_list
+  -> resolve:('ctx Schema.resolve_info -> 'src -> 'b)
+  -> ('ctx, 'src) Schema.field
 
 (** Create an async field (for IO operations). *)
-val io_field :
-  ?doc:string ->
-  ?deprecated:Schema.deprecated ->
-  string ->
-  typ:('ctx, 'a) Schema.typ ->
-  args:(('a, string) result, 'b) Arg.arg_list ->
-  resolve:('ctx Schema.resolve_info -> 'src -> 'b) ->
-  ('ctx, 'src) Schema.field
+val io_field
+  :  ?doc:string
+  -> ?deprecated:Schema.deprecated
+  -> string
+  -> typ:('ctx, 'a) Schema.typ
+  -> args:(('a, string) result, 'b) Arg.arg_list
+  -> resolve:('ctx Schema.resolve_info -> 'src -> 'b)
+  -> ('ctx, 'src) Schema.field
 
 (** Create an interface type. *)
-val interface :
-  ?doc:string ->
-  string ->
-  fields:(('ctx, 'a) Schema.abstract_typ -> Schema.abstract_field list) ->
-  ('ctx, 'a) Schema.abstract_typ
+val interface
+  :  ?doc:string
+  -> string
+  -> fields:(('ctx, 'a) Schema.abstract_typ -> Schema.abstract_field list)
+  -> ('ctx, 'a) Schema.abstract_typ
 
 (** Create a union type. *)
 val union : ?doc:string -> string -> ('ctx, 'a) Schema.abstract_typ
 
 (** Create an enum type. *)
-val enum :
-  ?doc:string ->
-  string ->
-  values:'a Schema.enum_value list ->
-  ('ctx, 'a option) Schema.typ
+val enum
+  :  ?doc:string
+  -> string
+  -> values:'a Schema.enum_value list
+  -> ('ctx, 'a option) Schema.typ
 
 (** Create an enum value. *)
-val enum_value :
-  ?doc:string ->
-  ?deprecated:Schema.deprecated ->
-  string ->
-  value:'a ->
-  'a Schema.enum_value
+val enum_value
+  :  ?doc:string
+  -> ?deprecated:Schema.deprecated
+  -> string
+  -> value:'a
+  -> 'a Schema.enum_value
 
 (** Create a scalar type. *)
-val scalar :
-  ?doc:string ->
-  string ->
-  coerce:('a -> Yojson.Basic.t) ->
-  ('ctx, 'a option) Schema.typ
+val scalar
+  :  ?doc:string
+  -> string
+  -> coerce:('a -> Yojson.Basic.t)
+  -> ('ctx, 'a option) Schema.typ
 
 (** {1 Schema Creation} *)
 
 (** [schema ?mutations ?subscriptions query] creates a GraphQL schema. *)
-val schema :
-  ?mutations:('ctx, unit) Schema.field list ->
-  ?subscriptions:'ctx Schema.subscription_field list ->
-  ('ctx, unit) Schema.field list ->
-  'ctx Schema.schema
+val schema
+  :  ?mutations:('ctx, unit) Schema.field list
+  -> ?subscriptions:'ctx Schema.subscription_field list
+  -> ('ctx, unit) Schema.field list
+  -> 'ctx Schema.schema
 
 (** Fix combinator for recursive types. *)
-val fix :
-  (('ctx, 'a option) Schema.typ Schema.fixpoint -> ('ctx, 'a option) Schema.typ) ->
-  ('ctx, 'a option) Schema.typ
+val fix
+  :  (('ctx, 'a option) Schema.typ Schema.fixpoint -> ('ctx, 'a option) Schema.typ)
+  -> ('ctx, 'a option) Schema.typ
 
 (** {1 HTTP Handlers} *)
 
 (** GraphQL request body. *)
-type graphql_request = {
-  query : string;
-  operation_name : string option;
-  variables : Yojson.Safe.t option;
-}
+type graphql_request =
+  { query : string
+  ; operation_name : string option
+  ; variables : Yojson.Safe.t option
+  }
 
 (** [parse_request body] parses a GraphQL request from a JSON body string.
     Returns [None] if the body is invalid or missing a query field. *)
@@ -139,23 +139,23 @@ val convert_variables : Yojson.Safe.t option -> (string * Graphql_parser.const_v
 val basic_to_safe : Yojson.Basic.t -> Yojson.Safe.t
 
 (** [execute schema ~ctx ~query ?variables ?operation_name ()] executes a GraphQL query. *)
-val execute :
-  'ctx Schema.schema ->
-  ctx:'ctx ->
-  query:string ->
-  ?variables:Yojson.Safe.t ->
-  ?operation_name:string ->
-  unit ->
-  [ `Response of Yojson.Basic.t
-  | `Stream of Yojson.Basic.t Schema.response Seq.t ] Schema.response
+val execute
+  :  'ctx Schema.schema
+  -> ctx:'ctx
+  -> query:string
+  -> ?variables:Yojson.Safe.t
+  -> ?operation_name:string
+  -> unit
+  -> [ `Response of Yojson.Basic.t | `Stream of Yojson.Basic.t Schema.response Seq.t ]
+       Schema.response
 
 (** [handler ?make_ctx schema req] creates a POST handler for /graphql endpoint.
     Default [make_ctx] returns [unit], so the schema context type is [unit]. *)
-val handler :
-  ?make_ctx:(Request.t -> unit) ->
-  unit Schema.schema ->
-  Request.t ->
-  Response.t
+val handler
+  :  ?make_ctx:(Request.t -> unit)
+  -> unit Schema.schema
+  -> Request.t
+  -> Response.t
 
 (** [playground_handler ?endpoint req] serves GraphQL Playground IDE HTML. *)
 val playground_handler : ?endpoint:string -> Request.t -> Response.t
@@ -170,35 +170,35 @@ val introspection_handler : unit Schema.schema -> Request.t -> Response.t
     @param enable_introspection When [false], GET requests to the GraphQL endpoint
     return 403 instead of serving the Playground and introspection queries.
     Default: [true]. *)
-val middleware :
-  ?path:string ->
-  ?make_ctx:(Request.t -> unit) ->
-  ?enable_introspection:bool ->
-  unit Schema.schema ->
-  (Request.t -> Response.t) ->
-  Request.t ->
-  Response.t
+val middleware
+  :  ?path:string
+  -> ?make_ctx:(Request.t -> unit)
+  -> ?enable_introspection:bool
+  -> unit Schema.schema
+  -> (Request.t -> Response.t)
+  -> Request.t
+  -> Response.t
 
 (** {1 Subscription Support} *)
 
 (** Subscription field constructor. *)
-val subscription_field :
-  ?doc:string ->
-  ?deprecated:Schema.deprecated ->
-  string ->
-  typ:('ctx, 'out) Schema.typ ->
-  args:(('out Seq.t, string) result, 'args) Arg.arg_list ->
-  resolve:('ctx Schema.resolve_info -> 'args) ->
-  'ctx Schema.subscription_field
+val subscription_field
+  :  ?doc:string
+  -> ?deprecated:Schema.deprecated
+  -> string
+  -> typ:('ctx, 'out) Schema.typ
+  -> args:(('out Seq.t, string) result, 'args) Arg.arg_list
+  -> resolve:('ctx Schema.resolve_info -> 'args)
+  -> 'ctx Schema.subscription_field
 
 (** {1 Error Helpers} *)
 
 (** GraphQL error type. *)
-type graphql_error = {
-  message : string;
-  locations : (int * int) list option;
-  path : string list option;
-}
+type graphql_error =
+  { message : string
+  ; locations : (int * int) list option
+  ; path : string list option
+  }
 
 (** [error_response ?status errors] creates a GraphQL error response. *)
 val error_response : ?status:Http.Status.t -> graphql_error list -> Response.t
@@ -218,9 +218,9 @@ val error_with_path : string -> string list -> graphql_error
     Accepts both single requests and arrays of requests.
     @param max_batch Maximum number of queries in a single batch (default: 10).
       Returns 400 if exceeded. *)
-val batched_handler :
-  ?max_batch:int ->
-  ?make_ctx:(Request.t -> unit) ->
-  unit Schema.schema ->
-  Request.t ->
-  Response.t
+val batched_handler
+  :  ?max_batch:int
+  -> ?make_ctx:(Request.t -> unit)
+  -> unit Schema.schema
+  -> Request.t
+  -> Response.t

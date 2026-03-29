@@ -22,13 +22,13 @@ type key = string
 (** Translation value with optional pluralization. *)
 type translation =
   | Simple of string
-  | Plural of {
-      zero : string option;
-      one : string;
-      few : string option;
-      many : string option;
-      other : string;
-    }
+  | Plural of
+      { zero : string option
+      ; one : string
+      ; few : string option
+      ; many : string option
+      ; other : string
+      }
 
 (** i18n instance. Abstract to hide internal state. *)
 type t
@@ -39,7 +39,12 @@ type translator = key -> ?args:(string * string) list -> ?count:int -> string
 (** {1 Plural Rules} *)
 
 (** Plural category. *)
-type plural_category = Zero | One | Few | Many | Other
+type plural_category =
+  | Zero
+  | One
+  | Few
+  | Many
+  | Other
 
 (** [plural_category locale count] returns the plural category for a count
     in a given locale (simplified CLDR rules). *)
@@ -57,15 +62,16 @@ val add_translations : locale -> (key * string) list -> t -> t
 
 (** [add_plural locale ~key ~one ~other ?zero ?few ?many t] adds a plural translation.
     Returns [t] for chaining. *)
-val add_plural :
-  locale ->
-  key:key ->
-  one:string ->
-  other:string ->
-  ?zero:string ->
-  ?few:string ->
-  ?many:string ->
-  t -> t
+val add_plural
+  :  locale
+  -> key:key
+  -> one:string
+  -> other:string
+  -> ?zero:string
+  -> ?few:string
+  -> ?many:string
+  -> t
+  -> t
 
 (** [set_fallback ~locale ~fallback t] sets a fallback locale.
     Returns [t] for chaining. *)
@@ -86,13 +92,13 @@ val load_directory : path:string -> t -> t
 
 (** [translate t ?locale ?args ?count key] translates a key.
     Returns the key itself if no translation is found. *)
-val translate :
-  t ->
-  ?locale:locale ->
-  ?args:(string * string) list ->
-  ?count:int ->
-  key ->
-  string
+val translate
+  :  t
+  -> ?locale:locale
+  -> ?args:(string * string) list
+  -> ?count:int
+  -> key
+  -> string
 
 (** {1 Locale Detection} *)
 
@@ -108,10 +114,14 @@ val detect_locale : t -> string -> locale
 
 (** [translator_for_header t accept_language_opt] returns a translator function
     bound to the detected locale. *)
-val translator_for_header :
-  t ->
-  string option ->
-  (key -> ?args:(string * string) list -> ?count:int -> unit -> string)
+val translator_for_header
+  :  t
+  -> string option
+  -> key
+  -> ?args:(string * string) list
+  -> ?count:int
+  -> unit
+  -> string
 
 (** [set_locale_from_header t accept_language_opt] sets the current locale
     from an Accept-Language header. Returns the detected locale. *)

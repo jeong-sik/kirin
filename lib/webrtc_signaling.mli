@@ -11,10 +11,22 @@
 
 (** Signaling message type. *)
 type message =
-  | SdpOffer of { from_peer : string; sdp : string }
-  | SdpAnswer of { from_peer : string; sdp : string }
-  | IceCandidate of { from_peer : string; candidate : Webrtc_config.ice_candidate }
-  | Join of { peer_id : string; room : string }
+  | SdpOffer of
+      { from_peer : string
+      ; sdp : string
+      }
+  | SdpAnswer of
+      { from_peer : string
+      ; sdp : string
+      }
+  | IceCandidate of
+      { from_peer : string
+      ; candidate : Webrtc_config.ice_candidate
+      }
+  | Join of
+      { peer_id : string
+      ; room : string
+      }
   | Leave of { peer_id : string }
   | Error of { message : string }
 
@@ -28,17 +40,17 @@ val decode_message : string -> (message, string) result
 (** {1 Room Management} *)
 
 (** Signaling room holding a set of connected peers. *)
-type room = {
-  id : string;
-  peers : (string, unit) Hashtbl.t;
-  mutex : Eio.Mutex.t;
-}
+type room =
+  { id : string
+  ; peers : (string, unit) Hashtbl.t
+  ; mutex : Eio.Mutex.t
+  }
 
 (** Signaling server managing multiple rooms. *)
-type server = {
-  rooms : (string, room) Hashtbl.t;
-  mutex : Eio.Mutex.t;
-}
+type server =
+  { rooms : (string, room) Hashtbl.t
+  ; mutex : Eio.Mutex.t
+  }
 
 (** [create_server ()] creates a new signaling server instance. *)
 val create_server : unit -> server

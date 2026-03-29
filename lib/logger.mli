@@ -11,24 +11,29 @@
 (** {1 Types} *)
 
 (** Log levels. *)
-type level = Debug | Info | Warn | Error | Fatal
+type level =
+  | Debug
+  | Info
+  | Warn
+  | Error
+  | Fatal
 
 (** Log entry structure. *)
-type entry = {
-  timestamp : float;
-  level : level;
-  message : string;
-  context : (string * Yojson.Safe.t) list;
-  trace_id : string option;
-  span_id : string option;
-}
+type entry =
+  { timestamp : float
+  ; level : level
+  ; message : string
+  ; context : (string * Yojson.Safe.t) list
+  ; trace_id : string option
+  ; span_id : string option
+  }
 
 (** Logger configuration. *)
-type config = {
-  min_level : level;
-  format : [`Json | `Text];
-  output : out_channel;
-}
+type config =
+  { min_level : level
+  ; format : [ `Json | `Text ]
+  ; output : out_channel
+  }
 
 (** {1 Level Conversion} *)
 
@@ -50,12 +55,12 @@ val shutdown : unit -> unit
 
 (** [configure ?min_level ?format ?output ()] updates the logger configuration.
     Only specified fields are changed; others retain current values. *)
-val configure :
-  ?min_level:level ->
-  ?format:[`Json | `Text] ->
-  ?output:out_channel ->
-  unit ->
-  unit
+val configure
+  :  ?min_level:level
+  -> ?format:[ `Json | `Text ]
+  -> ?output:out_channel
+  -> unit
+  -> unit
 
 (** {1 Logging Functions} *)
 
@@ -65,31 +70,35 @@ val configure :
 val emit : level -> string -> (string * Yojson.Safe.t) list -> string option -> unit
 
 (** [debug ?ctx ?trace_id fmt ...] logs at Debug level. *)
-val debug :
-  ?ctx:(string * Yojson.Safe.t) list ->
-  ?trace_id:string ->
-  ('a, unit, string, unit) format4 -> 'a
+val debug
+  :  ?ctx:(string * Yojson.Safe.t) list
+  -> ?trace_id:string
+  -> ('a, unit, string, unit) format4
+  -> 'a
 
 (** [info ?ctx ?trace_id fmt ...] logs at Info level. *)
-val info :
-  ?ctx:(string * Yojson.Safe.t) list ->
-  ?trace_id:string ->
-  ('a, unit, string, unit) format4 -> 'a
+val info
+  :  ?ctx:(string * Yojson.Safe.t) list
+  -> ?trace_id:string
+  -> ('a, unit, string, unit) format4
+  -> 'a
 
 (** [warn ?ctx ?trace_id fmt ...] logs at Warn level. *)
-val warn :
-  ?ctx:(string * Yojson.Safe.t) list ->
-  ?trace_id:string ->
-  ('a, unit, string, unit) format4 -> 'a
+val warn
+  :  ?ctx:(string * Yojson.Safe.t) list
+  -> ?trace_id:string
+  -> ('a, unit, string, unit) format4
+  -> 'a
 
 (** [error ?ctx ?trace_id fmt ...] logs at Error level. *)
-val error :
-  ?ctx:(string * Yojson.Safe.t) list ->
-  ?trace_id:string ->
-  ('a, unit, string, unit) format4 -> 'a
+val error
+  :  ?ctx:(string * Yojson.Safe.t) list
+  -> ?trace_id:string
+  -> ('a, unit, string, unit) format4
+  -> 'a
 
 (** {1 Middleware} *)
 
 (** [middleware] logs request start/completion with method, path, status, and
     duration. Adds a trace ID from the [x-request-id] header or generates one. *)
-val middleware : (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware : (Request.t -> Response.t) -> Request.t -> Response.t

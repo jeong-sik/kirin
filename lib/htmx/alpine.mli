@@ -25,11 +25,16 @@ val ref_ : 'a -> string * 'a
 val refs : string -> string
 val transition : string * string
 val transition_named : enter:'a -> leave:'a -> (string * 'a) list
-val transition_full :
-  enter:'a ->
-  enter_start:'a ->
-  enter_end:'a ->
-  leave:'a -> leave_start:'a -> leave_end:'a -> (string * 'a) list
+
+val transition_full
+  :  enter:'a
+  -> enter_start:'a
+  -> enter_end:'a
+  -> leave:'a
+  -> leave_start:'a
+  -> leave_end:'a
+  -> (string * 'a) list
+
 val transition_fade : (string * string) list
 val transition_scale : (string * string) list
 val cloak : string * string

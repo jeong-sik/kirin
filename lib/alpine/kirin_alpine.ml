@@ -5,6 +5,7 @@
 
 (** Re-export modules *)
 module Directive = Directive
+
 module Component = Component
 module Store = Store
 module Ssr = Ssr
@@ -71,6 +72,7 @@ let prop = Component.with_property
 
 (** Property types *)
 let string_prop = Component.string_prop
+
 let number_prop = Component.number_prop
 let boolean_prop = Component.boolean_prop
 let array_prop = Component.array_prop

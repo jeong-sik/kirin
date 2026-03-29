@@ -1,34 +1,41 @@
-type entry = {
-  file : string;
-  src : string;
-  is_entry : bool;
-  css : string list;
-  assets : string list;
-  dynamic_imports : string list;
-  imports : string list;
-}
+type entry =
+  { file : string
+  ; src : string
+  ; is_entry : bool
+  ; css : string list
+  ; assets : string list
+  ; dynamic_imports : string list
+  ; imports : string list
+  }
+
 type t = (string * entry) list
+
 val empty_entry : string -> entry
-val parse_entry :
-  src:string ->
-  [> `Assoc of
-       (string *
-        [> `Bool of bool
-         | `List of [> `String of string ] list
-         | `String of string ])
-       list ] ->
-  entry
-val parse :
-  [> `Assoc of
-       (string *
-        [> `Assoc of
-             (string *
-              [> `Bool of bool
-               | `List of [> `String of string ] list
-               | `String of string ])
-             list ])
-       list ] ->
-  t
+
+val parse_entry
+  :  src:string
+  -> [> `Assoc of
+          (string
+          * [> `Bool of bool | `List of [> `String of string ] list | `String of string ])
+            list
+     ]
+  -> entry
+
+val parse
+  :  [> `Assoc of
+          (string
+          * [> `Assoc of
+                 (string
+                 * [> `Bool of bool
+                   | `List of [> `String of string ] list
+                   | `String of string
+                   ])
+                   list
+            ])
+            list
+     ]
+  -> t
+
 val parse_string : string -> (t, string) result
 val load : string -> (t, string) result
 val find : t -> string -> entry option

@@ -32,16 +32,16 @@ type trace_id = string
 type trace_flags = int
 
 (** A single trace span. *)
-type span = {
-  trace_id : trace_id;
-  span_id : span_id;
-  parent_id : span_id option;
-  name : string;
-  start_time : float;
-  mutable end_time : float option;
-  mutable status : [ `Ok | `Error of string ];
-  mutable attributes : (string * string) list;
-}
+type span =
+  { trace_id : trace_id
+  ; span_id : span_id
+  ; parent_id : span_id option
+  ; name : string
+  ; start_time : float
+  ; mutable end_time : float option
+  ; mutable status : [ `Ok | `Error of string ]
+  ; mutable attributes : (string * string) list
+  }
 
 (** {1 ID Generation} *)
 
@@ -55,12 +55,7 @@ val new_span_id : unit -> span_id
 
 (** [start ~name ?trace_id ?parent_id ()] creates a new span.
     Generates a new trace_id if not provided. *)
-val start :
-  name:string ->
-  ?trace_id:trace_id ->
-  ?parent_id:span_id ->
-  unit ->
-  span
+val start : name:string -> ?trace_id:trace_id -> ?parent_id:span_id -> unit -> span
 
 (** [finish span] records the end time on the span. *)
 val finish : span -> unit

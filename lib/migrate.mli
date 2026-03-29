@@ -15,27 +15,34 @@
 (** {1 Types} *)
 
 (** Migration definition. *)
-type migration = {
-  version : int;
-  name : string;
-  up : string;
-  down : string;
-  checksum : string;
-}
+type migration =
+  { version : int
+  ; name : string
+  ; up : string
+  ; down : string
+  ; checksum : string
+  }
 
 (** Migration status. *)
-type migration_status = {
-  version : int;
-  name : string;
-  applied : bool;
-  applied_at : string option;
-  checksum_match : bool;
-}
+type migration_status =
+  { version : int
+  ; name : string
+  ; applied : bool
+  ; applied_at : string option
+  ; checksum_match : bool
+  }
 
 (** Migration result. *)
 type migration_result =
-  | Success of { applied : int; total : int }
-  | Partial of { applied : int; failed_at : int; error : string }
+  | Success of
+      { applied : int
+      ; total : int
+      }
+  | Partial of
+      { applied : int
+      ; failed_at : int
+      ; error : string
+      }
   | Error of string
 
 (** {1 Migration Creation} *)
@@ -48,8 +55,13 @@ val migration : version:int -> name:string -> up:string -> down:string -> migrat
 
 (** [migration_with_checksum ~version ~name ~up ~down ~checksum] creates a migration
     with an explicit checksum. *)
-val migration_with_checksum :
-  version:int -> name:string -> up:string -> down:string -> checksum:string -> migration
+val migration_with_checksum
+  :  version:int
+  -> name:string
+  -> up:string
+  -> down:string
+  -> checksum:string
+  -> migration
 
 (** {1 Migration Table} *)
 
@@ -81,15 +93,18 @@ val pp_result : migration_result -> string
 val ensure_table : (module Db.CONNECTION) -> string option -> (unit, Caqti_error.t) result
 
 (** [get_applied conn] returns all applied migration records. *)
-val get_applied :
-  (module Db.CONNECTION) ->
-  ((int * string * string * string option) list, Caqti_error.t) result
+val get_applied
+  :  (module Db.CONNECTION)
+  -> ((int * string * string * string option) list, Caqti_error.t) result
 
 (** [record_migration conn migration] records a migration as applied. *)
 val record_migration : (module Db.CONNECTION) -> migration -> (unit, Caqti_error.t) result
 
 (** [remove_migration_record conn version] removes a migration record. *)
-val remove_migration_record : (module Db.CONNECTION) -> int -> (unit, Caqti_error.t) result
+val remove_migration_record
+  :  (module Db.CONNECTION)
+  -> int
+  -> (unit, Caqti_error.t) result
 
 (** [apply_one conn migration] applies a single migration (up). *)
 val apply_one : (module Db.CONNECTION) -> migration -> (unit, string) result
@@ -104,17 +119,17 @@ val up : Db.pool -> migration list -> scheme:string option -> migration_result
 
 (** [down pool migrations ~scheme ?steps ()] rolls back migrations.
     @param steps Number of migrations to roll back (default: 1) *)
-val down :
-  Db.pool ->
-  migration list ->
-  scheme:string option ->
-  ?steps:int ->
-  unit ->
-  migration_result
+val down
+  :  Db.pool
+  -> migration list
+  -> scheme:string option
+  -> ?steps:int
+  -> unit
+  -> migration_result
 
 (** [status pool migrations ~scheme] returns the status of all migrations. *)
-val status :
-  Db.pool ->
-  migration list ->
-  scheme:string option ->
-  (migration_status list, string) result
+val status
+  :  Db.pool
+  -> migration list
+  -> scheme:string option
+  -> (migration_status list, string) result

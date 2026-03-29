@@ -2,4 +2,5 @@
  (name kirin_qwik)
  (public_name kirin.qwik)
  (libraries kirin yojson str unix eio eio.core)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

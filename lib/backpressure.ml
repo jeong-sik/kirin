@@ -36,10 +36,10 @@
 
 (** Backpressure strategy *)
 type strategy =
-  | Block        (** Block producer until consumer catches up *)
-  | Drop_oldest  (** Drop oldest items when buffer full *)
-  | Drop_newest  (** Drop newest items when buffer full *)
-  | Error        (** Raise exception when buffer full *)
+  | Block (** Block producer until consumer catches up *)
+  | Drop_oldest (** Drop oldest items when buffer full *)
+  | Drop_newest (** Drop newest items when buffer full *)
+  | Error (** Raise exception when buffer full *)
 
 (** Buffer overflow error *)
 exception Buffer_overflow
@@ -51,26 +51,27 @@ exception Channel_closed
 
 module Buffer = struct
   (** Bounded buffer with backpressure *)
-  type 'a t = {
-    mutable items : 'a list;
-    mutable size : int;
-    capacity : int;
-    strategy : strategy;
-    mutex : Eio.Mutex.t;
-    not_full : Eio.Condition.t;
-    not_empty : Eio.Condition.t;
-  }
+  type 'a t =
+    { mutable items : 'a list
+    ; mutable size : int
+    ; capacity : int
+    ; strategy : strategy
+    ; mutex : Eio.Mutex.t
+    ; not_full : Eio.Condition.t
+    ; not_empty : Eio.Condition.t
+    }
 
   (** Create a bounded buffer *)
-  let create ?(capacity = 1000) ?(strategy = Block) () = {
-    items = [];
-    size = 0;
-    capacity;
-    strategy;
-    mutex = Eio.Mutex.create ();
-    not_full = Eio.Condition.create ();
-    not_empty = Eio.Condition.create ();
-  }
+  let create ?(capacity = 1000) ?(strategy = Block) () =
+    { items = []
+    ; size = 0
+    ; capacity
+    ; strategy
+    ; mutex = Eio.Mutex.create ()
+    ; not_full = Eio.Condition.create ()
+    ; not_empty = Eio.Condition.create ()
+    }
+  ;;
 
   (** Check if buffer is full *)
   let is_full t = t.size >= t.capacity
@@ -87,8 +88,7 @@ module Buffer = struct
       (* Handle full buffer based on strategy *)
       while is_full t do
         match t.strategy with
-        | Block ->
-          Eio.Condition.await t.not_full t.mutex
+        | Block -> Eio.Condition.await t.not_full t.mutex
         | Drop_oldest ->
           (* Remove oldest (last in reversed list) *)
           (match List.rev t.items with
@@ -99,17 +99,15 @@ module Buffer = struct
         | Drop_newest ->
           (* Just don't add the new item *)
           ()
-        | Error ->
-          raise Buffer_overflow
+        | Error -> raise Buffer_overflow
       done;
-
       (* Add item if not using Drop_newest when full *)
-      if not (is_full t && t.strategy = Drop_newest) then begin
+      if not (is_full t && t.strategy = Drop_newest)
+      then (
         t.items <- item :: t.items;
         t.size <- t.size + 1;
-        Eio.Condition.broadcast t.not_empty
-      end
-    )
+        Eio.Condition.broadcast t.not_empty))
+  ;;
 
   (** Pop item from buffer (blocks if empty) *)
   let pop t =
@@ -117,82 +115,82 @@ module Buffer = struct
       while is_empty t do
         Eio.Condition.await t.not_empty t.mutex
       done;
-
       match List.rev t.items with
       | [] -> failwith "Buffer unexpectedly empty"
       | item :: rest ->
         t.items <- List.rev rest;
         t.size <- t.size - 1;
         Eio.Condition.broadcast t.not_full;
-        item
-    )
+        item)
+  ;;
 
   (** Try to pop without blocking *)
   let try_pop t =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-      if is_empty t then None
-      else
+      if is_empty t
+      then None
+      else (
         match List.rev t.items with
         | [] -> None
         | item :: rest ->
           t.items <- List.rev rest;
           t.size <- t.size - 1;
           Eio.Condition.broadcast t.not_full;
-          Some item
-    )
+          Some item))
+  ;;
 
   (** Clear all items *)
   let clear t =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       t.items <- [];
       t.size <- 0;
-      Eio.Condition.broadcast t.not_full
-    )
+      Eio.Condition.broadcast t.not_full)
+  ;;
 end
 
 (** {1 Async Channel} *)
 
 module Channel = struct
   (** Async channel for producer-consumer patterns *)
-  type 'a t = {
-    buffer : 'a Buffer.t;
-    mutable closed : bool;
-    mutex : Eio.Mutex.t;
-  }
+  type 'a t =
+    { buffer : 'a Buffer.t
+    ; mutable closed : bool
+    ; mutex : Eio.Mutex.t
+    }
 
   (** Create a channel with bounded capacity *)
-  let create ?(capacity = 1000) ?(strategy = Block) () = {
-    buffer = Buffer.create ~capacity ~strategy ();
-    closed = false;
-    mutex = Eio.Mutex.create ();
-  }
+  let create ?(capacity = 1000) ?(strategy = Block) () =
+    { buffer = Buffer.create ~capacity ~strategy ()
+    ; closed = false
+    ; mutex = Eio.Mutex.create ()
+    }
+  ;;
 
   (** Send a value (may block based on strategy) *)
   let send t value =
     let is_closed = Eio.Mutex.use_ro t.mutex (fun () -> t.closed) in
     if is_closed then raise Channel_closed;
     Buffer.push t.buffer value
+  ;;
 
   (** Receive a value (blocks if empty) *)
   let recv t =
     let is_closed = Eio.Mutex.use_ro t.mutex (fun () -> t.closed) in
     if is_closed && Buffer.is_empty t.buffer then raise Channel_closed;
     Buffer.pop t.buffer
+  ;;
 
   (** Try to receive without blocking *)
   let try_recv t =
     let is_closed = Eio.Mutex.use_ro t.mutex (fun () -> t.closed) in
-    if is_closed && Buffer.is_empty t.buffer then None
-    else Buffer.try_pop t.buffer
+    if is_closed && Buffer.is_empty t.buffer then None else Buffer.try_pop t.buffer
+  ;;
 
   (** Close the channel *)
-  let close t =
-    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-      t.closed <- true)
+  let close t = Eio.Mutex.use_rw ~protect:true t.mutex (fun () -> t.closed <- true)
 
   (** Check if channel is closed *)
-  let is_closed t =
-    Eio.Mutex.use_ro t.mutex (fun () -> t.closed)
+  let is_closed t = Eio.Mutex.use_ro t.mutex (fun () -> t.closed)
 
   (** Number of items in channel *)
   let length t = Buffer.length t.buffer
@@ -204,7 +202,9 @@ module Channel = struct
         let value = recv t in
         f value
       done
-    with Channel_closed -> ()
+    with
+    | Channel_closed -> ()
+  ;;
 
   (** Convert channel to a Seq *)
   let to_seq t =
@@ -212,36 +212,38 @@ module Channel = struct
       match try_recv t with
       | Some v -> Seq.Cons (v, next)
       | None ->
-        if is_closed t then Seq.Nil
-        else begin
+        if is_closed t
+        then Seq.Nil
+        else (
           (* Small delay before retry *)
           Time_compat.sleep 0.001;
-          next ()
-        end
+          next ())
     in
     next
+  ;;
 end
 
 (** {1 Rate Limiter} *)
 
 module RateLimiter = struct
   (** Token bucket rate limiter *)
-  type t = {
-    rate : float;           (** Tokens per second *)
-    burst : int;            (** Maximum burst size *)
-    mutable tokens : float;
-    mutable last_update : float;
-    mutex : Eio.Mutex.t;
-  }
+  type t =
+    { rate : float (** Tokens per second *)
+    ; burst : int (** Maximum burst size *)
+    ; mutable tokens : float
+    ; mutable last_update : float
+    ; mutex : Eio.Mutex.t
+    }
 
   (** Create a rate limiter *)
-  let create ?(rate = 100.0) ?(burst = 10) () = {
-    rate;
-    burst;
-    tokens = float_of_int burst;
-    last_update = Time_compat.now ();
-    mutex = Eio.Mutex.create ();
-  }
+  let create ?(rate = 100.0) ?(burst = 10) () =
+    { rate
+    ; burst
+    ; tokens = float_of_int burst
+    ; last_update = Time_compat.now ()
+    ; mutex = Eio.Mutex.create ()
+    }
+  ;;
 
   (** Refill tokens based on elapsed time *)
   let refill t =
@@ -250,19 +252,22 @@ module RateLimiter = struct
     let new_tokens = t.tokens +. (elapsed *. t.rate) in
     t.tokens <- min (float_of_int t.burst) new_tokens;
     t.last_update <- now
+  ;;
 
   (** Acquire a token (blocks if none available) *)
   let acquire t =
     let rec loop () =
-      let should_wait = Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-        refill t;
-        if t.tokens >= 1.0 then begin
-          t.tokens <- t.tokens -. 1.0;
-          None
-        end else
-          let wait_time = (1.0 -. t.tokens) /. t.rate in
-          Some (min wait_time 0.1)
-      ) in
+      let should_wait =
+        Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+          refill t;
+          if t.tokens >= 1.0
+          then (
+            t.tokens <- t.tokens -. 1.0;
+            None)
+          else (
+            let wait_time = (1.0 -. t.tokens) /. t.rate in
+            Some (min wait_time 0.1)))
+      in
       match should_wait with
       | None -> ()
       | Some delay ->
@@ -270,52 +275,55 @@ module RateLimiter = struct
         loop ()
     in
     loop ()
+  ;;
 
   (** Try to acquire a token without blocking *)
   let try_acquire t =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       refill t;
-      if t.tokens >= 1.0 then begin
+      if t.tokens >= 1.0
+      then (
         t.tokens <- t.tokens -. 1.0;
-        true
-      end else
-        false
-    )
+        true)
+      else false)
+  ;;
 
   (** Acquire multiple tokens *)
   let acquire_n t n =
     for _ = 1 to n do
       acquire t
     done
+  ;;
 
   (** Get current token count *)
   let available t =
     Eio.Mutex.use_ro t.mutex (fun () ->
       refill t;
-      int_of_float t.tokens
-    )
+      int_of_float t.tokens)
+  ;;
 end
 
 (** {1 Windowed Flow Control} *)
 
 module Window = struct
   (** Sliding window for flow control *)
-  type t = {
-    mutable size : int;          (** Current window size *)
-    max_size : int;              (** Maximum window size *)
-    mutable in_flight : int;     (** Items in flight *)
-    mutex : Eio.Mutex.t;
-    space_available : Eio.Condition.t;
-  }
+  type t =
+    { mutable size : int (** Current window size *)
+    ; max_size : int (** Maximum window size *)
+    ; mutable in_flight : int (** Items in flight *)
+    ; mutex : Eio.Mutex.t
+    ; space_available : Eio.Condition.t
+    }
 
   (** Create a window *)
-  let create ?(initial_size = 65536) ?(max_size = 1048576) () = {
-    size = initial_size;
-    max_size;
-    in_flight = 0;
-    mutex = Eio.Mutex.create ();
-    space_available = Eio.Condition.create ();
-  }
+  let create ?(initial_size = 65536) ?(max_size = 1048576) () =
+    { size = initial_size
+    ; max_size
+    ; in_flight = 0
+    ; mutex = Eio.Mutex.create ()
+    ; space_available = Eio.Condition.create ()
+    }
+  ;;
 
   (** Reserve space in the window (blocks if full) *)
   let reserve t amount =
@@ -323,28 +331,25 @@ module Window = struct
       while t.in_flight + amount > t.size do
         Eio.Condition.await t.space_available t.mutex
       done;
-      t.in_flight <- t.in_flight + amount
-    )
+      t.in_flight <- t.in_flight + amount)
+  ;;
 
   (** Release space in the window *)
   let release t amount =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       t.in_flight <- max 0 (t.in_flight - amount);
-      Eio.Condition.broadcast t.space_available
-    )
+      Eio.Condition.broadcast t.space_available)
+  ;;
 
   (** Update window size (e.g., from WINDOW_UPDATE frame) *)
   let update_size t new_size =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       t.size <- min new_size t.max_size;
-      Eio.Condition.broadcast t.space_available
-    )
+      Eio.Condition.broadcast t.space_available)
+  ;;
 
   (** Get available space *)
-  let available t =
-    Eio.Mutex.use_ro t.mutex (fun () ->
-      max 0 (t.size - t.in_flight)
-    )
+  let available t = Eio.Mutex.use_ro t.mutex (fun () -> max 0 (t.size - t.in_flight))
 
   (** Get current window size *)
   let current_size t = t.size
@@ -358,40 +363,37 @@ end
 (** Apply backpressure to a producer function *)
 let with_backpressure ~buffer producer =
   fun yield ->
-    producer (fun item ->
-      Buffer.push buffer item;
-      yield item
-    )
+  producer (fun item ->
+    Buffer.push buffer item;
+    yield item)
+;;
 
 (** Rate-limited producer *)
 let with_rate_limit ~limiter producer =
   fun yield ->
-    producer (fun item ->
-      RateLimiter.acquire limiter;
-      yield item
-    )
+  producer (fun item ->
+    RateLimiter.acquire limiter;
+    yield item)
+;;
 
 (** Windowed producer *)
 let with_window ~window ~item_size producer =
   fun yield ->
-    producer (fun item ->
-      Window.reserve window item_size;
-      yield item;
-      Window.release window item_size
-    )
+  producer (fun item ->
+    Window.reserve window item_size;
+    yield item;
+    Window.release window item_size)
+;;
 
 (** {1 Statistics} *)
 
-type stats = {
-  items_sent : int;
-  items_dropped : int;
-  total_wait_time : float;
-  max_buffer_size : int;
-}
+type stats =
+  { items_sent : int
+  ; items_dropped : int
+  ; total_wait_time : float
+  ; max_buffer_size : int
+  }
 
-let empty_stats = {
-  items_sent = 0;
-  items_dropped = 0;
-  total_wait_time = 0.0;
-  max_buffer_size = 0;
-}
+let empty_stats =
+  { items_sent = 0; items_dropped = 0; total_wait_time = 0.0; max_buffer_size = 0 }
+;;

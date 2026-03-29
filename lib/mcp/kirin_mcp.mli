@@ -12,10 +12,14 @@ module Server = Server
 module Client = Client
 module Governance = Governance
 module Logging = Logging
-val create_server :
-  ?name:string ->
-  ?version:string ->
-  ?log_level:Logging.log_level ->
-  ?log_handler:(Logging.log_message -> unit) -> unit -> Server.t
+
+val create_server
+  :  ?name:string
+  -> ?version:string
+  -> ?log_level:Logging.log_level
+  -> ?log_handler:(Logging.log_message -> unit)
+  -> unit
+  -> Server.t
+
 val create_client : Transport.t -> Client.t
 val version : string

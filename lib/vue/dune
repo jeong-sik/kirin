@@ -2,4 +2,5 @@
  (name kirin_vue)
  (public_name kirin.vue)
  (libraries kirin yojson str unix eio eio.core)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

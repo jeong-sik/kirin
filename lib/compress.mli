@@ -50,6 +50,4 @@ val min_compress_size : int
 (** [middleware ?min_size handler] applies response compression.
     Compresses string bodies above [min_size] bytes when the client
     supports it. Streaming and producer bodies are passed through unchanged. *)
-val middleware :
-  ?min_size:int ->
-  (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware : ?min_size:int -> (Request.t -> Response.t) -> Request.t -> Response.t

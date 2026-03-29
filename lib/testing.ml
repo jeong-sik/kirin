@@ -67,6 +67,7 @@ let run_test name f =
   | exn ->
     Printf.printf "\xe2\x9c\x97 %s: Exception: %s\n" name (Printexc.to_string exn);
     false
+;;
 
 (** Run multiple tests *)
 let run_tests tests =
@@ -75,6 +76,7 @@ let run_tests tests =
   let total = List.length results in
   Printf.printf "\n%d/%d tests passed\n" passed total;
   passed = total
+;;
 
 (** {1 Fixture Helpers} *)
 
@@ -82,34 +84,36 @@ let run_tests tests =
 let random_string ?(length = 8) () =
   let chars = "abcdefghijklmnopqrstuvwxyz0123456789" in
   String.init length (fun _ -> chars.[Random.int (String.length chars)])
+;;
 
 (** Generate random email *)
-let random_email () =
-  Printf.sprintf "%s@example.com" (random_string ())
+let random_email () = Printf.sprintf "%s@example.com" (random_string ())
 
 (** Generate random int in range *)
-let random_int ~min ~max () =
-  min + Random.int (max - min + 1)
+let random_int ~min ~max () = min + Random.int (max - min + 1)
 
 (** Temp directory for test files *)
 let with_temp_dir f =
-  let dir = Filename.concat (Filename.get_temp_dir_name ())
-    ("kirin_test_" ^ random_string ()) in
+  let dir =
+    Filename.concat (Filename.get_temp_dir_name ()) ("kirin_test_" ^ random_string ())
+  in
   Unix.mkdir dir 0o755;
-  Fun.protect ~finally:(fun () ->
-    (* Clean up temp directory *)
-    Array.iter (fun file ->
-      Sys.remove (Filename.concat dir file)
-    ) (Sys.readdir dir);
-    Unix.rmdir dir
-  ) (fun () -> f dir)
+  Fun.protect
+    ~finally:(fun () ->
+      (* Clean up temp directory *)
+      Array.iter (fun file -> Sys.remove (Filename.concat dir file)) (Sys.readdir dir);
+      Unix.rmdir dir)
+    (fun () -> f dir)
+;;
 
 (** Temp file for test *)
 let with_temp_file ?content f =
   let path = Filename.temp_file "kirin_test_" ".tmp" in
-  Fun.protect ~finally:(fun () -> Sys.remove path) (fun () ->
-    (match content with
-     | None -> ()
-     | Some c -> Fs_compat.save path c);
-    f path
-  )
+  Fun.protect
+    ~finally:(fun () -> Sys.remove path)
+    (fun () ->
+       (match content with
+        | None -> ()
+        | Some c -> Fs_compat.save path c);
+       f path)
+;;

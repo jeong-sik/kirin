@@ -17,47 +17,57 @@
 (* ============================================================ *)
 
 module FakeDb = struct
-  type connection = { id : int; created_at : float }
+  type connection =
+    { id : int
+    ; created_at : float
+    }
 
   let next_id = ref 0
 
   let connect () =
     incr next_id;
-    Kirin.Time_compat.sleep 0.01;  (* Simulate connection overhead *)
+    Kirin.Time_compat.sleep 0.01;
+    (* Simulate connection overhead *)
     { id = !next_id; created_at = Unix.gettimeofday () }
+  ;;
 
   let close _conn = ()
 
   let ping conn =
     (* Connection is valid if less than 60 seconds old *)
     Unix.gettimeofday () -. conn.created_at < 60.0
+  ;;
 
   let query conn sql =
     Printf.printf "[DB:%d] Executing: %s\n%!" conn.id sql;
-    Kirin.Time_compat.sleep 0.05;  (* Simulate query time *)
-    `Assoc [
-      ("connection_id", `Int conn.id);
-      ("query", `String sql);
-      ("rows", `Int (Random.int 100));
-    ]
+    Kirin.Time_compat.sleep 0.05;
+    (* Simulate query time *)
+    `Assoc
+      [ "connection_id", `Int conn.id
+      ; "query", `String sql
+      ; "rows", `Int (Random.int 100)
+      ]
+  ;;
 end
 
 (* ============================================================ *)
 (* 1. Connection Pool                                           *)
 (* ============================================================ *)
 
-let db_pool = Kirin.Pool.create
-  ~max_size:5
-  ~create:FakeDb.connect
-  ~destroy:FakeDb.close
-  ~validate:FakeDb.ping
-  ()
+let db_pool =
+  Kirin.Pool.create
+    ~max_size:5
+    ~create:FakeDb.connect
+    ~destroy:FakeDb.close
+    ~validate:FakeDb.ping
+    ()
+;;
 
 let db_handler _req =
   Kirin.Pool.use db_pool (fun conn ->
     let result = FakeDb.query conn "SELECT * FROM users LIMIT 10" in
-    Kirin.json result
-  )
+    Kirin.json result)
+;;
 
 (* ============================================================ *)
 (* 2. LRU Cache with TTL                                        *)
@@ -65,37 +75,44 @@ let db_handler _req =
 
 let user_cache : (string, Yojson.Safe.t) Kirin.Cache.t =
   Kirin.Cache.create ~max_size:1000 ()
+;;
 
 (* Expensive computation (simulated) *)
 let fetch_user_from_db id =
   Printf.printf "[Cache MISS] Fetching user %s from database\n%!" id;
-  Kirin.Time_compat.sleep 0.1;  (* Simulate slow DB query *)
-  `Assoc [
-    ("id", `String id);
-    ("name", `String ("User " ^ id));
-    ("email", `String (id ^ "@example.com"));
-    ("fetched_at", `Float (Unix.gettimeofday ()));
-  ]
+  Kirin.Time_compat.sleep 0.1;
+  (* Simulate slow DB query *)
+  `Assoc
+    [ "id", `String id
+    ; "name", `String ("User " ^ id)
+    ; "email", `String (id ^ "@example.com")
+    ; "fetched_at", `Float (Unix.gettimeofday ())
+    ]
+;;
 
 let cached_user_handler req =
   let id = Kirin.param "id" req in
-  let user = Kirin.Cache.get_or_set ~ttl:30.0 user_cache id (fun () ->
-    fetch_user_from_db id
-  ) in
+  let user =
+    Kirin.Cache.get_or_set ~ttl:30.0 user_cache id (fun () -> fetch_user_from_db id)
+  in
   Kirin.json user
+;;
 
 let cache_stats_handler _req =
   let stats = Kirin.Cache.stats user_cache in
-  Kirin.json (`Assoc [
-    ("hits", `Int stats.hits);
-    ("misses", `Int stats.misses);
-    ("current_size", `Int stats.current_size);
-    ("evictions", `Int stats.evictions);
-    ("hit_rate", `Float (
-      if stats.hits + stats.misses = 0 then 0.0
-      else float_of_int stats.hits /. float_of_int (stats.hits + stats.misses)
-    ));
-  ])
+  Kirin.json
+    (`Assoc
+        [ "hits", `Int stats.hits
+        ; "misses", `Int stats.misses
+        ; "current_size", `Int stats.current_size
+        ; "evictions", `Int stats.evictions
+        ; ( "hit_rate"
+          , `Float
+              (if stats.hits + stats.misses = 0
+               then 0.0
+               else float_of_int stats.hits /. float_of_int (stats.hits + stats.misses)) )
+        ])
+;;
 
 (* ============================================================ *)
 (* 3. Background Jobs                                           *)
@@ -106,42 +123,47 @@ let cache_stats_handler _req =
 (* Simulate email sending *)
 let send_email to_addr subject =
   Printf.printf "[EMAIL] Sending to %s: %s\n%!" to_addr subject;
-  Kirin.Time_compat.sleep 0.5;  (* Simulate SMTP latency *)
+  Kirin.Time_compat.sleep 0.5;
+  (* Simulate SMTP latency *)
   Printf.sprintf "Email sent to %s at %f" to_addr (Unix.gettimeofday ())
+;;
 
 let submit_job_handler job_queue req =
   let email = Kirin.query_opt "email" req |> Option.value ~default:"test@example.com" in
-  let job_id = Kirin.Jobs.submit ~priority:Kirin.Jobs.Normal job_queue (fun () ->
-    send_email email "Welcome to Kirin!"
-  ) in
-  Kirin.json (`Assoc [
-    ("job_id", `String job_id);
-    ("status", `String "queued");
-  ])
+  let job_id =
+    Kirin.Jobs.submit ~priority:Kirin.Jobs.Normal job_queue (fun () ->
+      send_email email "Welcome to Kirin!")
+  in
+  Kirin.json (`Assoc [ "job_id", `String job_id; "status", `String "queued" ])
+;;
 
 let job_status_handler job_queue req =
   let job_id = Kirin.param "id" req in
-  let status = try Kirin.Jobs.status job_queue job_id with _ -> Kirin.Jobs.Failed (Failure "Unknown job") in
-  let status_str = match status with
+  let status =
+    try Kirin.Jobs.status job_queue job_id with
+    | _ -> Kirin.Jobs.Failed (Failure "Unknown job")
+  in
+  let status_str =
+    match status with
     | Kirin.Jobs.Pending -> "pending"
     | Kirin.Jobs.Running -> "running"
     | Kirin.Jobs.Completed result -> Printf.sprintf "completed: %s" result
     | Kirin.Jobs.Failed exn -> Printf.sprintf "failed: %s" (Printexc.to_string exn)
   in
-  Kirin.json (`Assoc [
-    ("job_id", `String job_id);
-    ("status", `String status_str);
-  ])
+  Kirin.json (`Assoc [ "job_id", `String job_id; "status", `String status_str ])
+;;
 
 let job_stats_handler job_queue _req =
   let stats = Kirin.Jobs.stats job_queue in
-  Kirin.json (`Assoc [
-    ("total_submitted", `Int stats.total_submitted);
-    ("total_completed", `Int stats.total_completed);
-    ("total_failed", `Int stats.total_failed);
-    ("currently_running", `Int stats.currently_running);
-    ("queue_size", `Int stats.queue_size);
-  ])
+  Kirin.json
+    (`Assoc
+        [ "total_submitted", `Int stats.total_submitted
+        ; "total_completed", `Int stats.total_completed
+        ; "total_failed", `Int stats.total_failed
+        ; "currently_running", `Int stats.currently_running
+        ; "queue_size", `Int stats.queue_size
+        ])
+;;
 
 (* ============================================================ *)
 (* 4. Parallel Processing                                       *)
@@ -150,87 +172,91 @@ let job_stats_handler job_queue _req =
 (* CPU-intensive computation (prime factorization) *)
 let factorize n =
   let rec find_factors n d acc =
-    if d * d > n then
-      if n > 1 then n :: acc else acc
-    else if n mod d = 0 then
-      find_factors (n / d) d (d :: acc)
-    else
-      find_factors n (d + 1) acc
+    if d * d > n
+    then if n > 1 then n :: acc else acc
+    else if n mod d = 0
+    then find_factors (n / d) d (d :: acc)
+    else find_factors n (d + 1) acc
   in
   List.rev (find_factors n 2 [])
+;;
 
 let parallel_handler req =
-  let count = Kirin.query_opt "count" req
-              |> Option.map int_of_string
-              |> Option.value ~default:100 in
-
+  let count =
+    Kirin.query_opt "count" req |> Option.map int_of_string |> Option.value ~default:100
+  in
   (* Generate random numbers to factorize *)
-  let numbers = List.init count (fun i -> 10000 + i * 7) in
-
+  let numbers = List.init count (fun i -> 10000 + (i * 7)) in
   (* Measure sequential time *)
   let start_seq = Unix.gettimeofday () in
   let _ = List.map factorize numbers in
   let seq_time = Unix.gettimeofday () -. start_seq in
-
   (* Measure parallel time *)
   let start_par = Unix.gettimeofday () in
   let results = Kirin.Parallel.map ~domains:4 factorize numbers in
   let par_time = Unix.gettimeofday () -. start_par in
-
   let speedup = seq_time /. par_time in
-
-  Kirin.json (`Assoc [
-    ("count", `Int count);
-    ("sequential_ms", `Float (seq_time *. 1000.0));
-    ("parallel_ms", `Float (par_time *. 1000.0));
-    ("speedup", `Float speedup);
-    ("domains_used", `Int 4);
-    ("sample_result", `List (
-      List.map (fun n -> `Int n) (List.hd results)
-    ));
-  ])
+  Kirin.json
+    (`Assoc
+        [ "count", `Int count
+        ; "sequential_ms", `Float (seq_time *. 1000.0)
+        ; "parallel_ms", `Float (par_time *. 1000.0)
+        ; "speedup", `Float speedup
+        ; "domains_used", `Int 4
+        ; "sample_result", `List (List.map (fun n -> `Int n) (List.hd results))
+        ])
+;;
 
 (* Fork-join example *)
 let fork_join_handler _req =
-  let (a, b, c) = Kirin.Parallel.triple
-    (fun () ->
-      Kirin.Time_compat.sleep 0.1;
-      `String "Task A complete")
-    (fun () ->
-      Kirin.Time_compat.sleep 0.1;
-      `String "Task B complete")
-    (fun () ->
-      Kirin.Time_compat.sleep 0.1;
-      `String "Task C complete")
+  let a, b, c =
+    Kirin.Parallel.triple
+      (fun () ->
+         Kirin.Time_compat.sleep 0.1;
+         `String "Task A complete")
+      (fun () ->
+         Kirin.Time_compat.sleep 0.1;
+         `String "Task B complete")
+      (fun () ->
+         Kirin.Time_compat.sleep 0.1;
+         `String "Task C complete")
   in
-  Kirin.json (`Assoc [
-    ("task_a", a);
-    ("task_b", b);
-    ("task_c", c);
-    ("note", `String "All 3 tasks ran in parallel (~100ms total, not 300ms)");
-  ])
+  Kirin.json
+    (`Assoc
+        [ "task_a", a
+        ; "task_b", b
+        ; "task_c", c
+        ; "note", `String "All 3 tasks ran in parallel (~100ms total, not 300ms)"
+        ])
+;;
 
 (* ============================================================ *)
 (* 5. Backpressure                                              *)
 (* ============================================================ *)
 
-let rate_limiter = Kirin.Backpressure.RateLimiter.create
-  ~rate:5.0     (* 5 requests per second *)
-  ~burst:10    (* Allow burst of 10 *)
-  ()
+let rate_limiter =
+  Kirin.Backpressure.RateLimiter.create
+    ~rate:5.0 (* 5 requests per second *)
+    ~burst:10 (* Allow burst of 10 *)
+    ()
+;;
 
 let rate_limited_handler _req =
-  if Kirin.Backpressure.RateLimiter.try_acquire rate_limiter then
-    Kirin.json (`Assoc [
-      ("status", `String "ok");
-      ("message", `String "Request processed");
-      ("timestamp", `Float (Unix.gettimeofday ()));
-    ])
+  if Kirin.Backpressure.RateLimiter.try_acquire rate_limiter
+  then
+    Kirin.json
+      (`Assoc
+          [ "status", `String "ok"
+          ; "message", `String "Request processed"
+          ; "timestamp", `Float (Unix.gettimeofday ())
+          ])
   else
-    Kirin.Response.make ~status:`Too_many_requests
+    Kirin.Response.make
+      ~status:`Too_many_requests
       (`String {|{"error": "Rate limited. Please slow down."}|})
     |> Kirin.with_header "Content-Type" "application/json"
     |> Kirin.with_header "Retry-After" "1"
+;;
 
 (* ============================================================ *)
 (* 6. Streaming (Large Data)                                    *)
@@ -243,27 +269,30 @@ let rate_limited_handler _req =
     stream_to_response to convert to a regular response for simplicity.
 *)
 let streaming_handler req =
-  let size = Kirin.query_opt "size" req
-             |> Option.map int_of_string
-             |> Option.value ~default:100 in  (* Keep small for demo *)
-
+  let size =
+    Kirin.query_opt "size" req |> Option.map int_of_string |> Option.value ~default:100
+  in
+  (* Keep small for demo *)
   (* Create streaming response *)
-  let stream = Kirin.stream (fun yield ->
-    for i = 1 to size do
-      yield (Printf.sprintf "Line %d: %s\n" i (String.make 50 'x'))
-    done
-  ) in
-
+  let stream =
+    Kirin.stream (fun yield ->
+      for i = 1 to size do
+        yield (Printf.sprintf "Line %d: %s\n" i (String.make 50 'x'))
+      done)
+  in
   (* Convert to regular response for demo
      In production, you'd handle Stream.t directly in the server *)
   Kirin.stream_to_response stream
+;;
 
 (* ============================================================ *)
 (* Home Page (API Overview)                                     *)
 (* ============================================================ *)
 
 let home_handler _req =
-  Kirin.html ~doctype:true {|
+  Kirin.html
+    ~doctype:true
+    {|
 <!DOCTYPE html>
 <html>
 <head>
@@ -314,6 +343,7 @@ GET <a href="/fork-join">/fork-join</a></pre>
 </body>
 </html>
 |}
+;;
 
 (* ============================================================ *)
 (* Main Application                                             *)
@@ -321,42 +351,35 @@ GET <a href="/fork-join">/fork-join</a></pre>
 
 let () =
   Printf.printf "Starting Kirin High-Performance Demo on http://localhost:8000\n%!";
-
-  Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-
+  Eio_main.run
+  @@ fun env ->
+  Eio.Switch.run
+  @@ fun sw ->
   let clock = Eio.Stdenv.clock env in
-
   (* Create job queue within Eio runtime scope *)
   let job_queue = Kirin.Jobs.create ~sw ~clock ~workers:2 () in
-
   Kirin.run ~sw ~env
   @@ Kirin.logger
   @@ Kirin.timing
-  @@ Kirin.router [
-       (* Home *)
-       Kirin.get "/" home_handler;
-
-       (* Pool *)
-       Kirin.get "/db" db_handler;
-
-       (* Cache *)
-       Kirin.get "/users/:id" cached_user_handler;
-       Kirin.get "/cache/stats" cache_stats_handler;
-
-       (* Jobs — partially applied with job_queue *)
-       Kirin.post "/jobs" (submit_job_handler job_queue);
-       Kirin.get "/jobs" (submit_job_handler job_queue);
-       Kirin.get "/jobs/status/:id" (job_status_handler job_queue);
-       Kirin.get "/jobs/stats" (job_stats_handler job_queue);
-
-       (* Parallel *)
-       Kirin.get "/parallel" parallel_handler;
-       Kirin.get "/fork-join" fork_join_handler;
-
-       (* Backpressure *)
-       Kirin.get "/rate-limited" rate_limited_handler;
-
-       (* Streaming *)
-       Kirin.get "/stream" streaming_handler;
-     ]
+  @@ Kirin.router
+       [ (* Home *)
+         Kirin.get "/" home_handler
+       ; (* Pool *)
+         Kirin.get "/db" db_handler
+       ; (* Cache *)
+         Kirin.get "/users/:id" cached_user_handler
+       ; Kirin.get "/cache/stats" cache_stats_handler
+       ; (* Jobs — partially applied with job_queue *)
+         Kirin.post "/jobs" (submit_job_handler job_queue)
+       ; Kirin.get "/jobs" (submit_job_handler job_queue)
+       ; Kirin.get "/jobs/status/:id" (job_status_handler job_queue)
+       ; Kirin.get "/jobs/stats" (job_stats_handler job_queue)
+       ; (* Parallel *)
+         Kirin.get "/parallel" parallel_handler
+       ; Kirin.get "/fork-join" fork_join_handler
+       ; (* Backpressure *)
+         Kirin.get "/rate-limited" rate_limited_handler
+       ; (* Streaming *)
+         Kirin.get "/stream" streaming_handler
+       ]
+;;

@@ -15,11 +15,11 @@ type yielder = string -> unit
 type producer = yielder -> unit
 
 (** Progress callback for file operations. *)
-type progress_callback = {
-  on_progress : bytes_sent:int -> total_bytes:int option -> unit;
-  on_complete : unit -> unit;
-  on_error : exn -> unit;
-}
+type progress_callback =
+  { on_progress : bytes_sent:int -> total_bytes:int option -> unit
+  ; on_complete : unit -> unit
+  ; on_error : exn -> unit
+  }
 
 (** {1 MIME Types} *)
 
@@ -41,36 +41,28 @@ val max_chunk_size : int
 
 (** [response ?status ?headers producer] creates a streaming response
     from a producer function. *)
-val response :
-  ?status:Http.Status.t ->
-  ?headers:Http.Header.t ->
-  producer ->
-  Response.t
+val response : ?status:Http.Status.t -> ?headers:Http.Header.t -> producer -> Response.t
 
 (** [flow_response ?status ?headers writer] creates a streaming response
     from an Eio flow writer. *)
-val flow_response :
-  ?status:Http.Status.t ->
-  ?headers:Http.Header.t ->
-  ('a -> unit) ->
-  Response.t
+val flow_response
+  :  ?status:Http.Status.t
+  -> ?headers:Http.Header.t
+  -> ('a -> unit)
+  -> Response.t
 
 (** [file_response ?filename ?content_type ?chunk_size path] creates a
     file download response with streaming and Content-Disposition header. *)
-val file_response :
-  ?filename:string ->
-  ?content_type:string ->
-  ?chunk_size:int ->
-  string ->
-  Response.t
+val file_response
+  :  ?filename:string
+  -> ?content_type:string
+  -> ?chunk_size:int
+  -> string
+  -> Response.t
 
 (** [file_inline ?content_type ?chunk_size path] creates an inline file
     response (displayed in browser, not downloaded). *)
-val file_inline :
-  ?content_type:string ->
-  ?chunk_size:int ->
-  string ->
-  Response.t
+val file_inline : ?content_type:string -> ?chunk_size:int -> string -> Response.t
 
 (** {1 Chunked Encoding} *)
 
@@ -93,33 +85,28 @@ val read_chunks : request:Request.t -> chunk_size:int -> (string -> unit) -> uni
 
 (** [read_with_progress ~request ~chunk_size ~progress handler] reads chunks
     with progress tracking. *)
-val read_with_progress :
-  request:Request.t ->
-  chunk_size:int ->
-  progress:progress_callback ->
-  (string -> unit) ->
-  unit
+val read_with_progress
+  :  request:Request.t
+  -> chunk_size:int
+  -> progress:progress_callback
+  -> (string -> unit)
+  -> unit
 
 (** {1 File Upload Handling} *)
 
 (** [save_upload ~request ~dest_path ?chunk_size ()] saves the request body
     to a file. Returns the number of bytes written. *)
-val save_upload :
-  request:Request.t ->
-  dest_path:string ->
-  ?chunk_size:int ->
-  unit ->
-  int
+val save_upload : request:Request.t -> dest_path:string -> ?chunk_size:int -> unit -> int
 
 (** [save_upload_with_progress ~request ~dest_path ?chunk_size ~progress ()]
     saves with progress tracking. Returns the number of bytes written. *)
-val save_upload_with_progress :
-  request:Request.t ->
-  dest_path:string ->
-  ?chunk_size:int ->
-  progress:progress_callback ->
-  unit ->
-  int
+val save_upload_with_progress
+  :  request:Request.t
+  -> dest_path:string
+  -> ?chunk_size:int
+  -> progress:progress_callback
+  -> unit
+  -> int
 
 (** {1 Utilities} *)
 

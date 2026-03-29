@@ -1,8 +1,9 @@
-type t = {
-  status : Http.Status.t;
-  headers : (string * string) list;
-  body : string;
-}
+type t =
+  { status : Http.Status.t
+  ; headers : (string * string) list
+  ; body : string
+  }
+
 val status : t -> Http.Status.t
 val status_code : t -> int
 val header : string -> t -> string option

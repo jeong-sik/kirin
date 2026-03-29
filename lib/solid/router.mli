@@ -1,19 +1,26 @@
-type route = {
-  path : string;
-  component : string;
-  children : route list;
-  data : string option;
-  preload : bool;
-}
-type match_result = {
-  route : route;
-  params : (string * string) list;
-  search : (string * string) list;
-}
-val route :
-  path:string ->
-  component:string ->
-  ?data:string -> ?preload:bool -> ?children:route list -> unit -> route
+type route =
+  { path : string
+  ; component : string
+  ; children : route list
+  ; data : string option
+  ; preload : bool
+  }
+
+type match_result =
+  { route : route
+  ; params : (string * string) list
+  ; search : (string * string) list
+  }
+
+val route
+  :  path:string
+  -> component:string
+  -> ?data:string
+  -> ?preload:bool
+  -> ?children:route list
+  -> unit
+  -> route
+
 val index : component:string -> ?data:string -> unit -> route
 val catch_all : component:string -> ?data:string -> unit -> route
 val layout : component:string -> ?children:route list -> unit -> route
@@ -28,11 +35,14 @@ val routes_to_config : route list -> string
 val discover_routes : base_path:string -> string -> route list
 val preload_link : route -> string
 val preload_links : route -> string list
+
 type 'a loader_result =
-    Data of 'a
+  | Data of 'a
   | Redirect of string * int
   | NotFound
   | ServerError of string
-val serialize_loader_result :
-  ('a -> ([> `Int of int | `String of string ] as 'b)) ->
-  'a loader_result -> [> `Assoc of (string * 'b) list ]
+
+val serialize_loader_result
+  :  ('a -> ([> `Int of int | `String of string ] as 'b))
+  -> 'a loader_result
+  -> [> `Assoc of (string * 'b) list ]

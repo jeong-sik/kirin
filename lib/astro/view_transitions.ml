@@ -18,29 +18,24 @@ type direction =
   | Backward
 
 (** Transition element *)
-type element = {
-  name: string;
-  animation: animation;
-  persist: bool;
-}
+type element =
+  { name : string
+  ; animation : animation
+  ; persist : bool
+  }
 
 (** View transition configuration *)
-type config = {
-  enabled: bool;
-  fallback: bool;  (* Use fallback for unsupported browsers *)
-  animation: animation;
-  elements: element list;
-}
+type config =
+  { enabled : bool
+  ; fallback : bool (* Use fallback for unsupported browsers *)
+  ; animation : animation
+  ; elements : element list
+  }
 
 (** {1 Configuration} *)
 
 (** Default configuration *)
-let default_config = {
-  enabled = true;
-  fallback = true;
-  animation = Fade;
-  elements = [];
-}
+let default_config = { enabled = true; fallback = true; animation = Fade; elements = [] }
 
 (** Enable view transitions *)
 let enable config = { config with enabled = true }
@@ -57,19 +52,13 @@ let with_animation animation config = { config with animation }
 (** {1 Element Transitions} *)
 
 (** Create transition element *)
-let element ~name ?(animation=Fade) ?(persist=false) () = {
-  name;
-  animation;
-  persist;
-}
+let element ~name ?(animation = Fade) ?(persist = false) () = { name; animation; persist }
 
 (** Add element to config *)
-let add_element elem config =
-  { config with elements = elem :: config.elements }
+let add_element elem config = { config with elements = elem :: config.elements }
 
 (** Persist element across navigations *)
-let persist name =
-  element ~name ~persist:true ()
+let persist name = element ~name ~persist:true ()
 
 (** {1 Animation Helpers} *)
 
@@ -80,6 +69,7 @@ let animation_to_string = function
   | None_ -> "none"
   | Initial -> "initial"
   | Custom name -> name
+;;
 
 (** Animation from string *)
 let animation_of_string = function
@@ -88,38 +78,40 @@ let animation_of_string = function
   | "none" -> None_
   | "initial" -> Initial
   | name -> Custom name
+;;
 
 (** {1 HTML Attributes} *)
 
 (** Generate transition:name attribute *)
-let transition_name name =
-  Printf.sprintf {|transition:name="%s"|} name
+let transition_name name = Printf.sprintf {|transition:name="%s"|} name
 
 (** Generate transition:animate attribute *)
 let transition_animate animation =
   Printf.sprintf {|transition:animate="%s"|} (animation_to_string animation)
+;;
 
 (** Generate transition:persist attribute *)
 let transition_persist = "transition:persist"
 
 (** Generate all transition attributes *)
 let transition_attrs elem =
-  let attrs = [transition_name elem.name] in
-  let attrs = if elem.animation <> Fade then
-    transition_animate elem.animation :: attrs
-  else attrs in
-  let attrs = if elem.persist then
-    transition_persist :: attrs
-  else attrs in
+  let attrs = [ transition_name elem.name ] in
+  let attrs =
+    if elem.animation <> Fade then transition_animate elem.animation :: attrs else attrs
+  in
+  let attrs = if elem.persist then transition_persist :: attrs else attrs in
   String.concat " " (List.rev attrs)
+;;
 
 (** {1 Script Generation} *)
 
 (** Generate ViewTransitions script *)
 let generate_script config =
-  if not config.enabled then ""
+  if not config.enabled
+  then ""
   else
-  Printf.sprintf {|<script>
+    Printf.sprintf
+      {|<script>
 (function() {
   if (!document.startViewTransition) {
     %s
@@ -163,45 +155,53 @@ let generate_script config =
   });
 })();
 </script>|}
-    (if config.fallback then
-      "// Fallback: use regular navigation\nreturn;"
-    else
-      "")
+      (if config.fallback then "// Fallback: use regular navigation\nreturn;" else "")
+;;
 
 (** Generate CSS for animations *)
 let generate_css config =
-  let base = {|::view-transition-old(root),
+  let base =
+    {|::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 0.3s;
-}|} in
-
-  let element_css = List.map (fun elem ->
-    let name = elem.name in
-    let anim = animation_to_string elem.animation in
-    Printf.sprintf {|::view-transition-old(%s),
+}|}
+  in
+  let element_css =
+    List.map
+      (fun elem ->
+         let name = elem.name in
+         let anim = animation_to_string elem.animation in
+         Printf.sprintf
+           {|::view-transition-old(%s),
 ::view-transition-new(%s) {
   animation: %s 0.3s ease-in-out;
-}|} name name anim
-  ) config.elements in
-
+}|}
+           name
+           name
+           anim)
+      config.elements
+  in
   String.concat "\n\n" (base :: element_css)
+;;
 
 (** {1 Component} *)
 
 (** Generate ViewTransitions component import *)
-let component_import =
-  "import { ViewTransitions } from 'astro:transitions';"
+let component_import = "import { ViewTransitions } from 'astro:transitions';"
 
 (** Generate ViewTransitions component usage *)
-let component_usage =
-  "<ViewTransitions />"
+let component_usage = "<ViewTransitions />"
 
 (** Full head content for view transitions *)
 let head_content config =
-  if not config.enabled then ""
-  else Printf.sprintf {|%s
+  if not config.enabled
+  then ""
+  else
+    Printf.sprintf
+      {|%s
 <style>
 %s
 </style>|}
-    component_usage
-    (generate_css config)
+      component_usage
+      (generate_css config)
+;;

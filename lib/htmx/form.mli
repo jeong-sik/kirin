@@ -21,8 +21,9 @@ val maxlength : int -> string * string
 val min : int -> string * string
 val max : int -> string * string
 val step : int -> string * string
+
 type input_type =
-    Text
+  | Text
   | Password
   | Email
   | Number
@@ -40,53 +41,96 @@ type input_type =
   | Search
   | Checkbox
   | Radio
+
 val input_type_to_string : input_type -> string
-val input :
-  type_:input_type ->
-  name:string ->
-  ?id:string ->
-  ?value:string ->
-  ?placeholder:string -> ?class_:string -> (string * string) list -> string
-val text_input :
-  name:string ->
-  ?id:string ->
-  ?value:string ->
-  ?placeholder:string -> ?class_:string -> (string * string) list -> string
-val password_input :
-  name:string ->
-  ?id:string ->
-  ?placeholder:string -> ?class_:string -> (string * string) list -> string
-val email_input :
-  name:string ->
-  ?id:string ->
-  ?value:string ->
-  ?placeholder:string -> ?class_:string -> (string * string) list -> string
-val number_input :
-  name:string ->
-  ?id:string ->
-  ?value:string ->
-  ?placeholder:string -> ?class_:string -> (string * string) list -> string
+
+val input
+  :  type_:input_type
+  -> name:string
+  -> ?id:string
+  -> ?value:string
+  -> ?placeholder:string
+  -> ?class_:string
+  -> (string * string) list
+  -> string
+
+val text_input
+  :  name:string
+  -> ?id:string
+  -> ?value:string
+  -> ?placeholder:string
+  -> ?class_:string
+  -> (string * string) list
+  -> string
+
+val password_input
+  :  name:string
+  -> ?id:string
+  -> ?placeholder:string
+  -> ?class_:string
+  -> (string * string) list
+  -> string
+
+val email_input
+  :  name:string
+  -> ?id:string
+  -> ?value:string
+  -> ?placeholder:string
+  -> ?class_:string
+  -> (string * string) list
+  -> string
+
+val number_input
+  :  name:string
+  -> ?id:string
+  -> ?value:string
+  -> ?placeholder:string
+  -> ?class_:string
+  -> (string * string) list
+  -> string
+
 val hidden_input : name:string -> value:string -> string
-val textarea :
-  name:string ->
-  ?id:string ->
-  ?rows:int ->
-  ?cols:int ->
-  ?placeholder:string ->
-  ?class_:string -> ?content:string -> (string * string) list -> string
+
+val textarea
+  :  name:string
+  -> ?id:string
+  -> ?rows:int
+  -> ?cols:int
+  -> ?placeholder:string
+  -> ?class_:string
+  -> ?content:string
+  -> (string * string) list
+  -> string
+
 val option : value:string -> ?selected:bool -> string -> string
-val select :
-  name:string ->
-  ?id:string ->
-  ?class_:string -> string list -> (string * string) list -> string
+
+val select
+  :  name:string
+  -> ?id:string
+  -> ?class_:string
+  -> string list
+  -> (string * string) list
+  -> string
+
 val submit : ?class_:string -> ?disabled:bool -> string -> string
-val submit_with_loading :
-  label:string -> loading_label:string -> ?class_:string -> unit -> string
-val form :
-  action:string ->
-  ?method_:[< `Delete | `Patch | `Post | `Put > `Post ] ->
-  ?id:string ->
-  ?class_:string ->
-  ?target:string -> ?swap:string -> ?indicator:string -> string -> string
+
+val submit_with_loading
+  :  label:string
+  -> loading_label:string
+  -> ?class_:string
+  -> unit
+  -> string
+
+val form
+  :  action:string
+  -> ?method_:[< `Delete | `Patch | `Post | `Put > `Post ]
+  -> ?id:string
+  -> ?class_:string
+  -> ?target:string
+  -> ?swap:string
+  -> ?indicator:string
+  -> string
+  -> string
+
 val field : label:string -> name:string -> ?error:string -> string -> string
 val validate_on_blur : url:string -> string * string

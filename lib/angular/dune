@@ -2,4 +2,5 @@
  (name kirin_angular)
  (public_name kirin.angular)
  (libraries kirin yojson str unix)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

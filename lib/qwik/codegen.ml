@@ -7,25 +7,32 @@
 (** Generate TypeScript interface for route params *)
 let generate_param_type (route : Route_def.t) =
   let params = Route_def.extract_params route.Route_def.path in
-  if params = [] then "Record<string, never>"
-  else
-    let fields = List.map (fun (p : Route_def.param) ->
-      let ts_type = match p.Route_def.param_type with
-        | Route_def.String -> "string"
-        | Route_def.Int -> "number"
-        | Route_def.Slug -> "string[]"
-        | Route_def.Optional _ -> "string | undefined"
-      in
-      Printf.sprintf "  %s: %s;" p.Route_def.param_name ts_type
-    ) params in
-    Printf.sprintf "{\n%s\n}" (String.concat "\n" fields)
+  if params = []
+  then "Record<string, never>"
+  else (
+    let fields =
+      List.map
+        (fun (p : Route_def.param) ->
+           let ts_type =
+             match p.Route_def.param_type with
+             | Route_def.String -> "string"
+             | Route_def.Int -> "number"
+             | Route_def.Slug -> "string[]"
+             | Route_def.Optional _ -> "string | undefined"
+           in
+           Printf.sprintf "  %s: %s;" p.Route_def.param_name ts_type)
+        params
+    in
+    Printf.sprintf "{\n%s\n}" (String.concat "\n" fields))
+;;
 
 (** Generate route type definition *)
 let generate_route_type (route : Route_def.t) =
   let name = Option.value ~default:"AnonymousRoute" route.Route_def.name in
   let params = generate_param_type route in
   let render_mode = Route_def.render_mode_to_string route.Route_def.render_mode in
-  Printf.sprintf {|export interface %sParams %s
+  Printf.sprintf
+    {|export interface %sParams %s
 
 export interface %sRoute {
   path: '%s';
@@ -34,23 +41,36 @@ export interface %sRoute {
   renderMode: '%s';
   loaders: string[];
   actions: string[];
-}|} name params name route.path name name render_mode
+}|}
+    name
+    params
+    name
+    route.path
+    name
+    name
+    render_mode
+;;
 
 (** {1 Loader Type Generation} *)
 
 (** Generate loader type *)
 let generate_loader_type ~name ~return_type =
-  Printf.sprintf {|export const %s = routeLoader$<{
+  Printf.sprintf
+    {|export const %s = routeLoader$<{
   // TODO: Define return type
   %s
 }>(() => {
   // TODO: Implement loader
   return {};
-});|} name return_type
+});|}
+    name
+    return_type
+;;
 
 (** Generate action type *)
 let generate_action_type ~name ~input_type ~return_type =
-  Printf.sprintf {|export const %s = routeAction$<{
+  Printf.sprintf
+    {|export const %s = routeAction$<{
   // Input
   %s
 }, {
@@ -59,53 +79,83 @@ let generate_action_type ~name ~input_type ~return_type =
 }>((input) => {
   // TODO: Implement action
   return {};
-});|} name input_type return_type
+});|}
+    name
+    input_type
+    return_type
+;;
 
 (** {1 Component Generation} *)
 
 (** Generate component$ skeleton *)
 let generate_component ~name ~props =
-  let props_interface = if props = [] then ""
-  else
-    let fields = List.map (fun (prop_name, prop_type) ->
-      Printf.sprintf "  %s: %s;" prop_name prop_type
-    ) props in
-    Printf.sprintf "interface %sProps {\n%s\n}\n\n" name (String.concat "\n" fields)
+  let props_interface =
+    if props = []
+    then ""
+    else (
+      let fields =
+        List.map
+          (fun (prop_name, prop_type) -> Printf.sprintf "  %s: %s;" prop_name prop_type)
+          props
+      in
+      Printf.sprintf "interface %sProps {\n%s\n}\n\n" name (String.concat "\n" fields))
   in
-  Printf.sprintf {|%sexport const %s = component$<%sProps>((props) => {
+  Printf.sprintf
+    {|%sexport const %s = component$<%sProps>((props) => {
   return (
     <div>
       {/* TODO: Implement %s */}
     </div>
   );
-});|} props_interface name name name
+});|}
+    props_interface
+    name
+    name
+    name
+;;
 
 (** {1 Routes File Generation} *)
 
 (** Generate routes.ts file *)
 let generate_routes_file (routes : Route_def.t list) =
-  let route_imports = List.filter_map (fun r ->
-    match r.Route_def.name with
-    | Some name -> Some (Printf.sprintf "import { %s } from './%s';" name (String.lowercase_ascii name))
-    | None -> None
-  ) routes in
-
-  let route_configs = List.map (fun route ->
-    let path = route.Route_def.path in
-    let component = Option.value ~default:"() => null" route.Route_def.name in
-    Printf.sprintf {|  {
+  let route_imports =
+    List.filter_map
+      (fun r ->
+         match r.Route_def.name with
+         | Some name ->
+           Some
+             (Printf.sprintf
+                "import { %s } from './%s';"
+                name
+                (String.lowercase_ascii name))
+         | None -> None)
+      routes
+  in
+  let route_configs =
+    List.map
+      (fun route ->
+         let path = route.Route_def.path in
+         let component = Option.value ~default:"() => null" route.Route_def.name in
+         Printf.sprintf
+           {|  {
     path: '%s',
     component: %s,
-  }|} path component
-  ) routes in
-
-  Printf.sprintf {|// Auto-generated by Kirin Qwik Codegen
+  }|}
+           path
+           component)
+      routes
+  in
+  Printf.sprintf
+    {|// Auto-generated by Kirin Qwik Codegen
 %s
 
 export const routes = [
 %s
 ];
-|} (String.concat "\n" route_imports) (String.concat ",\n" route_configs)
+|}
+    (String.concat "\n" route_imports)
+    (String.concat ",\n" route_configs)
+;;
 
 (** {1 Entry File Generation} *)
 
@@ -126,6 +176,7 @@ export default {
   },
 };
 |}
+;;
 
 (** Generate client entry file *)
 let generate_client_entry () =
@@ -135,21 +186,26 @@ import Root from './root';
 
 render(document.getElementById('qwik-container')!, <Root />);
 |}
+;;
 
 (** {1 Full Types File Generation} *)
 
 (** Generate complete types file *)
 let generate_types_file ~routes =
-  let route_types = List.filter_map (fun r ->
-    match r.Route_def.name with
-    | Some _ -> Some (generate_route_type r)
-    | None -> None
-  ) routes in
-
+  let route_types =
+    List.filter_map
+      (fun r ->
+         match r.Route_def.name with
+         | Some _ -> Some (generate_route_type r)
+         | None -> None)
+      routes
+  in
   let route_names = List.filter_map (fun r -> r.Route_def.name) routes in
-  let route_union = String.concat " | " (List.map (fun n -> Printf.sprintf "'%s'" n) route_names) in
-
-  Printf.sprintf {|// Auto-generated by Kirin Qwik Codegen
+  let route_union =
+    String.concat " | " (List.map (fun n -> Printf.sprintf "'%s'" n) route_names)
+  in
+  Printf.sprintf
+    {|// Auto-generated by Kirin Qwik Codegen
 // Do not edit manually
 
 import { routeLoader$, routeAction$ } from '@builder.io/qwik-city';
@@ -178,16 +234,19 @@ export function route<T extends RouteName>(
 |}
     (String.concat "\n\n" route_types)
     (if route_union = "" then "string" else route_union)
+;;
 
 (** {1 QRL Generation} *)
 
 (** Generate QRL for function *)
 let generate_qrl ~chunk ~symbol ~capture =
-  let capture_str = match capture with
+  let capture_str =
+    match capture with
     | [] -> ""
     | vars -> "[" ^ String.concat "," vars ^ "]"
   in
   Printf.sprintf "%s#%s%s" chunk symbol capture_str
+;;
 
 (** {1 Utility} *)
 
@@ -197,3 +256,4 @@ let escape_ts_string s =
   |> Str.global_replace (Str.regexp "\\\\") "\\\\\\\\"
   |> Str.global_replace (Str.regexp "'") "\\'"
   |> Str.global_replace (Str.regexp "\n") "\\n"
+;;

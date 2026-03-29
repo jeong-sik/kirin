@@ -1,17 +1,19 @@
-type config = {
-  name : string;
-  renderer : string;
-  client_script : string;
-  server_script : string;
-  deps : string list;
-  dev_deps : string list;
-}
-type t = {
-  config : config;
-  enabled : bool;
-  include_patterns : string list;
-  exclude_patterns : string list;
-}
+type config =
+  { name : string
+  ; renderer : string
+  ; client_script : string
+  ; server_script : string
+  ; deps : string list
+  ; dev_deps : string list
+  }
+
+type t =
+  { config : config
+  ; enabled : bool
+  ; include_patterns : string list
+  ; exclude_patterns : string list
+  }
+
 val react : t
 val vue : t
 val svelte : t

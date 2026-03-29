@@ -13,12 +13,12 @@
 (** {1 Types} *)
 
 (** SSE event. *)
-type event = {
-  event : string option;
-  data : string;
-  id : string option;
-  retry : int option;
-}
+type event =
+  { event : string option
+  ; data : string
+  ; id : string option
+  ; retry : int option
+  }
 
 (** {1 Event Constructors} *)
 

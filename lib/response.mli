@@ -10,19 +10,22 @@ type body =
   | Producer of (string option Eio.Stream.t -> unit)
 
 (** Response type. *)
-type t = {
-  status : Http.Status.t;
-  headers : Http.Header.t;
-  body : body;
-}
+type t =
+  { status : Http.Status.t
+  ; headers : Http.Header.t
+  ; body : body
+  }
 
 (** [make ?status ?headers body] creates a response.
     [body] is a polymorphic variant: [`String s], [`Stream s], or [`Producer p]. *)
-val make :
-  ?status:Http.Status.t ->
-  ?headers:Http.Header.t ->
-  [< `String of string | `Stream of string option Eio.Stream.t | `Producer of (string option Eio.Stream.t -> unit) ] ->
-  t
+val make
+  :  ?status:Http.Status.t
+  -> ?headers:Http.Header.t
+  -> [< `String of string
+     | `Stream of string option Eio.Stream.t
+     | `Producer of string option Eio.Stream.t -> unit
+     ]
+  -> t
 
 (** [status t] returns the HTTP status. *)
 val status : t -> Http.Status.t
@@ -80,7 +83,11 @@ val bad_request : ?body:string -> unit -> t
 val server_error : ?body:string -> unit -> t
 
 (** [stream ?status ?headers s] creates a streaming response. *)
-val stream : ?status:Http.Status.t -> ?headers:(string * string) list -> string option Eio.Stream.t -> t
+val stream
+  :  ?status:Http.Status.t
+  -> ?headers:(string * string) list
+  -> string option Eio.Stream.t
+  -> t
 
 (** [htmx ?status ?target ?swap body] creates an HTMX response with optional swap headers. *)
 val htmx : ?status:Http.Status.t -> ?target:string -> ?swap:string -> string -> t

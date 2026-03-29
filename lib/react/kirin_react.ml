@@ -52,45 +52,32 @@ module Streaming = Streaming
 (** {1 Convenience Functions} *)
 
 (** Create routes for static React serving *)
-let static_routes ?config () =
-  Vite.static_routes ?config ()
+let static_routes ?config () = Vite.static_routes ?config ()
 
 (** Generate hydration shell HTML *)
-let hydrate
-    ~title
-    ?(meta = [])
-    ?(initial_data = None)
-    ~manifest
-    ~entry
-    () =
+let hydrate ~title ?(meta = []) ?(initial_data = None) ~manifest ~entry () =
   Hydrate.shell ~title ~meta ~initial_data ~manifest ~entry ()
+;;
 
 (** Generate Kirin response with hydration *)
-let hydrate_response
-    ~title
-    ?(meta = [])
-    ?(initial_data = None)
-    ~manifest
-    ~entry
-    () =
+let hydrate_response ~title ?(meta = []) ?(initial_data = None) ~manifest ~entry () =
   let html = hydrate ~title ~meta ~initial_data ~manifest ~entry () in
   Kirin.Response.html html
+;;
 
 (** Create SSR engine *)
-let create_ssr ?(config = Ssr.default_config) () =
-  Ssr.create config
+let create_ssr ?(config = Ssr.default_config) () = Ssr.create config
 
 (** Render URL with SSR *)
-let ssr ~engine ~url ?props () =
-  Ssr.render engine ~url ?props ()
+let ssr ~engine ~url ?props () = Ssr.render engine ~url ?props ()
 
 (** Create SSR handler for Kirin router *)
-let ssr_handler engine =
-  Ssr.handler engine
+let ssr_handler engine = Ssr.handler engine
 
 (** Create SSR handler with fallback *)
 let ssr_handler_with_fallback ~fallback engine =
   Ssr.handler_with_fallback ~fallback engine
+;;
 
 (** {1 Quick Start Examples}
 

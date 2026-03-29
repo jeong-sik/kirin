@@ -17,21 +17,21 @@
 type 'a entry
 
 (** Cache statistics. *)
-type stats = {
-  hits : int;
-  misses : int;
-  evictions : int;
-  expirations : int;
-  current_size : int;
-  max_size : int;
-}
+type stats =
+  { hits : int
+  ; misses : int
+  ; evictions : int
+  ; expirations : int
+  ; current_size : int
+  ; max_size : int
+  }
 
 (** Cache configuration. *)
-type config = {
-  max_size : int;
-  default_ttl : float option;
-  cleanup_interval : float;
-}
+type config =
+  { max_size : int
+  ; default_ttl : float option
+  ; cleanup_interval : float
+  }
 
 (** LRU cache keyed by ['k] with values of type ['v]. Abstract to hide internal representation. *)
 type ('k, 'v) t
@@ -47,7 +47,12 @@ val default_config : config
     @param max_size Maximum number of entries (default: 1000)
     @param default_ttl Default TTL in seconds (default: no expiration)
     @param cleanup_interval Cleanup interval in seconds (default: 60.0) *)
-val create : ?max_size:int -> ?default_ttl:float -> ?cleanup_interval:float -> unit -> ('k, 'v) t
+val create
+  :  ?max_size:int
+  -> ?default_ttl:float
+  -> ?cleanup_interval:float
+  -> unit
+  -> ('k, 'v) t
 
 (** {1 Cache Operations} *)
 
@@ -108,7 +113,14 @@ val entry_info : ('k, 'v) t -> 'k -> (float * float option * int) option
 (** String-keyed cache. *)
 module StringCache : sig
   type nonrec 'v t = (string, 'v) t
-  val create : ?max_size:int -> ?default_ttl:float -> ?cleanup_interval:float -> unit -> 'v t
+
+  val create
+    :  ?max_size:int
+    -> ?default_ttl:float
+    -> ?cleanup_interval:float
+    -> unit
+    -> 'v t
+
   val get : 'v t -> string -> 'v option
   val set : ?ttl:float -> 'v t -> string -> 'v -> unit
   val remove : 'v t -> string -> bool
@@ -121,7 +133,14 @@ end
 (** Integer-keyed cache. *)
 module IntCache : sig
   type nonrec 'v t = (int, 'v) t
-  val create : ?max_size:int -> ?default_ttl:float -> ?cleanup_interval:float -> unit -> 'v t
+
+  val create
+    :  ?max_size:int
+    -> ?default_ttl:float
+    -> ?cleanup_interval:float
+    -> unit
+    -> 'v t
+
   val get : 'v t -> int -> 'v option
   val set : ?ttl:float -> 'v t -> int -> 'v -> unit
   val remove : 'v t -> int -> bool

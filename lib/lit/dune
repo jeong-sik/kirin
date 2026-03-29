@@ -2,4 +2,5 @@
  (name kirin_lit)
  (public_name kirin.lit)
  (libraries kirin yojson str unix)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

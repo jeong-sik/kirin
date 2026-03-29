@@ -68,10 +68,18 @@ val service : string -> Service.t
 val unary : string -> Service.unary_handler -> Service.t -> Service.t
 
 (** [server_streaming method_name handler svc] adds a server streaming RPC method. *)
-val server_streaming : string -> Service.server_streaming_handler -> Service.t -> Service.t
+val server_streaming
+  :  string
+  -> Service.server_streaming_handler
+  -> Service.t
+  -> Service.t
 
 (** [client_streaming method_name handler svc] adds a client streaming RPC method. *)
-val client_streaming : string -> Service.client_streaming_handler -> Service.t -> Service.t
+val client_streaming
+  :  string
+  -> Service.client_streaming_handler
+  -> Service.t
+  -> Service.t
 
 (** [bidi_streaming method_name handler svc] adds a bidirectional streaming RPC method. *)
 val bidi_streaming : string -> Service.bidi_handler -> Service.t -> Service.t
@@ -79,14 +87,14 @@ val bidi_streaming : string -> Service.bidi_handler -> Service.t -> Service.t
 (** {1 Server Configuration} *)
 
 (** gRPC server configuration. *)
-type grpc_config = Server.config = {
-  host : string;
-  port : int;
-  codecs : Grpc_core.Codec.t list;
-  max_message_size : int;
-  default_timeout : Grpc_core.Timeout.t option;
-  tls : Grpc_eio.Tls_config.t option;
-}
+type grpc_config = Server.config =
+  { host : string
+  ; port : int
+  ; codecs : Grpc_core.Codec.t list
+  ; max_message_size : int
+  ; default_timeout : Grpc_core.Timeout.t option
+  ; tls : Grpc_eio.Tls_config.t option
+  }
 
 (** Default gRPC config (localhost:50051). *)
 val default_grpc_config : grpc_config
@@ -103,17 +111,19 @@ val with_interceptor : string Interceptor.t -> Server.t -> Server.t
 (** {1 Middleware-Interceptor Bridge} *)
 
 (** Context for bridging HTTP and gRPC. *)
-type bridge_context = {
-  method_name : string;
-  metadata : (string * string) list;
-  start_time : float;
-}
+type bridge_context =
+  { method_name : string
+  ; metadata : (string * string) list
+  ; start_time : float
+  }
 
 (** [make_interceptor name f] creates a gRPC interceptor from a name and function. *)
-val make_interceptor :
-  string ->
-  (Interceptor.context -> (Interceptor.context -> string Interceptor.response) -> string Interceptor.response) ->
-  string Interceptor.t
+val make_interceptor
+  :  string
+  -> (Interceptor.context
+      -> (Interceptor.context -> string Interceptor.response)
+      -> string Interceptor.response)
+  -> string Interceptor.t
 
 (** [logging_interceptor ()] creates a logging interceptor. *)
 val logging_interceptor : unit -> string Interceptor.t
@@ -127,24 +137,24 @@ val catch_interceptor : on_error:(exn -> int) -> unit -> string Interceptor.t
 (** {1 Unified Server} *)
 
 (** Unified server configuration. *)
-type unified_config = {
-  http_port : int;
-  grpc_port : int;
-  host : string;
-  grpc_tls : Grpc_eio.Tls_config.t option;
-}
+type unified_config =
+  { http_port : int
+  ; grpc_port : int
+  ; host : string
+  ; grpc_tls : Grpc_eio.Tls_config.t option
+  }
 
 (** Default unified config (HTTP 8000, gRPC 50051). *)
 val default_unified_config : unified_config
 
 (** [start_unified ?config ~grpc_services ~http_handler ()] starts a unified HTTP + gRPC server.
     Runs both servers concurrently using Eio fibers. *)
-val start_unified :
-  ?config:unified_config ->
-  grpc_services:Service.t list ->
-  http_handler:Router.handler ->
-  unit ->
-  unit
+val start_unified
+  :  ?config:unified_config
+  -> grpc_services:Service.t list
+  -> http_handler:Router.handler
+  -> unit
+  -> unit
 
 (** {1 gRPC Status Helpers} *)
 

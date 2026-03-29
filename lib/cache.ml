@@ -43,78 +43,76 @@
 (** {1 Types} *)
 
 (** Cache entry with metadata *)
-type 'a entry = {
-  value : 'a;
-  expires_at : float option;
-  mutable last_access : float;
-  mutable access_count : int;
-}
+type 'a entry =
+  { value : 'a
+  ; expires_at : float option
+  ; mutable last_access : float
+  ; mutable access_count : int
+  }
 
 (** Cache statistics *)
-type stats = {
-  hits : int;
-  misses : int;
-  evictions : int;
-  expirations : int;
-  current_size : int;
-  max_size : int;
-}
+type stats =
+  { hits : int
+  ; misses : int
+  ; evictions : int
+  ; expirations : int
+  ; current_size : int
+  ; max_size : int
+  }
 
 (** Cache configuration *)
-type config = {
-  max_size : int;
-  default_ttl : float option;
-  cleanup_interval : float;
-}
+type config =
+  { max_size : int
+  ; default_ttl : float option
+  ; cleanup_interval : float
+  }
 
 (** LRU Cache *)
-type ('k, 'v) t = {
-  entries : ('k, 'v entry) Hashtbl.t;
-  access_times : ('k, int) Hashtbl.t;  (* key -> monotonic access counter *)
-  mutable access_counter : int;        (* monotonically increasing counter *)
-  config : config;
-  mutable stats : stats;
-  mutex : Eio.Mutex.t;
-}
+type ('k, 'v) t =
+  { entries : ('k, 'v entry) Hashtbl.t
+  ; access_times : ('k, int) Hashtbl.t (* key -> monotonic access counter *)
+  ; mutable access_counter : int (* monotonically increasing counter *)
+  ; config : config
+  ; mutable stats : stats
+  ; mutex : Eio.Mutex.t
+  }
 
 (** {1 Configuration} *)
 
 (** Default configuration *)
-let default_config = {
-  max_size = 1000;
-  default_ttl = None;
-  cleanup_interval = 60.0;
-}
+let default_config = { max_size = 1000; default_ttl = None; cleanup_interval = 60.0 }
 
 (** {1 Helpers} *)
 
 let now () = Unix.gettimeofday ()
-
-let with_lock mutex f =
-  Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
+let with_lock mutex f = Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
 
 (** Update access counter for a key (O(1)) *)
 let touch_key cache key =
   cache.access_counter <- cache.access_counter + 1;
   Hashtbl.replace cache.access_times key cache.access_counter
+;;
 
 (** Find the least recently used key by scanning access_times (O(n), only on eviction) *)
 let find_lru_key cache =
   let min_key = ref None in
   let min_counter = ref max_int in
-  Hashtbl.iter (fun k c ->
-    if c < !min_counter then begin
-      min_counter := c;
-      min_key := Some k
-    end
-  ) cache.access_times;
+  Hashtbl.iter
+    (fun k c ->
+       if c < !min_counter
+       then (
+         min_counter := c;
+         min_key := Some k))
+    cache.access_times;
   !min_key
+;;
 
 (** Check if entry is expired *)
 let is_expired entry =
   match entry.expires_at with
   | None -> false
   | Some exp -> now () > exp
+;;
 
 (** {1 Cache Creation} *)
 
@@ -125,22 +123,17 @@ let is_expired entry =
 *)
 let create ?(max_size = 1000) ?default_ttl ?(cleanup_interval = 60.0) () =
   let config = { max_size; default_ttl; cleanup_interval } in
-  let stats = {
-    hits = 0;
-    misses = 0;
-    evictions = 0;
-    expirations = 0;
-    current_size = 0;
-    max_size;
-  } in
-  {
-    entries = Hashtbl.create max_size;
-    access_times = Hashtbl.create max_size;
-    access_counter = 0;
-    config;
-    stats;
-    mutex = Eio.Mutex.create ();
+  let stats =
+    { hits = 0; misses = 0; evictions = 0; expirations = 0; current_size = 0; max_size }
+  in
+  { entries = Hashtbl.create max_size
+  ; access_times = Hashtbl.create max_size
+  ; access_counter = 0
+  ; config
+  ; stats
+  ; mutex = Eio.Mutex.create ()
   }
+;;
 
 (** {1 Cache Operations} *)
 
@@ -159,12 +152,12 @@ let get cache key =
       (* Remove expired entry *)
       Hashtbl.remove cache.entries key;
       Hashtbl.remove cache.access_times key;
-      cache.stats <- {
-        cache.stats with
-        misses = cache.stats.misses + 1;
-        expirations = cache.stats.expirations + 1;
-        current_size = cache.stats.current_size - 1;
-      };
+      cache.stats
+      <- { cache.stats with
+           misses = cache.stats.misses + 1
+         ; expirations = cache.stats.expirations + 1
+         ; current_size = cache.stats.current_size - 1
+         };
       None
     | Some entry ->
       (* Update access time and count - O(1) *)
@@ -172,8 +165,8 @@ let get cache key =
       entry.access_count <- entry.access_count + 1;
       touch_key cache key;
       cache.stats <- { cache.stats with hits = cache.stats.hits + 1 };
-      Some entry.value
-  )
+      Some entry.value)
+;;
 
 (** Set a value in the cache.
 
@@ -182,60 +175,54 @@ let get cache key =
 let set ?ttl cache key value =
   with_lock cache.mutex (fun () ->
     let time = now () in
-    let ttl = match ttl with
+    let ttl =
+      match ttl with
       | Some t -> Some t
       | None -> cache.config.default_ttl
     in
     let expires_at = Option.map (fun t -> time +. t) ttl in
-    let entry = {
-      value;
-      expires_at;
-      last_access = time;
-      access_count = 1;
-    } in
-
+    let entry = { value; expires_at; last_access = time; access_count = 1 } in
     (* Check if key already exists *)
     let is_new = not (Hashtbl.mem cache.entries key) in
-
     (* Evict if necessary (only for new entries) *)
-    if is_new && Hashtbl.length cache.entries >= cache.config.max_size then begin
+    if is_new && Hashtbl.length cache.entries >= cache.config.max_size
+    then (
       (* Remove least recently used - O(n) scan only on eviction *)
       match find_lru_key cache with
       | None -> ()
       | Some lru_key ->
         Hashtbl.remove cache.entries lru_key;
         Hashtbl.remove cache.access_times lru_key;
-        cache.stats <- { cache.stats with
-          evictions = cache.stats.evictions + 1;
-          current_size = cache.stats.current_size - 1;
-        }
-    end;
-
+        cache.stats
+        <- { cache.stats with
+             evictions = cache.stats.evictions + 1
+           ; current_size = cache.stats.current_size - 1
+           });
     Hashtbl.replace cache.entries key entry;
     touch_key cache key;
-    if is_new then
-      cache.stats <- { cache.stats with current_size = cache.stats.current_size + 1 }
-  )
+    if is_new
+    then cache.stats <- { cache.stats with current_size = cache.stats.current_size + 1 })
+;;
 
 (** Remove a key from the cache *)
 let remove cache key =
   with_lock cache.mutex (fun () ->
-    if Hashtbl.mem cache.entries key then begin
+    if Hashtbl.mem cache.entries key
+    then (
       Hashtbl.remove cache.entries key;
       Hashtbl.remove cache.access_times key;
       cache.stats <- { cache.stats with current_size = cache.stats.current_size - 1 };
-      true
-    end else
-      false
-  )
+      true)
+    else false)
+;;
 
 (** Check if a key exists (without updating access time) *)
 let mem cache key =
   with_lock cache.mutex (fun () ->
     match Hashtbl.find_opt cache.entries key with
     | None -> false
-    | Some entry -> not (is_expired entry)
-  )
+    | Some entry -> not (is_expired entry))
+;;
 
 (** Get value or compute and cache it.
 
@@ -262,35 +249,33 @@ let get_or_set ?ttl cache key compute =
       | _ ->
         (* Either absent or expired -- store the freshly computed value. *)
         let time = now () in
-        let effective_ttl = match ttl with
+        let effective_ttl =
+          match ttl with
           | Some t -> Some t
           | None -> cache.config.default_ttl
         in
         let expires_at = Option.map (fun t -> time +. t) effective_ttl in
-        let entry = {
-          value = v;
-          expires_at;
-          last_access = time;
-          access_count = 1;
-        } in
+        let entry = { value = v; expires_at; last_access = time; access_count = 1 } in
         let is_new = not (Hashtbl.mem cache.entries key) in
-        if is_new && Hashtbl.length cache.entries >= cache.config.max_size then begin
+        if is_new && Hashtbl.length cache.entries >= cache.config.max_size
+        then (
           match find_lru_key cache with
           | None -> ()
           | Some lru_key ->
             Hashtbl.remove cache.entries lru_key;
             Hashtbl.remove cache.access_times lru_key;
-            cache.stats <- { cache.stats with
-              evictions = cache.stats.evictions + 1;
-              current_size = cache.stats.current_size - 1;
-            }
-        end;
+            cache.stats
+            <- { cache.stats with
+                 evictions = cache.stats.evictions + 1
+               ; current_size = cache.stats.current_size - 1
+               });
         Hashtbl.replace cache.entries key entry;
         touch_key cache key;
-        if is_new then
+        if is_new
+        then
           cache.stats <- { cache.stats with current_size = cache.stats.current_size + 1 };
-        v
-    )
+        v)
+;;
 
 (** {1 Bulk Operations} *)
 
@@ -299,72 +284,74 @@ let clear cache =
   with_lock cache.mutex (fun () ->
     Hashtbl.clear cache.entries;
     Hashtbl.clear cache.access_times;
-    cache.stats <- { cache.stats with current_size = 0 }
-  )
+    cache.stats <- { cache.stats with current_size = 0 })
+;;
 
 (** Remove all expired entries *)
 let cleanup cache =
   with_lock cache.mutex (fun () ->
-    let expired_keys = Hashtbl.fold (fun k entry acc ->
-      if is_expired entry then k :: acc else acc
-    ) cache.entries [] in
-    List.iter (fun k ->
-      Hashtbl.remove cache.entries k;
-      Hashtbl.remove cache.access_times k
-    ) expired_keys;
+    let expired_keys =
+      Hashtbl.fold
+        (fun k entry acc -> if is_expired entry then k :: acc else acc)
+        cache.entries
+        []
+    in
+    List.iter
+      (fun k ->
+         Hashtbl.remove cache.entries k;
+         Hashtbl.remove cache.access_times k)
+      expired_keys;
     let count = List.length expired_keys in
-    cache.stats <- {
-      cache.stats with
-      expirations = cache.stats.expirations + count;
-      current_size = cache.stats.current_size - count;
-    };
-    count
-  )
+    cache.stats
+    <- { cache.stats with
+         expirations = cache.stats.expirations + count
+       ; current_size = cache.stats.current_size - count
+       };
+    count)
+;;
 
 (** Get all keys (for debugging) *)
 let keys cache =
   with_lock cache.mutex (fun () ->
-    Hashtbl.fold (fun k _ acc -> k :: acc) cache.entries []
-  )
+    Hashtbl.fold (fun k _ acc -> k :: acc) cache.entries [])
+;;
 
 (** {1 Statistics} *)
 
 (** Get cache statistics *)
 let stats cache =
   with_lock cache.mutex (fun () ->
-    { cache.stats with current_size = Hashtbl.length cache.entries }
-  )
+    { cache.stats with current_size = Hashtbl.length cache.entries })
+;;
 
 (** Get hit rate (0.0 - 1.0) *)
 let hit_rate cache =
   let s = stats cache in
   let total = s.hits + s.misses in
-  if total = 0 then 0.0
-  else float_of_int s.hits /. float_of_int total
+  if total = 0 then 0.0 else float_of_int s.hits /. float_of_int total
+;;
 
 (** Get current size *)
-let size cache =
-  with_lock cache.mutex (fun () ->
-    Hashtbl.length cache.entries
-  )
+let size cache = with_lock cache.mutex (fun () -> Hashtbl.length cache.entries)
 
 (** {1 Iteration} *)
 
 (** Iterate over all non-expired entries *)
 let iter f cache =
   with_lock cache.mutex (fun () ->
-    Hashtbl.iter (fun k entry ->
-      if not (is_expired entry) then f k entry.value
-    ) cache.entries
-  )
+    Hashtbl.iter
+      (fun k entry -> if not (is_expired entry) then f k entry.value)
+      cache.entries)
+;;
 
 (** Fold over all non-expired entries *)
 let fold f cache init =
   with_lock cache.mutex (fun () ->
-    Hashtbl.fold (fun k entry acc ->
-      if not (is_expired entry) then f k entry.value acc else acc
-    ) cache.entries init
-  )
+    Hashtbl.fold
+      (fun k entry acc -> if not (is_expired entry) then f k entry.value acc else acc)
+      cache.entries
+      init)
+;;
 
 (** {1 Entry Metadata} *)
 
@@ -376,8 +363,8 @@ let entry_info cache key =
     | Some entry ->
       let age = now () -. entry.last_access in
       let ttl_remaining = Option.map (fun exp -> exp -. now ()) entry.expires_at in
-      Some (age, ttl_remaining, entry.access_count)
-  )
+      Some (age, ttl_remaining, entry.access_count))
+;;
 
 (** {1 Specialized Caches} *)
 
@@ -420,9 +407,9 @@ end
 *)
 let memoize ?ttl cache ~key_fn f =
   fun arg ->
-    let key = key_fn arg in
-    get_or_set ?ttl cache key (fun () -> f arg)
+  let key = key_fn arg in
+  get_or_set ?ttl cache key (fun () -> f arg)
+;;
 
 (** Create cache key from multiple parts *)
-let make_key parts =
-  String.concat ":" parts
+let make_key parts = String.concat ":" parts

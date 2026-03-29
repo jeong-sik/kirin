@@ -48,12 +48,12 @@ module Logging = Kirin_mcp.Logging
     to an MCP tool definition and handler pair.
 
     Returns [(tool, handler)] where tool is the MCP protocol tool definition. *)
-val tool_of_json_handler :
-  name:string ->
-  description:string ->
-  schema:Yojson.Safe.t ->
-  (Yojson.Safe.t -> Yojson.Safe.t) ->
-  Protocol.tool * (Yojson.Safe.t -> Yojson.Safe.t)
+val tool_of_json_handler
+  :  name:string
+  -> description:string
+  -> schema:Yojson.Safe.t
+  -> (Yojson.Safe.t -> Yojson.Safe.t)
+  -> Protocol.tool * (Yojson.Safe.t -> Yojson.Safe.t)
 
 (** {1 Streamable HTTP Helpers} *)
 
@@ -80,11 +80,7 @@ val with_session_header : Server.t -> Response.t -> Response.t
     - GET /mcp - SSE stream for server-initiated notifications
     - DELETE /mcp - Session termination
     - OPTIONS /mcp - CORS preflight *)
-val routes :
-  ?prefix:string ->
-  ctx:Server.eio_ctx ->
-  Server.t ->
-  Router.route list
+val routes : ?prefix:string -> ctx:Server.eio_ctx -> Server.t -> Router.route list
 
 (** [create_http_client ()] creates a Streamable HTTP MCP client transport. *)
 val create_http_client : unit -> Transport.t
@@ -92,58 +88,64 @@ val create_http_client : unit -> Transport.t
 (** {1 Quick Access} *)
 
 (** [create_server] creates an MCP server. Delegates to [Server.create]. *)
-val create_server : ?name:string -> ?version:string -> ?log_level:Logging.log_level -> ?log_handler:(Logging.log_message -> unit) -> unit -> Server.t
+val create_server
+  :  ?name:string
+  -> ?version:string
+  -> ?log_level:Logging.log_level
+  -> ?log_handler:(Logging.log_message -> unit)
+  -> unit
+  -> Server.t
 
 (** [add_tool] adds a tool to server (variant handler: Sync or Async).
     Delegates to [Server.add_tool]. *)
-val add_tool :
-  Server.t ->
-  name:string ->
-  description:string ->
-  schema:Yojson.Safe.t ->
-  ?annotations:Protocol.tool_annotations ->
-  ?icon:Protocol.icon ->
-  handler:Server.tool_handler ->
-  unit ->
-  unit
+val add_tool
+  :  Server.t
+  -> name:string
+  -> description:string
+  -> schema:Yojson.Safe.t
+  -> ?annotations:Protocol.tool_annotations
+  -> ?icon:Protocol.icon
+  -> handler:Server.tool_handler
+  -> unit
+  -> unit
 
 (** [add_tool_sync] adds a synchronous tool to server.
     Delegates to [Server.add_tool_sync]. *)
-val add_tool_sync :
-  Server.t ->
-  name:string ->
-  description:string ->
-  schema:Yojson.Safe.t ->
-  ?annotations:Protocol.tool_annotations ->
-  ?icon:Protocol.icon ->
-  handler:(Yojson.Safe.t -> Yojson.Safe.t) ->
-  unit ->
-  unit
+val add_tool_sync
+  :  Server.t
+  -> name:string
+  -> description:string
+  -> schema:Yojson.Safe.t
+  -> ?annotations:Protocol.tool_annotations
+  -> ?icon:Protocol.icon
+  -> handler:(Yojson.Safe.t -> Yojson.Safe.t)
+  -> unit
+  -> unit
 
 (** [add_resource] adds a resource to server.
     Delegates to [Server.add_resource]. *)
-val add_resource :
-  Server.t ->
-  uri:string ->
-  name:string ->
-  ?description:string ->
-  ?mime_type:string ->
-  ?icon:Protocol.icon ->
-  handler:Server.resource_handler ->
-  unit ->
-  unit
+val add_resource
+  :  Server.t
+  -> uri:string
+  -> name:string
+  -> ?description:string
+  -> ?mime_type:string
+  -> ?icon:Protocol.icon
+  -> handler:Server.resource_handler
+  -> unit
+  -> unit
 
 (** [add_prompt] adds a prompt to server.
     Delegates to [Server.add_prompt]. *)
-val add_prompt :
-  Server.t ->
-  name:string ->
-  ?description:string ->
-  ?arguments:Protocol.prompt_argument list ->
-  ?icon:Protocol.icon ->
-  ?handler:Server.prompt_handler ->
-  unit ->
-  unit
+val add_prompt
+  :  Server.t
+  -> name:string
+  -> ?description:string
+  -> ?arguments:Protocol.prompt_argument list
+  -> ?icon:Protocol.icon
+  -> ?handler:Server.prompt_handler
+  -> unit
+  -> unit
 
 (** Protocol version. *)
 val version : string

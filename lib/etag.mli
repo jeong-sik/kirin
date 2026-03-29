@@ -55,7 +55,7 @@ val any_match : t list -> t -> bool
 
 (** [middleware handler] adds ETag headers to 200 responses with string bodies
     and returns 304 Not Modified when the client's If-None-Match matches. *)
-val middleware : (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware : (Request.t -> Response.t) -> Request.t -> Response.t
 
 (** {1 Precondition Checks} *)
 

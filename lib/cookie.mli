@@ -9,15 +9,15 @@
 (** {1 Types} *)
 
 (** Cookie attributes for the Set-Cookie header. *)
-type attributes = {
-  max_age : int option;
-  expires : string option;
-  domain : string option;
-  path : string option;
-  secure : bool;
-  http_only : bool;
-  same_site : [ `Strict | `Lax | `None ] option;
-}
+type attributes =
+  { max_age : int option
+  ; expires : string option
+  ; domain : string option
+  ; path : string option
+  ; secure : bool
+  ; http_only : bool
+  ; same_site : [ `Strict | `Lax | `None ] option
+  }
 
 (** Default attributes: path=[/], httpOnly, sameSite=Lax. *)
 val default_attributes : attributes

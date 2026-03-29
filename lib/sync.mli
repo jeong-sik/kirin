@@ -20,31 +20,31 @@ type client_id = string
 type version = int64
 
 (** Client mutation. *)
-type mutation = {
-  id : int;
-  name : string;
-  args : Yojson.Safe.t;
-}
+type mutation =
+  { id : int
+  ; name : string
+  ; args : Yojson.Safe.t
+  }
 
 (** Push request containing client mutations. *)
-type push_request = {
-  client_id : client_id;
-  mutations : mutation list;
-}
+type push_request =
+  { client_id : client_id
+  ; mutations : mutation list
+  }
 
 (** Sync patch operation. *)
-type patch = {
-  op : [`Put | `Del | `Clear];
-  key : string;
-  value : Yojson.Safe.t option;
-}
+type patch =
+  { op : [ `Put | `Del | `Clear ]
+  ; key : string
+  ; value : Yojson.Safe.t option
+  }
 
 (** Pull response with delta updates. *)
-type pull_response = {
-  cookie : version;
-  patch : patch list;
-  last_mutation_id : int;
-}
+type pull_response =
+  { cookie : version
+  ; patch : patch list
+  ; last_mutation_id : int
+  }
 
 (** {1 Pub/Sub for Poke} *)
 

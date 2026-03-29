@@ -5,6 +5,7 @@
 
 (** Re-export modules *)
 module Element = Element
+
 module Template = Template
 module Shadow_dom = Shadow_dom
 module Ssr = Ssr
@@ -14,9 +15,11 @@ module Ssr = Ssr
 (** Create a simple custom element *)
 let element ~tag_name ~class_name ?(props = []) ?(styles = []) template =
   Element.create ~tag_name ~class_name ~properties:props ~styles template
+;;
 
 (** Create a property *)
 let prop = Element.string_prop
+
 let number = Element.number_prop
 let boolean = Element.boolean_prop
 let object_ = Element.object_prop
@@ -28,6 +31,7 @@ let state = Element.state_prop
 (** Create shadow root with styles *)
 let shadow ?(mode = Shadow_dom.Open) ?(styles = []) content =
   Shadow_dom.create ~mode ~styles content
+;;
 
 (** Create declarative shadow DOM HTML *)
 let declarative_shadow = Shadow_dom.to_declarative_shadow_dom
@@ -42,6 +46,7 @@ let with_polyfill = Shadow_dom.with_polyfill
 
 (** Create template from parts *)
 let template = Template.create
+
 let text = Template.text
 let property = Template.prop
 let computed = Template.computed
@@ -68,8 +73,7 @@ let cache = Template.cache
 (** {1 SSR Engine} *)
 
 (** Create SSR engine with default config *)
-let create_ssr ?(config = Ssr.default_config) () =
-  Ssr.create config
+let create_ssr ?(config = Ssr.default_config) () = Ssr.create config
 
 (** Render component to HTML *)
 let ssr = Ssr.render

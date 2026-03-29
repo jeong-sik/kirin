@@ -13,51 +13,54 @@ type state =
   | Stopped
 
 (** Worker handle *)
-type t = {
-  mutable pid: int option;
-  mutable state: state;
-  request_count: int Atomic.t;
-  mutable last_health_check: float;
-  mutable stdin: out_channel option;
-  mutable stdout: in_channel option;
-  bundle: string;
-  max_requests: int;
-  timeout: float;
-}
+type t =
+  { mutable pid : int option
+  ; mutable state : state
+  ; request_count : int Atomic.t
+  ; mutable last_health_check : float
+  ; mutable stdin : out_channel option
+  ; mutable stdout : in_channel option
+  ; bundle : string
+  ; max_requests : int
+  ; timeout : float
+  }
 
 (** {1 Worker Creation} *)
 
 (** Create worker *)
-let create ~bundle ?(max_requests = 5000) ?(timeout = 10.0) () = {
-  pid = None;
-  state = Stopped;
-  request_count = Atomic.make 0;
-  last_health_check = 0.0;
-  stdin = None;
-  stdout = None;
-  bundle;
-  max_requests;
-  timeout;
-}
+let create ~bundle ?(max_requests = 5000) ?(timeout = 10.0) () =
+  { pid = None
+  ; state = Stopped
+  ; request_count = Atomic.make 0
+  ; last_health_check = 0.0
+  ; stdin = None
+  ; stdout = None
+  ; bundle
+  ; max_requests
+  ; timeout
+  }
+;;
 
 (** Start worker subprocess *)
 let start worker =
-  if worker.state <> Stopped then
-    Error "Worker already running"
-  else begin
+  if worker.state <> Stopped
+  then Error "Worker already running"
+  else (
     worker.state <- Starting;
     try
-      let (stdout_read, stdout_write) = Unix.pipe () in
-      let (stdin_read, stdin_write) = Unix.pipe () in
-
+      let stdout_read, stdout_write = Unix.pipe () in
+      let stdin_read, stdin_write = Unix.pipe () in
       (* Fork and exec node process *)
-      let pid = Unix.create_process "node"
-        [|"node"; "--expose-gc"; worker.bundle|]
-        stdin_read stdout_write Unix.stderr in
-
+      let pid =
+        Unix.create_process
+          "node"
+          [| "node"; "--expose-gc"; worker.bundle |]
+          stdin_read
+          stdout_write
+          Unix.stderr
+      in
       Unix.close stdout_write;
       Unix.close stdin_read;
-
       worker.pid <- Some pid;
       worker.stdin <- Some (Unix.out_channel_of_descr stdin_write);
       worker.stdout <- Some (Unix.in_channel_of_descr stdout_read);
@@ -65,10 +68,11 @@ let start worker =
       Atomic.set worker.request_count 0;
       worker.last_health_check <- Unix.time ();
       Ok ()
-    with Unix.Unix_error (code, fn, arg) ->
+    with
+    | Unix.Unix_error (code, fn, arg) ->
       worker.state <- Stopped;
-      Error (Printf.sprintf "%s(%s): %s" fn arg (Unix.error_message code))
-  end
+      Error (Printf.sprintf "%s(%s): %s" fn arg (Unix.error_message code)))
+;;
 
 (** Stop worker *)
 let stop worker =
@@ -80,18 +84,21 @@ let stop worker =
    | None -> ());
   (match worker.pid with
    | Some pid ->
-     (try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ());
+     (try Unix.kill pid Sys.sigterm with
+      | Unix.Unix_error _ -> ());
      ignore (Unix.waitpid [] pid)
    | None -> ());
   worker.pid <- None;
   worker.stdin <- None;
   worker.stdout <- None;
   worker.state <- Stopped
+;;
 
 (** Restart worker *)
 let restart worker =
   stop worker;
   start worker
+;;
 
 (** {1 Communication} *)
 
@@ -103,15 +110,11 @@ let send_request worker request =
     (try
        output_string stdin request;
        flush stdin;
-
        let response = input_line stdout in
        let count = Atomic.fetch_and_add worker.request_count 1 + 1 in
        worker.state <- Ready;
-
        (* Check if restart needed *)
-       if count >= worker.max_requests then
-         ignore (restart worker);
-
+       if count >= worker.max_requests then ignore (restart worker);
        Ok response
      with
      | Sys_error msg ->
@@ -120,23 +123,20 @@ let send_request worker request =
      | End_of_file ->
        worker.state <- Unhealthy;
        Error "worker process closed connection")
-  | _ ->
-    Error "Worker not ready"
+  | _ -> Error "Worker not ready"
+;;
 
 (** {1 Health Check} *)
 
 (** Check worker health *)
 let health_check worker =
-  let (_, request) = Protocol.encode_health_request () in
+  let _, request = Protocol.encode_health_request () in
   match send_request worker request with
   | Ok response ->
     (match Protocol.decode_health_response response with
      | Ok status ->
        worker.last_health_check <- Unix.time ();
-       if status.ok then
-         worker.state <- Ready
-       else
-         worker.state <- Unhealthy;
+       if status.ok then worker.state <- Ready else worker.state <- Unhealthy;
        Ok status
      | Error msg ->
        worker.state <- Unhealthy;
@@ -144,16 +144,18 @@ let health_check worker =
   | Error msg ->
     worker.state <- Unhealthy;
     Error msg
+;;
 
 (** {1 Rendering} *)
 
 (** Render URL to HTML *)
 let render worker ~url ?(props = `Assoc []) () =
   let req = { Protocol.url; props; meta = None } in
-  let (_, request) = Protocol.encode_render_request req in
+  let _, request = Protocol.encode_render_request req in
   match send_request worker request with
   | Ok response -> Protocol.decode_render_response response
   | Error msg -> Error msg
+;;
 
 (** {1 Status} *)
 
@@ -168,5 +170,5 @@ let is_ready worker = worker.state = Ready
 
 (** Check if worker needs restart *)
 let needs_restart worker =
-  Atomic.get worker.request_count >= worker.max_requests ||
-  worker.state = Unhealthy
+  Atomic.get worker.request_count >= worker.max_requests || worker.state = Unhealthy
+;;

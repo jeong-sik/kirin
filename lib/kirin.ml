@@ -27,6 +27,7 @@ let param name req =
   match Request.param name req with
   | Some v -> v
   | None -> failwith ("Missing parameter: " ^ name)
+;;
 
 let param_opt = Request.param
 
@@ -34,6 +35,7 @@ let query name req =
   match Request.query name req with
   | Some v -> v
   | None -> failwith ("Missing query parameter: " ^ name)
+;;
 
 let query_opt = Request.query
 let body = Request.body
@@ -92,8 +94,11 @@ let run = Server.run
 (** {1 Configuration} *)
 
 type config = Server.config
+
 let default_config = Server.default_config
+
 type cors_config = Middleware.cors_config
+
 let default_cors_config = Middleware.default_cors_config
 
 (** {1 Static Files} *)
@@ -120,10 +125,10 @@ let compress_deflate = Compress.compress_deflate
 
 let rate_limit = Ratelimit.middleware
 
-type rate_limit_config = Ratelimit.config = {
-  requests_per_second : float;
-  burst_size : int;
-}
+type rate_limit_config = Ratelimit.config =
+  { requests_per_second : float
+  ; burst_size : int
+  }
 
 let default_rate_limit_config = Ratelimit.default_config
 
@@ -131,8 +136,7 @@ let default_rate_limit_config = Ratelimit.default_config
 
 let etag = Etag.middleware
 let generate_etag = Etag.generate
-let with_etag etag resp =
-  Response.with_header "etag" (Etag.to_string etag) resp
+let with_etag etag resp = Response.with_header "etag" (Etag.to_string etag) resp
 
 (** {1 WebSocket Shortcuts} *)
 
@@ -149,7 +153,12 @@ let ws_decode = Websocket.decode_frame
 let ws_echo_handler = Websocket.echo_handler
 
 type ws_opcode = Websocket.opcode =
-  | Continuation | Text | Binary | Close | Ping | Pong
+  | Continuation
+  | Text
+  | Binary
+  | Close
+  | Ping
+  | Pong
 
 (** {1 SSE Shortcuts} *)
 
@@ -177,6 +186,7 @@ let stream_to_response = Stream.to_response
 (** {1 Template Shortcuts} *)
 
 type template_context = Template.context
+
 let template_context_empty = Template.empty_context
 let template_context = Template.context
 let template_context_of = Template.context_of
@@ -240,7 +250,13 @@ module Mcp = Mcp_adapter
 module WebRTC = Webrtc_adapter
 
 type webrtc_connection_state = Webrtc_adapter.connection_state =
-  | New | Connecting | Connected | Disconnected | Failed | Closed
+  | New
+  | Connecting
+  | Connected
+  | Disconnected
+  | Failed
+  | Closed
+
 module Sync = Sync
 module I18n = I18n
 module Validation = Validation

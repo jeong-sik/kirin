@@ -24,11 +24,11 @@ val opcode_of_int : int -> opcode option
 val int_of_opcode : opcode -> int
 
 (** WebSocket frame. *)
-type frame = {
-  fin : bool;
-  opcode : opcode;
-  payload : string;
-}
+type frame =
+  { fin : bool
+  ; opcode : opcode
+  ; payload : string
+  }
 
 (** WebSocket close status codes. *)
 type close_code =
@@ -95,12 +95,12 @@ val parse_close_payload : string -> close_code option * string
 (** {1 Handler} *)
 
 (** WebSocket connection handler callbacks. *)
-type handler = {
-  on_open : unit -> unit;
-  on_message : frame -> frame option;
-  on_close : close_code option -> string -> unit;
-  on_error : string -> unit;
-}
+type handler =
+  { on_open : unit -> unit
+  ; on_message : frame -> frame option
+  ; on_close : close_code option -> string -> unit
+  ; on_error : string -> unit
+  }
 
 (** Default handler that echoes text/binary messages and responds to pings. *)
 val echo_handler : handler
@@ -109,7 +109,9 @@ val echo_handler : handler
 
 (** [middleware ~path ~handler] creates a middleware that upgrades
     matching requests to WebSocket connections. *)
-val middleware :
-  path:string ->
-  handler:handler ->
-  (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware
+  :  path:string
+  -> handler:handler
+  -> (Request.t -> Response.t)
+  -> Request.t
+  -> Response.t

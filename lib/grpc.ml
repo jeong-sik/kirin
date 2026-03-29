@@ -85,56 +85,55 @@ end
 let service name = Service.create name
 
 (** Add a unary RPC method to a service *)
-let unary method_name handler svc =
-  Service.add_unary method_name handler svc
+let unary method_name handler svc = Service.add_unary method_name handler svc
 
 (** Add a server streaming RPC method *)
 let server_streaming method_name handler svc =
   Service.add_server_streaming method_name handler svc
+;;
 
 (** Add a client streaming RPC method *)
 let client_streaming method_name handler svc =
   Service.add_client_streaming method_name handler svc
+;;
 
 (** Add a bidirectional streaming RPC method *)
 let bidi_streaming method_name handler svc =
   Service.add_bidi_streaming method_name handler svc
+;;
 
 (** {1 Server Configuration} *)
 
 (** gRPC server configuration *)
-type grpc_config = Server.config = {
-  host : string;
-  port : int;
-  codecs : Grpc_core.Codec.t list;
-  max_message_size : int;
-  default_timeout : Grpc_core.Timeout.t option;
-  tls : Grpc_eio.Tls_config.t option;
-}
+type grpc_config = Server.config =
+  { host : string
+  ; port : int
+  ; codecs : Grpc_core.Codec.t list
+  ; max_message_size : int
+  ; default_timeout : Grpc_core.Timeout.t option
+  ; tls : Grpc_eio.Tls_config.t option
+  }
 
 (** Default gRPC config (localhost:50051) *)
 let default_grpc_config = Server.default_config
 
 (** Create a gRPC server *)
-let grpc_server ?config () =
-  Server.create ?config ()
+let grpc_server ?config () = Server.create ?config ()
 
 (** Add a service to the gRPC server *)
-let add_service svc server =
-  Server.add_service svc server
+let add_service svc server = Server.add_service svc server
 
 (** Add an interceptor to the gRPC server *)
-let with_interceptor interceptor server =
-  Server.with_interceptor interceptor server
+let with_interceptor interceptor server = Server.with_interceptor interceptor server
 
 (** {1 Middleware-Interceptor Bridge} *)
 
 (** Context for bridging HTTP and gRPC *)
-type bridge_context = {
-  method_name : string;
-  metadata : (string * string) list;
-  start_time : float;
-}
+type bridge_context =
+  { method_name : string
+  ; metadata : (string * string) list
+  ; start_time : float
+  }
 
 (** Create a gRPC interceptor from a name and function.
 
@@ -149,8 +148,7 @@ type bridge_context = {
           result)
     ]}
 *)
-let make_interceptor name f =
-  Interceptor.make ~name f
+let make_interceptor name f = Interceptor.make ~name f
 
 (** Create a logging interceptor (similar to Kirin.logger) *)
 let logging_interceptor () =
@@ -161,6 +159,7 @@ let logging_interceptor () =
     let elapsed = (Unix.gettimeofday () -. start) *. 1000.0 in
     Printf.printf "[gRPC] <-- %s (%.2fms)\n%!" ctx.Interceptor.method_ elapsed;
     result)
+;;
 
 (** Create a timing interceptor that adds timing info *)
 let timing_interceptor () =
@@ -169,37 +168,34 @@ let timing_interceptor () =
     let result = next ctx in
     let elapsed = (Unix.gettimeofday () -. start) *. 1000.0 in
     let trailers =
-      ("x-response-time-ms", Printf.sprintf "%.2f" elapsed)
-      :: result.Interceptor.trailers
+      ("x-response-time-ms", Printf.sprintf "%.2f" elapsed) :: result.Interceptor.trailers
     in
     { result with trailers })
+;;
 
 (** Create a catch interceptor for error handling *)
 let catch_interceptor ~on_error () =
   make_interceptor "kirin-catch" (fun ctx next ->
-    try next ctx
-    with
+    try next ctx with
     | Eio.Cancel.Cancelled _ as exn -> raise exn
     | exn ->
       let status = on_error exn in
-      { Interceptor.value = ""; trailers = [("grpc-status", string_of_int status)] })
+      { Interceptor.value = ""; trailers = [ "grpc-status", string_of_int status ] })
+;;
 
 (** {1 Unified Server} *)
 
 (** Unified server configuration *)
-type unified_config = {
-  http_port : int;
-  grpc_port : int;
-  host : string;
-  grpc_tls : Grpc_eio.Tls_config.t option;
-}
+type unified_config =
+  { http_port : int
+  ; grpc_port : int
+  ; host : string
+  ; grpc_tls : Grpc_eio.Tls_config.t option
+  }
 
-let default_unified_config = {
-  http_port = 8000;
-  grpc_port = 50051;
-  host = "0.0.0.0";
-  grpc_tls = None;
-}
+let default_unified_config =
+  { http_port = 8000; grpc_port = 50051; host = "0.0.0.0"; grpc_tls = None }
+;;
 
 (** Start a unified HTTP + gRPC server.
 
@@ -217,45 +213,45 @@ let default_unified_config = {
         ()
     ]}
 *)
-let start_unified
-    ?(config = default_unified_config)
-    ~grpc_services
-    ~http_handler
-    ()
-  =
-  Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-
+let start_unified ?(config = default_unified_config) ~grpc_services ~http_handler () =
+  Eio_main.run
+  @@ fun env ->
+  Eio.Switch.run
+  @@ fun sw ->
   (* Set global filesystem for Fs_compat (Eio-native file I/O) *)
   Fs_compat.set_fs (Eio.Stdenv.fs env);
-
   (* Create gRPC server *)
-  let grpc_config = {
-    Server.default_config with
-    host = config.host;
-    port = config.grpc_port;
-    tls = config.grpc_tls;
-  } in
+  let grpc_config =
+    { Server.default_config with
+      host = config.host
+    ; port = config.grpc_port
+    ; tls = config.grpc_tls
+    }
+  in
   let grpc_server =
     List.fold_left
       (fun s svc -> Server.add_service svc s)
       (Server.create ~config:grpc_config ())
       grpc_services
   in
-
   (* Start both servers concurrently *)
   Eio.Fiber.both
     (fun () ->
-       Printf.printf "[Kirin] HTTP server starting on %s:%d\n%!"
-         config.host config.http_port;
+       Printf.printf
+         "[Kirin] HTTP server starting on %s:%d\n%!"
+         config.host
+         config.http_port;
        (* Use Kirin's HTTP server - handler is already composed *)
        ignore http_handler;
        (* TODO: Integrate with Kirin.Server.start when unified server is ready *)
        ())
     (fun () ->
-       Printf.printf "[Kirin] gRPC server starting on %s:%d\n%!"
-         config.host config.grpc_port;
+       Printf.printf
+         "[Kirin] gRPC server starting on %s:%d\n%!"
+         config.host
+         config.grpc_port;
        Server.serve ~sw ~env grpc_server)
+;;
 
 (** {1 gRPC Status Helpers} *)
 
@@ -263,8 +259,7 @@ let start_unified
 let status_ok = Core.Status.{ code = OK; message = ""; details = None }
 
 (** Create a status with code and message *)
-let status ~code ~message =
-  Core.Status.{ code; message; details = None }
+let status ~code ~message = Core.Status.{ code; message; details = None }
 
 (** Common status codes *)
 module StatusCode = struct

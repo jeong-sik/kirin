@@ -15,16 +15,16 @@
 (** {1 Types} *)
 
 (** Worker process info. *)
-type worker = {
-  pid : int;
-  id : int;
-}
+type worker =
+  { pid : int
+  ; id : int
+  }
 
 (** Cluster state. *)
-type t = {
-  workers : (int, worker) Hashtbl.t;
-  master_pid : int;
-}
+type t =
+  { workers : (int, worker) Hashtbl.t
+  ; master_pid : int
+  }
 
 (** {1 Internal} *)
 

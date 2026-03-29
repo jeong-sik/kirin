@@ -1,12 +1,5 @@
 (executable
  (name bench_kirin)
- (libraries
-  kirin
-  kirin.react
-  yojson
-  unix
-  http
-  eio
-  eio.core)
+ (libraries kirin kirin.react yojson unix http eio eio.core)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

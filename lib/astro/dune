@@ -2,4 +2,5 @@
  (name kirin_astro)
  (public_name kirin.astro)
  (libraries kirin yojson str unix eio eio.core)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

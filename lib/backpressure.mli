@@ -16,10 +16,10 @@
 
 (** Backpressure strategy. *)
 type strategy =
-  | Block        (** Block producer until consumer catches up *)
-  | Drop_oldest  (** Drop oldest items when buffer full *)
-  | Drop_newest  (** Drop newest items when buffer full *)
-  | Error        (** Raise exception when buffer full *)
+  | Block (** Block producer until consumer catches up *)
+  | Drop_oldest (** Drop oldest items when buffer full *)
+  | Drop_newest (** Drop newest items when buffer full *)
+  | Error (** Raise exception when buffer full *)
 
 (** Raised when pushing to a full buffer with [Error] strategy. *)
 exception Buffer_overflow
@@ -167,17 +167,22 @@ val with_rate_limit : limiter:RateLimiter.t -> (('a -> 'b) -> 'c) -> ('a -> 'b) 
 
 (** [with_window ~window ~item_size producer] wraps a producer with windowed flow control.
     Returns a new producer that reserves/releases window space around each yield. *)
-val with_window : window:Window.t -> item_size:int -> (('a -> unit) -> 'b) -> ('a -> unit) -> 'b
+val with_window
+  :  window:Window.t
+  -> item_size:int
+  -> (('a -> unit) -> 'b)
+  -> ('a -> unit)
+  -> 'b
 
 (** {1 Statistics} *)
 
 (** Backpressure statistics. *)
-type stats = {
-  items_sent : int;
-  items_dropped : int;
-  total_wait_time : float;
-  max_buffer_size : int;
-}
+type stats =
+  { items_sent : int
+  ; items_dropped : int
+  ; total_wait_time : float
+  ; max_buffer_size : int
+  }
 
 (** Empty statistics record. *)
 val empty_stats : stats

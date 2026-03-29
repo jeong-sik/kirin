@@ -92,29 +92,33 @@ type type_info = Procedure.type_info =
 (** Create a query procedure and add to router *)
 let query ~path ?meta ~input ~output ~input_type ~output_type handler router =
   Trpc_router.query ~path ?meta ~input ~output ~input_type ~output_type handler router
+;;
 
 (** Create a mutation procedure and add to router *)
 let mutation ~path ?meta ~input ~output ~input_type ~output_type handler router =
   Trpc_router.mutation ~path ?meta ~input ~output ~input_type ~output_type handler router
+;;
 
 (** Create routes for a router *)
-let routes ?config ~ctx_factory router =
-  Handler.routes ?config ~ctx_factory router
+let routes ?config ~ctx_factory router = Handler.routes ?config ~ctx_factory router
 
 (** Generate TypeScript client *)
 let generate_client ~name router =
   let infos = Trpc_router.all_procedure_infos router in
   Codegen.generate_client ~router_name:name infos
+;;
 
 (** Generate JSON Schema *)
 let generate_schema router =
   let infos = Trpc_router.all_procedure_infos router in
   Codegen.generate_schema infos
+;;
 
 (** Generate Zod schemas *)
 let generate_zod router =
   let infos = Trpc_router.all_procedure_infos router in
   Codegen.generate_zod_schemas infos
+;;
 
 (** {1 Input Validators} *)
 

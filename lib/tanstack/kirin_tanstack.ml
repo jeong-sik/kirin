@@ -24,6 +24,7 @@ type manifest = Manifest.t
 (** Create a route definition *)
 let route ~id ~path ?params ?meta ?loader ?action ?children () =
   Route_def.create ~id ~path ?params ?meta ?loader ?action ?children ()
+;;
 
 (** {1 File Router} *)
 
@@ -39,7 +40,7 @@ let manifest_from_routes = Manifest.from_discovered_routes
 let loader_ok = Loader.ok
 
 (** Create loader redirect *)
-let loader_redirect ?(status=302) url = Loader.redirect ~status url
+let loader_redirect ?(status = 302) url = Loader.redirect ~status url
 
 (** Create loader not found *)
 let loader_not_found () = Loader.not_found ()
@@ -56,7 +57,7 @@ let action_success = Action.success
 let action_error = Action.server_error
 
 (** Create action redirect *)
-let action_redirect ?(status=302) url = Action.redirect ~status url
+let action_redirect ?(status = 302) url = Action.redirect ~status url
 
 (** Create action with validation error *)
 let validation_error = Action.validation_error
@@ -106,10 +107,10 @@ let generate_router = Codegen.generate_router_file
 
 (** Generate type-safe hooks *)
 let generate_hooks () =
-  String.concat "\n\n" [
-    Codegen.generate_use_params_hook ();
-    Codegen.generate_use_loader_data_hook ();
-  ]
+  String.concat
+    "\n\n"
+    [ Codegen.generate_use_params_hook (); Codegen.generate_use_loader_data_hook () ]
+;;
 
 (** {1 Full Setup} *)
 
@@ -119,10 +120,11 @@ let setup ~routes_dir ~ctx_factory =
   let manifest = manifest_from_routes discovered in
   let registry = create_registry () in
   let config = Handler.default_config manifest in
-  (manifest, registry, config, ctx_factory)
+  manifest, registry, config, ctx_factory
+;;
 
 (** Get all routes for Kirin app *)
 let all_routes ~manifest ~registry ~ctx_factory =
   let config = Handler.default_config manifest in
-  Handler.manifest_route manifest ::
-  Handler.routes ~config ~ctx_factory ~registry
+  Handler.manifest_route manifest :: Handler.routes ~config ~ctx_factory ~registry
+;;
