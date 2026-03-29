@@ -51,7 +51,7 @@ let test_cache_ttl () =
   let cache = C.create ~max_size:10 ~default_ttl:0.05 () in
   C.set cache "key" "value";
   check (option string) "get before expire" (Some "value") (C.get cache "key");
-  Kirin.Time_compat.sleep 0.06;
+  Kirin.Time_compat.sleep 0.15;
   check (option string) "get after expire" None (C.get cache "key")
 ;;
 
@@ -106,7 +106,7 @@ let test_cache_cleanup () =
   let cache = C.create ~max_size:10 ~default_ttl:0.03 () in
   C.set cache "a" "1";
   C.set cache "b" "2";
-  Kirin.Time_compat.sleep 0.05;
+  Kirin.Time_compat.sleep 0.15;
   let expired = C.cleanup cache in
   check int "expired count" 2 expired;
   check int "size after cleanup" 0 (C.size cache)

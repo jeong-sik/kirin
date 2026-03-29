@@ -59,7 +59,7 @@ let test_metrics_histogram_time () =
   let hist = M.histogram registry "duration" ~help:"Duration" () in
   let result =
     M.Histogram.time hist (fun () ->
-      Kirin.Time_compat.sleep 0.01;
+      Kirin.Time_compat.sleep 0.05;
       42)
   in
   check int "timed result" 42 result
