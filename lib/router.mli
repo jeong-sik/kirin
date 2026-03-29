@@ -8,17 +8,17 @@ type handler = Request.t -> Response.t
 
 (** Segment in a route pattern. *)
 type segment =
-  | Static of string   (** Literal match *)
-  | Param of string    (** [:name] capture *)
-  | Wildcard           (** [*] match anything *)
+  | Static of string (** Literal match *)
+  | Param of string (** [:name] capture *)
+  | Wildcard (** [*] match anything *)
 
 (** Route definition. *)
-type route = {
-  meth : Http.Method.t;
-  pattern : string;
-  segments : segment list;
-  handler : handler;
-}
+type route =
+  { meth : Http.Method.t
+  ; pattern : string
+  ; segments : segment list
+  ; handler : handler
+  }
 
 (** Router is a list of routes. *)
 type t = route list

@@ -33,11 +33,11 @@ module type CONNECTION = Caqti_eio.CONNECTION
 type pool = (Caqti_eio.connection, Caqti_error.t) Caqti_eio.Pool.t
 
 (** Pool configuration. *)
-type pool_config = {
-  max_size : int;
-  idle_timeout : float option;
-  connect_timeout : float option;
-}
+type pool_config =
+  { max_size : int
+  ; idle_timeout : float option
+  ; connect_timeout : float option
+  }
 
 (** Default pool configuration (max_size=10, idle=300s, connect=30s). *)
 val default_config : pool_config
@@ -46,37 +46,37 @@ val default_config : pool_config
 
 (** [with_pool ?config ~sw ~env uri f] creates a connection pool and runs [f] with it.
     The pool is drained after [f] returns. *)
-val with_pool :
-  ?config:pool_config ->
-  sw:Eio.Switch.t ->
-  env:Caqti_eio.stdenv ->
-  string ->
-  (pool -> 'a) ->
-  ('a, error) result
+val with_pool
+  :  ?config:pool_config
+  -> sw:Eio.Switch.t
+  -> env:Caqti_eio.stdenv
+  -> string
+  -> (pool -> 'a)
+  -> ('a, error) result
 
 (** [connect ~sw ~env uri] opens a single connection (without pooling). *)
-val connect :
-  sw:Eio.Switch.t ->
-  env:Caqti_eio.stdenv ->
-  string ->
-  (Caqti_eio.connection, error) result
+val connect
+  :  sw:Eio.Switch.t
+  -> env:Caqti_eio.stdenv
+  -> string
+  -> (Caqti_eio.connection, error) result
 
 (** {1 Query Execution} *)
 
 (** [use pool f] acquires a connection from the pool, applies [f], and releases it. *)
-val use :
-  pool ->
-  ((module CONNECTION) -> ('a, Caqti_error.t) result) ->
-  ('a, error) result
+val use
+  :  pool
+  -> ((module CONNECTION) -> ('a, Caqti_error.t) result)
+  -> ('a, error) result
 
 (** {1 Transaction Support} *)
 
 (** [transaction pool f] executes [f] within a transaction.
     Commits on success, rolls back on error. *)
-val transaction :
-  pool ->
-  ((module CONNECTION) -> ('a, error) result) ->
-  ('a, error) result
+val transaction
+  :  pool
+  -> ((module CONNECTION) -> ('a, error) result)
+  -> ('a, error) result
 
 (** {1 Re-exports for Convenience} *)
 
@@ -92,21 +92,33 @@ module Infix = Caqti_request.Infix
 (** {1 Query String Helpers} *)
 
 (** [exec_req sql] makes a simple exec request (no results). *)
-val exec_req : string -> (unit, unit, [`Zero]) Caqti_request.t
+val exec_req : string -> (unit, unit, [ `Zero ]) Caqti_request.t
 
 (** [find_req in_type out_type sql] makes a find request (exactly one result). *)
-val find_req : 'a Caqti_type.t -> 'b Caqti_type.t -> string -> ('a, 'b, [`One]) Caqti_request.t
+val find_req
+  :  'a Caqti_type.t
+  -> 'b Caqti_type.t
+  -> string
+  -> ('a, 'b, [ `One ]) Caqti_request.t
 
 (** [find_opt_req in_type out_type sql] makes a find_opt request (zero or one result). *)
-val find_opt_req : 'a Caqti_type.t -> 'b Caqti_type.t -> string -> ('a, 'b, [`Zero | `One]) Caqti_request.t
+val find_opt_req
+  :  'a Caqti_type.t
+  -> 'b Caqti_type.t
+  -> string
+  -> ('a, 'b, [ `Zero | `One ]) Caqti_request.t
 
 (** [collect_req in_type out_type sql] makes a collect request (multiple results). *)
-val collect_req : 'a Caqti_type.t -> 'b Caqti_type.t -> string -> ('a, 'b, [`Zero | `One | `Many]) Caqti_request.t
+val collect_req
+  :  'a Caqti_type.t
+  -> 'b Caqti_type.t
+  -> string
+  -> ('a, 'b, [ `Zero | `One | `Many ]) Caqti_request.t
 
 (** {1 Health Check Integration} *)
 
 (** Ping request (SELECT 1). *)
-val ping_req : (unit, int, [`One]) Caqti_request.t
+val ping_req : (unit, int, [ `One ]) Caqti_request.t
 
 (** [health_check pool] creates a health check function for the database pool. *)
 val health_check : pool -> Health.check

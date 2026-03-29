@@ -42,337 +42,454 @@ let schema_type_to_string = function
   | Array -> "array"
   | Object -> "object"
   | Null -> "null"
+;;
 
 let param_in_to_string = function
   | Path -> "path"
   | Query -> "query"
   | Header -> "header"
   | Cookie -> "cookie"
+;;
 
 let rec schema_to_json schema =
   match schema.ref_path with
-  | Some ref_path -> `Assoc [("$ref", `String ref_path)]
+  | Some ref_path -> `Assoc [ "$ref", `String ref_path ]
   | None ->
     let fields = [] in
-    let fields = match schema.schema_type with
+    let fields =
+      match schema.schema_type with
       | None -> fields
       | Some t -> ("type", `String (schema_type_to_string t)) :: fields
     in
-    let fields = match schema.format with
+    let fields =
+      match schema.format with
       | None -> fields
       | Some f -> ("format", `String f) :: fields
     in
-    let fields = match schema.title with
+    let fields =
+      match schema.title with
       | None -> fields
       | Some t -> ("title", `String t) :: fields
     in
-    let fields = match schema.description with
+    let fields =
+      match schema.description with
       | None -> fields
       | Some d -> ("description", `String d) :: fields
     in
-    let fields = match schema.default with
+    let fields =
+      match schema.default with
       | None -> fields
       | Some d -> ("default", d) :: fields
     in
-    let fields = match schema.enum with
+    let fields =
+      match schema.enum with
       | None -> fields
       | Some e -> ("enum", `List e) :: fields
     in
-    let fields = match schema.items with
+    let fields =
+      match schema.items with
       | None -> fields
       | Some i -> ("items", schema_to_json i) :: fields
     in
-    let fields = match schema.properties with
+    let fields =
+      match schema.properties with
       | None -> fields
       | Some props ->
-        let prop_json = `Assoc (List.map (fun (n, s) -> (n, schema_to_json s)) props) in
+        let prop_json = `Assoc (List.map (fun (n, s) -> n, schema_to_json s) props) in
         ("properties", prop_json) :: fields
     in
-    let fields = match schema.required with
+    let fields =
+      match schema.required with
       | None -> fields
       | Some r -> ("required", `List (List.map (fun s -> `String s) r)) :: fields
     in
-    let fields = match schema.minimum with
+    let fields =
+      match schema.minimum with
       | None -> fields
       | Some m -> ("minimum", `Float m) :: fields
     in
-    let fields = match schema.maximum with
+    let fields =
+      match schema.maximum with
       | None -> fields
       | Some m -> ("maximum", `Float m) :: fields
     in
-    let fields = match schema.min_length with
+    let fields =
+      match schema.min_length with
       | None -> fields
       | Some m -> ("minLength", `Int m) :: fields
     in
-    let fields = match schema.max_length with
+    let fields =
+      match schema.max_length with
       | None -> fields
       | Some m -> ("maxLength", `Int m) :: fields
     in
-    let fields = match schema.pattern with
+    let fields =
+      match schema.pattern with
       | None -> fields
       | Some p -> ("pattern", `String p) :: fields
     in
     let fields = if schema.nullable then ("nullable", `Bool true) :: fields else fields in
-    let fields = match schema.example with
+    let fields =
+      match schema.example with
       | None -> fields
       | Some e -> ("example", e) :: fields
     in
     `Assoc (List.rev fields)
+;;
 
 let parameter_to_json param =
-  let fields = [
-    ("name", `String param.name);
-    ("in", `String (param_in_to_string param.param_in));
-    ("required", `Bool param.required);
-    ("schema", schema_to_json param.schema);
-  ] in
-  let fields = match param.description with
+  let fields =
+    [ "name", `String param.name
+    ; "in", `String (param_in_to_string param.param_in)
+    ; "required", `Bool param.required
+    ; "schema", schema_to_json param.schema
+    ]
+  in
+  let fields =
+    match param.description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
-  let fields = match param.example with
+  let fields =
+    match param.example with
     | None -> fields
     | Some e -> ("example", e) :: fields
   in
-  let fields = if param.deprecated then ("deprecated", `Bool true) :: fields else fields in
+  let fields =
+    if param.deprecated then ("deprecated", `Bool true) :: fields else fields
+  in
   `Assoc fields
+;;
 
 let media_type_to_json mt =
   let fields = [] in
-  let fields = match mt.media_schema with
+  let fields =
+    match mt.media_schema with
     | None -> fields
     | Some s -> ("schema", schema_to_json s) :: fields
   in
-  let fields = match mt.media_example with
+  let fields =
+    match mt.media_example with
     | None -> fields
     | Some e -> ("example", e) :: fields
   in
-  let fields = match mt.media_examples with
+  let fields =
+    match mt.media_examples with
     | None -> fields
-    | Some ex -> ("examples", `Assoc (List.map (fun (n, v) -> (n, v)) ex)) :: fields
+    | Some ex -> ("examples", `Assoc (List.map (fun (n, v) -> n, v) ex)) :: fields
   in
   `Assoc fields
+;;
 
 let request_body_to_json rb =
-  let fields = [
-    ("content", `Assoc (List.map (fun (ct, mt) -> (ct, media_type_to_json mt)) rb.body_content));
-    ("required", `Bool rb.body_required);
-  ] in
-  let fields = match rb.body_description with
+  let fields =
+    [ ( "content"
+      , `Assoc (List.map (fun (ct, mt) -> ct, media_type_to_json mt) rb.body_content) )
+    ; "required", `Bool rb.body_required
+    ]
+  in
+  let fields =
+    match rb.body_description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
   `Assoc fields
+;;
 
 let response_to_json resp =
-  let fields = [("description", `String resp.response_description)] in
-  let fields = match resp.response_content with
+  let fields = [ "description", `String resp.response_description ] in
+  let fields =
+    match resp.response_content with
     | None -> fields
     | Some content ->
-      ("content", `Assoc (List.map (fun (ct, mt) -> (ct, media_type_to_json mt)) content)) :: fields
+      ("content", `Assoc (List.map (fun (ct, mt) -> ct, media_type_to_json mt) content))
+      :: fields
   in
   `Assoc fields
+;;
 
 let operation_to_json op =
   let fields = [] in
-  let fields = match op.summary with
+  let fields =
+    match op.summary with
     | None -> fields
     | Some s -> ("summary", `String s) :: fields
   in
-  let fields = match op.description with
+  let fields =
+    match op.description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
-  let fields = match op.operation_id with
+  let fields =
+    match op.operation_id with
     | None -> fields
     | Some id -> ("operationId", `String id) :: fields
   in
-  let fields = if op.tags = [] then fields
+  let fields =
+    if op.tags = []
+    then fields
     else ("tags", `List (List.map (fun t -> `String t) op.tags)) :: fields
   in
-  let fields = if op.parameters = [] then fields
+  let fields =
+    if op.parameters = []
+    then fields
     else ("parameters", `List (List.map parameter_to_json op.parameters)) :: fields
   in
-  let fields = match op.request_body with
+  let fields =
+    match op.request_body with
     | None -> fields
     | Some rb -> ("requestBody", request_body_to_json rb) :: fields
   in
   let fields =
-    let responses_json = `Assoc (List.map (fun (code, resp) ->
-      (string_of_int code, response_to_json resp)
-    ) op.responses) in
+    let responses_json =
+      `Assoc
+        (List.map
+           (fun (code, resp) -> string_of_int code, response_to_json resp)
+           op.responses)
+    in
     ("responses", responses_json) :: fields
   in
   let fields = if op.deprecated then ("deprecated", `Bool true) :: fields else fields in
-  let fields = match op.security with
+  let fields =
+    match op.security with
     | None -> fields
     | Some sec ->
-      let sec_json = `List (List.map (fun req ->
-        `Assoc (List.map (fun (name, scopes) ->
-          (name, `List (List.map (fun s -> `String s) scopes))
-        ) req)
-      ) sec) in
+      let sec_json =
+        `List
+          (List.map
+             (fun req ->
+                `Assoc
+                  (List.map
+                     (fun (name, scopes) ->
+                        name, `List (List.map (fun s -> `String s) scopes))
+                     req))
+             sec)
+      in
       ("security", sec_json) :: fields
   in
   `Assoc (List.rev fields)
+;;
 
 let path_item_to_json pi =
   let fields = [] in
-  let fields = match pi.path_summary with
+  let fields =
+    match pi.path_summary with
     | None -> fields
     | Some s -> ("summary", `String s) :: fields
   in
-  let fields = match pi.path_description with
+  let fields =
+    match pi.path_description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
-  let fields = match pi.get with
+  let fields =
+    match pi.get with
     | None -> fields
     | Some op -> ("get", operation_to_json op) :: fields
   in
-  let fields = match pi.post with
+  let fields =
+    match pi.post with
     | None -> fields
     | Some op -> ("post", operation_to_json op) :: fields
   in
-  let fields = match pi.put with
+  let fields =
+    match pi.put with
     | None -> fields
     | Some op -> ("put", operation_to_json op) :: fields
   in
-  let fields = match pi.delete with
+  let fields =
+    match pi.delete with
     | None -> fields
     | Some op -> ("delete", operation_to_json op) :: fields
   in
-  let fields = match pi.patch with
+  let fields =
+    match pi.patch with
     | None -> fields
     | Some op -> ("patch", operation_to_json op) :: fields
   in
-  let fields = match pi.options with
+  let fields =
+    match pi.options with
     | None -> fields
     | Some op -> ("options", operation_to_json op) :: fields
   in
-  let fields = match pi.head with
+  let fields =
+    match pi.head with
     | None -> fields
     | Some op -> ("head", operation_to_json op) :: fields
   in
-  let fields = if pi.path_parameters = [] then fields
+  let fields =
+    if pi.path_parameters = []
+    then fields
     else ("parameters", `List (List.map parameter_to_json pi.path_parameters)) :: fields
   in
   `Assoc fields
+;;
 
 let security_scheme_to_json scheme =
-  let type_fields = match scheme.scheme_type with
+  let type_fields =
+    match scheme.scheme_type with
     | ApiKey { name; scheme_in } ->
-      [("type", `String "apiKey"); ("name", `String name); ("in", `String (param_in_to_string scheme_in))]
+      [ "type", `String "apiKey"
+      ; "name", `String name
+      ; "in", `String (param_in_to_string scheme_in)
+      ]
     | Http { scheme; bearer_format } ->
-      let fields = [("type", `String "http"); ("scheme", `String scheme)] in
+      let fields = [ "type", `String "http"; "scheme", `String scheme ] in
       (match bearer_format with
        | None -> fields
        | Some bf -> ("bearerFormat", `String bf) :: fields)
-    | OAuth2 { flows = _ } ->
-      [("type", `String "oauth2")]
+    | OAuth2 { flows = _ } -> [ "type", `String "oauth2" ]
     | OpenIdConnect { openid_connect_url } ->
-      [("type", `String "openIdConnect"); ("openIdConnectUrl", `String openid_connect_url)]
+      [ "type", `String "openIdConnect"; "openIdConnectUrl", `String openid_connect_url ]
   in
-  let fields = match scheme.scheme_description with
+  let fields =
+    match scheme.scheme_description with
     | None -> type_fields
     | Some d -> ("description", `String d) :: type_fields
   in
   `Assoc fields
+;;
 
 let components_to_json comp =
   let fields = [] in
-  let fields = if comp.schemas = [] then fields
-    else ("schemas", `Assoc (List.map (fun (n, s) -> (n, schema_to_json s)) comp.schemas)) :: fields
+  let fields =
+    if comp.schemas = []
+    then fields
+    else
+      ("schemas", `Assoc (List.map (fun (n, s) -> n, schema_to_json s) comp.schemas))
+      :: fields
   in
-  let fields = if comp.security_schemes = [] then fields
-    else ("securitySchemes", `Assoc (List.map (fun (n, s) -> (n, security_scheme_to_json s)) comp.security_schemes)) :: fields
+  let fields =
+    if comp.security_schemes = []
+    then fields
+    else
+      ( "securitySchemes"
+      , `Assoc
+          (List.map (fun (n, s) -> n, security_scheme_to_json s) comp.security_schemes) )
+      :: fields
   in
-  let fields = if comp.parameters = [] then fields
-    else ("parameters", `Assoc (List.map (fun (n, p) -> (n, parameter_to_json p)) comp.parameters)) :: fields
+  let fields =
+    if comp.parameters = []
+    then fields
+    else
+      ( "parameters"
+      , `Assoc (List.map (fun (n, p) -> n, parameter_to_json p) comp.parameters) )
+      :: fields
   in
-  let fields = if comp.responses = [] then fields
-    else ("responses", `Assoc (List.map (fun (n, r) -> (n, response_to_json r)) comp.responses)) :: fields
+  let fields =
+    if comp.responses = []
+    then fields
+    else
+      ("responses", `Assoc (List.map (fun (n, r) -> n, response_to_json r) comp.responses))
+      :: fields
   in
   `Assoc fields
+;;
 
 let info_to_json info =
-  let fields = [
-    ("title", `String info.title);
-    ("version", `String info.version);
-  ] in
-  let fields = match info.description with
+  let fields = [ "title", `String info.title; "version", `String info.version ] in
+  let fields =
+    match info.description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
-  let fields = match info.terms_of_service with
+  let fields =
+    match info.terms_of_service with
     | None -> fields
     | Some t -> ("termsOfService", `String t) :: fields
   in
-  let fields = match info.contact with
+  let fields =
+    match info.contact with
     | None -> fields
     | Some c ->
       let cf = [] in
-      let cf = match c.contact_name with None -> cf | Some n -> ("name", `String n) :: cf in
-      let cf = match c.contact_url with None -> cf | Some u -> ("url", `String u) :: cf in
-      let cf = match c.contact_email with None -> cf | Some e -> ("email", `String e) :: cf in
+      let cf =
+        match c.contact_name with
+        | None -> cf
+        | Some n -> ("name", `String n) :: cf
+      in
+      let cf =
+        match c.contact_url with
+        | None -> cf
+        | Some u -> ("url", `String u) :: cf
+      in
+      let cf =
+        match c.contact_email with
+        | None -> cf
+        | Some e -> ("email", `String e) :: cf
+      in
       ("contact", `Assoc cf) :: fields
   in
-  let fields = match info.license with
+  let fields =
+    match info.license with
     | None -> fields
     | Some l ->
-      let lf = [("name", `String l.license_name)] in
-      let lf = match l.license_url with None -> lf | Some u -> ("url", `String u) :: lf in
+      let lf = [ "name", `String l.license_name ] in
+      let lf =
+        match l.license_url with
+        | None -> lf
+        | Some u -> ("url", `String u) :: lf
+      in
       ("license", `Assoc lf) :: fields
   in
   `Assoc fields
+;;
 
 let server_to_json srv =
-  let fields = [("url", `String srv.url)] in
-  let fields = match srv.server_description with
+  let fields = [ "url", `String srv.url ] in
+  let fields =
+    match srv.server_description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
   `Assoc fields
+;;
 
 let tag_to_json t =
-  let fields = [("name", `String t.tag_name)] in
-  let fields = match t.tag_description with
+  let fields = [ "name", `String t.tag_name ] in
+  let fields =
+    match t.tag_description with
     | None -> fields
     | Some d -> ("description", `String d) :: fields
   in
   `Assoc fields
+;;
 
 let to_json spec =
-  let fields = [
-    ("openapi", `String spec.openapi);
-    ("info", info_to_json spec.info);
-  ] in
-  let fields = if spec.servers = [] then fields
+  let fields = [ "openapi", `String spec.openapi; "info", info_to_json spec.info ] in
+  let fields =
+    if spec.servers = []
+    then fields
     else ("servers", `List (List.map server_to_json spec.servers)) :: fields
   in
   let fields =
-    let paths_json = `Assoc (List.map (fun (p, pi) -> (p, path_item_to_json pi)) (List.rev spec.paths)) in
+    let paths_json =
+      `Assoc (List.map (fun (p, pi) -> p, path_item_to_json pi) (List.rev spec.paths))
+    in
     ("paths", paths_json) :: fields
   in
-  let fields = match spec.components with
+  let fields =
+    match spec.components with
     | None -> fields
     | Some c -> ("components", components_to_json c) :: fields
   in
-  let fields = if spec.tags = [] then fields
+  let fields =
+    if spec.tags = []
+    then fields
     else ("tags", `List (List.map tag_to_json spec.tags)) :: fields
   in
   `Assoc (List.rev fields)
+;;
 
 let to_json_string ?(pretty = true) spec =
   let json = to_json spec in
-  if pretty then Yojson.Safe.pretty_to_string json
-  else Yojson.Safe.to_string json
+  if pretty then Yojson.Safe.pretty_to_string json else Yojson.Safe.to_string json
+;;
 
 (** {1 YAML Export} *)
 
 (** Convert to YAML string (simplified, JSON-compatible YAML). *)
-let to_yaml_string spec =
-  to_json_string ~pretty:true spec
+let to_yaml_string spec = to_json_string ~pretty:true spec
 
 (** {1 Route Integration} *)
 
@@ -384,8 +501,10 @@ let spec_json spec = to_json spec
     Usage: [Router.get "/docs" (fun _ -> Response.html (Openapi.swagger_ui spec))] *)
 let swagger_ui ?(spec_url = "/openapi.json") spec =
   Openapi_ui.swagger_ui_html ~spec_url ~title:spec.info.title
+;;
 
 (** Get ReDoc HTML (for Kirin integration).
     Usage: [Router.get "/docs/redoc" (fun _ -> Response.html (Openapi.redoc spec))] *)
 let redoc ?(spec_url = "/openapi.json") spec =
   Openapi_ui.redoc_html ~spec_url ~title:spec.info.title
+;;

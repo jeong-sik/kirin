@@ -9,11 +9,11 @@
 
 (** Client directive - when to hydrate the island *)
 type client_directive =
-  | ClientLoad       (* Hydrate immediately on page load *)
-  | ClientIdle       (* Hydrate when browser is idle *)
-  | ClientVisible    (* Hydrate when component enters viewport *)
-  | ClientMedia of string  (* Hydrate when media query matches *)
-  | ClientOnly of string   (* Skip SSR, render only on client (framework name) *)
+  | ClientLoad (* Hydrate immediately on page load *)
+  | ClientIdle (* Hydrate when browser is idle *)
+  | ClientVisible (* Hydrate when component enters viewport *)
+  | ClientMedia of string (* Hydrate when media query matches *)
+  | ClientOnly of string (* Skip SSR, render only on client (framework name) *)
 
 (** Island framework *)
 type framework =
@@ -27,14 +27,14 @@ type framework =
   | Custom of string
 
 (** Island definition *)
-type t = {
-  id: string;
-  component: string;
-  framework: framework;
-  directive: client_directive;
-  props: (string * Yojson.Safe.t) list;
-  slots: (string * string) list;  (* Named slots with HTML content *)
-}
+type t =
+  { id : string
+  ; component : string
+  ; framework : framework
+  ; directive : client_directive
+  ; props : (string * Yojson.Safe.t) list
+  ; slots : (string * string) list (* Named slots with HTML content *)
+  }
 
 (** {1 Island Creation} *)
 
@@ -43,36 +43,37 @@ let next_id = ref 0
 let gen_id () =
   incr next_id;
   Printf.sprintf "astro-island-%d" !next_id
+;;
 
 (** Create an island *)
-let create ~component ~framework ?(directive=ClientLoad) ?(props=[]) ?(slots=[]) () = {
-  id = gen_id ();
-  component;
-  framework;
-  directive;
-  props;
-  slots;
-}
+let create ~component ~framework ?(directive = ClientLoad) ?(props = []) ?(slots = []) () =
+  { id = gen_id (); component; framework; directive; props; slots }
+;;
 
 (** Create React island *)
 let react ~component ?directive ?props ?slots () =
   create ~component ~framework:React ?directive ?props ?slots ()
+;;
 
 (** Create Vue island *)
 let vue ~component ?directive ?props ?slots () =
   create ~component ~framework:Vue ?directive ?props ?slots ()
+;;
 
 (** Create Svelte island *)
 let svelte ~component ?directive ?props ?slots () =
   create ~component ~framework:Svelte ?directive ?props ?slots ()
+;;
 
 (** Create Solid island *)
 let solid ~component ?directive ?props ?slots () =
   create ~component ~framework:Solid ?directive ?props ?slots ()
+;;
 
 (** Create Preact island *)
 let preact ~component ?directive ?props ?slots () =
   create ~component ~framework:Preact ?directive ?props ?slots ()
+;;
 
 (** {1 Directive Helpers} *)
 
@@ -103,6 +104,7 @@ let framework_to_string = function
   | Lit -> "lit"
   | Alpine -> "alpine"
   | Custom name -> name
+;;
 
 (** Framework from string *)
 let framework_of_string = function
@@ -114,6 +116,7 @@ let framework_of_string = function
   | "lit" -> Lit
   | "alpine" -> Alpine
   | name -> Custom name
+;;
 
 (** Directive to string *)
 let directive_to_string = function
@@ -122,35 +125,42 @@ let directive_to_string = function
   | ClientVisible -> "visible"
   | ClientMedia q -> "media:" ^ q
   | ClientOnly f -> "only:" ^ f
+;;
 
 (** Directive from string *)
 let directive_of_string s =
-  if s = "load" then ClientLoad
-  else if s = "idle" then ClientIdle
-  else if s = "visible" then ClientVisible
-  else if String.length s > 6 && String.sub s 0 6 = "media:" then
-    ClientMedia (String.sub s 6 (String.length s - 6))
-  else if String.length s > 5 && String.sub s 0 5 = "only:" then
-    ClientOnly (String.sub s 5 (String.length s - 5))
+  if s = "load"
+  then ClientLoad
+  else if s = "idle"
+  then ClientIdle
+  else if s = "visible"
+  then ClientVisible
+  else if String.length s > 6 && String.sub s 0 6 = "media:"
+  then ClientMedia (String.sub s 6 (String.length s - 6))
+  else if String.length s > 5 && String.sub s 0 5 = "only:"
+  then ClientOnly (String.sub s 5 (String.length s - 5))
   else ClientLoad
+;;
 
 (** Island to JSON *)
 let to_json island =
-  `Assoc [
-    ("id", `String island.id);
-    ("component", `String island.component);
-    ("framework", `String (framework_to_string island.framework));
-    ("directive", `String (directive_to_string island.directive));
-    ("props", `Assoc island.props);
-    ("slots", `Assoc (List.map (fun (k, v) -> (k, `String v)) island.slots));
-  ]
+  `Assoc
+    [ "id", `String island.id
+    ; "component", `String island.component
+    ; "framework", `String (framework_to_string island.framework)
+    ; "directive", `String (directive_to_string island.directive)
+    ; "props", `Assoc island.props
+    ; "slots", `Assoc (List.map (fun (k, v) -> k, `String v) island.slots)
+    ]
+;;
 
 (** {1 HTML Rendering} *)
 
 (** Render island wrapper *)
 let render_wrapper island inner_html =
   let props_json = Yojson.Safe.to_string (`Assoc island.props) in
-  let directive_attr = match island.directive with
+  let directive_attr =
+    match island.directive with
     | ClientLoad -> "client:load"
     | ClientIdle -> "client:idle"
     | ClientVisible -> "client:visible"
@@ -166,6 +176,7 @@ let render_wrapper island inner_html =
     (String.escaped props_json)
     directive_attr
     inner_html
+;;
 
 (** Render island script *)
 let render_script island =
@@ -178,6 +189,7 @@ createIsland('%s', '%s', '%s', %s);
     island.component
     (framework_to_string island.framework)
     (Yojson.Safe.to_string (`Assoc island.props))
+;;
 
 (** {1 Hydration Script} *)
 
@@ -239,3 +251,4 @@ let hydration_script () =
   });
 })();
 </script>|}
+;;

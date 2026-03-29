@@ -33,48 +33,44 @@ type state =
   | Stopped
 
 (** Shutdown configuration *)
-type config = {
-  timeout : float;           (** Max seconds to wait for connections to drain *)
-  force_after : float;       (** Force shutdown after this many seconds *)
-}
+type config =
+  { timeout : float (** Max seconds to wait for connections to drain *)
+  ; force_after : float (** Force shutdown after this many seconds *)
+  }
 
 (** Shutdown hook *)
 type hook = unit -> unit
 
 (** Shutdown manager *)
-type t = {
-  config : config;
-  mutable state : state;
-  mutable hooks : hook list;
-  mutable active_connections : int;
-  mutex : Eio.Mutex.t;
-  condition : Eio.Condition.t;
-}
+type t =
+  { config : config
+  ; mutable state : state
+  ; mutable hooks : hook list
+  ; mutable active_connections : int
+  ; mutex : Eio.Mutex.t
+  ; condition : Eio.Condition.t
+  }
 
 (** {1 Helpers} *)
 
 let now () = Time_compat.now ()
-
-let with_lock t f =
-  Eio.Mutex.use_rw ~protect:true t.mutex f
+let with_lock t f = Eio.Mutex.use_rw ~protect:true t.mutex f
 
 (** {1 Creation} *)
 
 (** Default configuration *)
-let default_config = {
-  timeout = 30.0;
-  force_after = 60.0;
-}
+let default_config = { timeout = 30.0; force_after = 60.0 }
 
 (** Create a shutdown manager *)
-let create ?(timeout = 30.0) ?(force_after = 60.0) () = {
-  config = { timeout; force_after };
-  state = Running;
-  hooks = [];
-  active_connections = 0;
-  mutex = Eio.Mutex.create ();
-  condition = Eio.Condition.create ();
-}
+let create ?(timeout = 30.0) ?(force_after = 60.0) () =
+  { config = { timeout; force_after }
+  ; state = Running
+  ; hooks = []
+  ; active_connections = 0
+  ; mutex = Eio.Mutex.create ()
+  ; condition = Eio.Condition.create ()
+  }
+;;
 
 (** {1 State Management} *)
 
@@ -95,58 +91,52 @@ let is_stopped t = state t = Stopped
 (** Increment active connection count *)
 let connection_start t =
   with_lock t (fun () ->
-    if t.state = Running then begin
+    if t.state = Running
+    then (
       t.active_connections <- t.active_connections + 1;
-      true
-    end else
-      false  (* Reject new connections during shutdown *)
-  )
+      true)
+    else false (* Reject new connections during shutdown *))
+;;
 
 (** Decrement active connection count *)
 let connection_end t =
   with_lock t (fun () ->
     t.active_connections <- max 0 (t.active_connections - 1);
-    if t.active_connections = 0 then
-      Eio.Condition.broadcast t.condition
-  )
+    if t.active_connections = 0 then Eio.Condition.broadcast t.condition)
+;;
 
 (** Get active connection count *)
-let active_connections t =
-  with_lock t (fun () -> t.active_connections)
+let active_connections t = with_lock t (fun () -> t.active_connections)
 
 (** Wrap a handler to track connections *)
 let track_connection t handler req =
-  if connection_start t then begin
-    Fun.protect
-      ~finally:(fun () -> connection_end t)
-      (fun () -> handler req)
-  end else
+  if connection_start t
+  then Fun.protect ~finally:(fun () -> connection_end t) (fun () -> handler req)
+  else (
     (* Server is shutting down, reject request *)
     match state t with
-    | Running -> 
+    | Running ->
       (* Should not happen if connection_start returned false, but handle anyway *)
       Response.make ~status:`Service_unavailable (`String "Server is shutting down")
     | ShuttingDown | Stopped ->
-      Response.make ~status:`Service_unavailable (`String "Server is shutting down")
+      Response.make ~status:`Service_unavailable (`String "Server is shutting down"))
+;;
 
 (** {1 Hooks} *)
 
 (** Register a shutdown hook *)
-let on_shutdown t hook =
-  with_lock t (fun () ->
-    t.hooks <- hook :: t.hooks
-  )
+let on_shutdown t hook = with_lock t (fun () -> t.hooks <- hook :: t.hooks)
 
 (** Run all shutdown hooks *)
 let run_hooks t =
   let hooks = with_lock t (fun () -> t.hooks) in
-  List.iter (fun hook ->
-    try hook ()
-    with
-    | Eio.Cancel.Cancelled _ as exn -> raise exn
-    | exn ->
-      Logger.warn "Shutdown hook error: %s" (Printexc.to_string exn)
-  ) hooks
+  List.iter
+    (fun hook ->
+       try hook () with
+       | Eio.Cancel.Cancelled _ as exn -> raise exn
+       | exn -> Logger.warn "Shutdown hook error: %s" (Printexc.to_string exn))
+    hooks
+;;
 
 (** {1 Shutdown Process} *)
 
@@ -157,37 +147,34 @@ let wait_for_drain t =
     while t.active_connections > 0 && now () < deadline do
       Eio.Condition.await t.condition t.mutex
     done;
-    t.active_connections = 0
-  )
+    t.active_connections = 0)
+;;
 
 (** Initiate graceful shutdown *)
 let initiate t =
-  let should_shutdown = with_lock t (fun () ->
-    if t.state = Running then begin
-      t.state <- ShuttingDown;
-      true
-    end else
-      false
-  ) in
-
-  if should_shutdown then begin
+  let should_shutdown =
+    with_lock t (fun () ->
+      if t.state = Running
+      then (
+        t.state <- ShuttingDown;
+        true)
+      else false)
+  in
+  if should_shutdown
+  then (
     Printf.printf "\n🛑 Initiating graceful shutdown...\n%!";
-
     (* Wait for active connections to drain *)
     let drained = wait_for_drain t in
-    if drained then
-      Printf.printf "✅ All connections drained\n%!"
-    else
-      Printf.printf "⚠️  Timeout waiting for connections (forcing shutdown)\n%!";
-
+    if drained
+    then Printf.printf "✅ All connections drained\n%!"
+    else Printf.printf "⚠️  Timeout waiting for connections (forcing shutdown)\n%!";
     (* Run cleanup hooks *)
     Printf.printf "🧹 Running cleanup hooks...\n%!";
     run_hooks t;
-
     (* Mark as stopped *)
     with_lock t (fun () -> t.state <- Stopped);
-    Printf.printf "👋 Shutdown complete\n%!"
-  end
+    Printf.printf "👋 Shutdown complete\n%!")
+;;
 
 (** {1 Signal Handling} *)
 
@@ -197,6 +184,7 @@ let setup_signals t =
   Sys.set_signal Sys.sigterm (Sys.Signal_handle handler);
   Sys.set_signal Sys.sigint (Sys.Signal_handle handler);
   Printf.printf "📡 Signal handlers installed (SIGTERM, SIGINT)\n%!"
+;;
 
 (** {1 Server Integration} *)
 
@@ -211,29 +199,29 @@ let setup_signals t =
 *)
 let run t server_fn =
   setup_signals t;
-  try
-    server_fn ()
-  with
+  try server_fn () with
   | Eio.Cancel.Cancelled _ as exn -> raise exn
   | exn ->
     Logger.error "Server error: %s" (Printexc.to_string exn);
     initiate t
+;;
 
 (** Middleware that tracks connections and handles shutdown *)
-let middleware t handler req =
-  track_connection t handler req
+let middleware t handler req = track_connection t handler req
 
 (** {1 Status} *)
 
 (** Get shutdown status as JSON *)
 let status_json t =
-  let state_str = match state t with
+  let state_str =
+    match state t with
     | Running -> "running"
     | ShuttingDown -> "shutting_down"
     | Stopped -> "stopped"
   in
-  `Assoc [
-    ("state", `String state_str);
-    ("active_connections", `Int (active_connections t));
-    ("hooks_count", `Int (List.length (with_lock t (fun () -> t.hooks))));
-  ]
+  `Assoc
+    [ "state", `String state_str
+    ; "active_connections", `Int (active_connections t)
+    ; "hooks_count", `Int (List.length (with_lock t (fun () -> t.hooks)))
+    ]
+;;

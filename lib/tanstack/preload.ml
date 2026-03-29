@@ -6,16 +6,17 @@
 
 (** Preload strategy *)
 type strategy =
-  | Intent    (* Preload on hover/focus *)
-  | Viewport  (* Preload when link enters viewport *)
-  | Render    (* Preload immediately when link renders *)
-  | None      (* No preloading *)
+  | Intent (* Preload on hover/focus *)
+  | Viewport (* Preload when link enters viewport *)
+  | Render (* Preload immediately when link renders *)
+  | None (* No preloading *)
 
 let strategy_to_string = function
   | Intent -> "intent"
   | Viewport -> "viewport"
   | Render -> "render"
   | None -> "none"
+;;
 
 (** Preload state *)
 type state =
@@ -28,25 +29,28 @@ type state =
 
 (** Generate Link preload hint *)
 let link_hint ~href ~strategy =
-  Printf.sprintf "<link rel=\"prefetch\" href=\"%s\" data-preload=\"%s\">"
-    href (strategy_to_string strategy)
+  Printf.sprintf
+    "<link rel=\"prefetch\" href=\"%s\" data-preload=\"%s\">"
+    href
+    (strategy_to_string strategy)
+;;
 
 (** Generate modulepreload for JS *)
-let module_preload ~src =
-  Printf.sprintf "<link rel=\"modulepreload\" href=\"%s\">" src
+let module_preload ~src = Printf.sprintf "<link rel=\"modulepreload\" href=\"%s\">" src
 
 (** Generate preconnect hint *)
-let preconnect ~origin =
-  Printf.sprintf "<link rel=\"preconnect\" href=\"%s\">" origin
+let preconnect ~origin = Printf.sprintf "<link rel=\"preconnect\" href=\"%s\">" origin
 
 (** Generate dns-prefetch hint *)
 let dns_prefetch ~hostname =
   Printf.sprintf "<link rel=\"dns-prefetch\" href=\"//%s\">" hostname
+;;
 
 (** {1 Preload Script} *)
 
 (** Generate preload JavaScript *)
-let preload_script () = {|
+let preload_script () =
+  {|
 <script>
 (function() {
   const preloadCache = new Map();
@@ -101,59 +105,68 @@ let preload_script () = {|
 })();
 </script>
 |}
+;;
 
 (** {1 Preload Link Attributes} *)
 
 (** Generate data attributes for preload link *)
 let link_attrs ~strategy ~prefetch_intent =
-  let attrs = [
-    ("data-preload", strategy_to_string strategy);
-  ] in
-  let attrs = if prefetch_intent then
-    ("data-prefetch-intent", "true") :: attrs
-  else attrs in
-  String.concat " " (List.map (fun (k, v) ->
-    Printf.sprintf "%s=\"%s\"" k v
-  ) attrs)
+  let attrs = [ "data-preload", strategy_to_string strategy ] in
+  let attrs =
+    if prefetch_intent then ("data-prefetch-intent", "true") :: attrs else attrs
+  in
+  String.concat " " (List.map (fun (k, v) -> Printf.sprintf "%s=\"%s\"" k v) attrs)
+;;
 
 (** {1 Resource Hints} *)
 
 (** Hint priority *)
-type priority = High | Medium | Low | Auto
+type priority =
+  | High
+  | Medium
+  | Low
+  | Auto
 
 let priority_to_string = function
   | High -> "high"
   | Medium -> "medium"
   | Low -> "low"
   | Auto -> "auto"
+;;
 
 (** Generate fetchpriority attribute *)
-let fetch_priority p =
-  Printf.sprintf "fetchpriority=\"%s\"" (priority_to_string p)
+let fetch_priority p = Printf.sprintf "fetchpriority=\"%s\"" (priority_to_string p)
 
 (** Generate all preload hints for a route *)
 let route_hints ~loader_url ~js_modules ~css_files ~priority =
-  let loader_hint = Printf.sprintf
-    "<link rel=\"preload\" href=\"%s\" as=\"fetch\" crossorigin %s>"
-    loader_url (fetch_priority priority) in
+  let loader_hint =
+    Printf.sprintf
+      "<link rel=\"preload\" href=\"%s\" as=\"fetch\" crossorigin %s>"
+      loader_url
+      (fetch_priority priority)
+  in
   let module_hints = List.map (fun src -> module_preload ~src) js_modules in
-  let css_hints = List.map (fun href ->
-    Printf.sprintf "<link rel=\"preload\" href=\"%s\" as=\"style\">" href
-  ) css_files in
-  String.concat "\n" (loader_hint :: module_hints @ css_hints)
+  let css_hints =
+    List.map
+      (fun href -> Printf.sprintf "<link rel=\"preload\" href=\"%s\" as=\"style\">" href)
+      css_files
+  in
+  String.concat "\n" ((loader_hint :: module_hints) @ css_hints)
+;;
 
 (** {1 Navigation Preload} *)
 
 (** Check if request is a preload request *)
 let is_preload_request headers =
-  List.exists (fun (k, v) ->
-    String.lowercase_ascii k = "x-preload" && v = "1"
-  ) headers
+  List.exists (fun (k, v) -> String.lowercase_ascii k = "x-preload" && v = "1") headers
+;;
 
 (** Generate response for preload request *)
 let preload_response data =
-  Yojson.Safe.to_string (`Assoc [
-    ("preloaded", `Bool true);
-    ("data", data);
-    ("timestamp", `Int (int_of_float (Unix.time ())));
-  ])
+  Yojson.Safe.to_string
+    (`Assoc
+        [ "preloaded", `Bool true
+        ; "data", data
+        ; "timestamp", `Int (int_of_float (Unix.time ()))
+        ])
+;;

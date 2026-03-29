@@ -38,75 +38,74 @@ module Vite = Vite
 (** {1 Convenience Functions} *)
 
 (** Create static routes for Preact serving *)
-let static_routes ?config () =
-  Vite.static_routes ?config ()
+let static_routes ?config () = Vite.static_routes ?config ()
 
 (** Generate hydration shell HTML *)
 let hydrate
-    ~title
-    ?(meta = [])
-    ?(initial_data = None)
-    ?(signals_data = [])
-    ~manifest
-    ~entry
-    () =
+      ~title
+      ?(meta = [])
+      ?(initial_data = None)
+      ?(signals_data = [])
+      ~manifest
+      ~entry
+      ()
+  =
   Hydrate.shell ~title ~meta ~initial_data ~signals_data ~manifest ~entry ()
+;;
 
 (** Generate Kirin response with hydration *)
 let hydrate_response
-    ~title
-    ?(meta = [])
-    ?(initial_data = None)
-    ?(signals_data = [])
-    ~manifest
-    ~entry
-    () =
+      ~title
+      ?(meta = [])
+      ?(initial_data = None)
+      ?(signals_data = [])
+      ~manifest
+      ~entry
+      ()
+  =
   let html = hydrate ~title ~meta ~initial_data ~signals_data ~manifest ~entry () in
   Kirin.Response.html html
+;;
 
 (** Create SSR engine *)
-let create_ssr ?(config = Ssr.default_config) () =
-  Ssr.create config
+let create_ssr ?(config = Ssr.default_config) () = Ssr.create config
 
 (** Render URL with SSR *)
-let ssr ~engine ~url ?props () =
-  Ssr.render engine ~url ?props ()
+let ssr ~engine ~url ?props () = Ssr.render engine ~url ?props ()
 
 (** Render with signals *)
 let ssr_with_signals ~engine ~url ~signals () =
   Ssr.render_with_signals engine ~url ~signals ()
+;;
 
 (** Create SSR handler for Kirin router *)
-let ssr_handler engine =
-  Ssr.handler engine
+let ssr_handler engine = Ssr.handler engine
 
 (** Create SSR handler with fallback *)
 let ssr_handler_with_fallback ~fallback engine =
   Ssr.handler_with_fallback ~fallback engine
+;;
 
 (** {1 Signals Helpers} *)
 
 (** Create a signal *)
-let signal name initial_value =
-  Signals.signal name initial_value
+let signal name initial_value = Signals.signal name initial_value
 
 (** Create a computed signal *)
 let computed ~name ~dependencies expression =
   Signals.computed ~name ~dependencies expression
+;;
 
 (** Generate signal import statement *)
-let signals_import imports =
-  Signals.generate_import imports
+let signals_import imports = Signals.generate_import imports
 
 (** {1 Compat Helpers} *)
 
 (** Get all Vite aliases for React compat *)
-let compat_aliases () =
-  Compat.vite_aliases ()
+let compat_aliases () = Compat.vite_aliases ()
 
 (** Check library compatibility *)
-let check_library_compat lib =
-  Compat.find_compat lib
+let check_library_compat lib = Compat.find_compat lib
 
 (** {1 Quick Start Examples}
 

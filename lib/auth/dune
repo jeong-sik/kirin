@@ -3,11 +3,16 @@
  (public_name kirin.auth)
  (libraries
   kirin
-  http            ; HTTP types
-  digestif        ; SHA256, HMAC
-  eqaf            ; constant-time comparison
-  base64          ; Base64 encoding
-  yojson          ; JSON handling
-  uri             ; URL encoding for OAuth2
-  eio)
- (instrumentation (backend bisect_ppx)))
+  http ; HTTP types
+  digestif ; SHA256, HMAC
+  eqaf ; constant-time comparison
+  base64 ; Base64 encoding
+  yojson ; JSON handling
+  uri ; URL encoding for OAuth2
+  eio
+  eio.core
+  unix ; OS time and random
+  hmap)
+ ; typed heterogeneous map
+ (instrumentation
+  (backend bisect_ppx)))

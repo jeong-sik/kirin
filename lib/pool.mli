@@ -9,32 +9,32 @@
 (** {1 Types} *)
 
 (** Pool configuration. *)
-type config = {
-  min_size : int;
-  max_size : int;
-  idle_timeout : float;
-  max_wait_time : float;
-  health_check_interval : float;
-}
+type config =
+  { min_size : int
+  ; max_size : int
+  ; idle_timeout : float
+  ; max_wait_time : float
+  ; health_check_interval : float
+  }
 
 (** Pool statistics. *)
-type stats = {
-  total_connections : int;
-  active_connections : int;
-  idle_connections : int;
-  waiting_requests : int;
-  total_acquisitions : int;
-  total_timeouts : int;
-  total_errors : int;
-}
+type stats =
+  { total_connections : int
+  ; active_connections : int
+  ; idle_connections : int
+  ; waiting_requests : int
+  ; total_acquisitions : int
+  ; total_timeouts : int
+  ; total_errors : int
+  }
 
 (** Pooled connection wrapper with metadata. *)
-type 'a pooled = {
-  conn : 'a;
-  created_at : float;
-  mutable last_used : float;
-  mutable use_count : int;
-}
+type 'a pooled =
+  { conn : 'a
+  ; created_at : float
+  ; mutable last_used : float
+  ; mutable use_count : int
+  }
 
 (** Connection pool. *)
 type 'a t
@@ -65,17 +65,17 @@ val default_config : config
     @param create Function to create a new connection
     @param destroy Function to close a connection
     @param validate Optional function to check connection health *)
-val create :
-  ?min_size:int ->
-  ?max_size:int ->
-  ?idle_timeout:float ->
-  ?max_wait_time:float ->
-  ?health_check_interval:float ->
-  create:(unit -> 'a) ->
-  destroy:('a -> unit) ->
-  ?validate:('a -> bool) ->
-  unit ->
-  'a t
+val create
+  :  ?min_size:int
+  -> ?max_size:int
+  -> ?idle_timeout:float
+  -> ?max_wait_time:float
+  -> ?health_check_interval:float
+  -> create:(unit -> 'a)
+  -> destroy:('a -> unit)
+  -> ?validate:('a -> bool)
+  -> unit
+  -> 'a t
 
 (** {1 Pool Operations} *)
 

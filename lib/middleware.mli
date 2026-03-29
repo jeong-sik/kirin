@@ -34,13 +34,13 @@ val default_error_handler : exn -> Request.t -> Response.t
 val catch_default : t
 
 (** CORS configuration. *)
-type cors_config = {
-  origins : string list;
-  methods : string list;
-  headers : string list;
-  credentials : bool;
-  max_age : int option;
-}
+type cors_config =
+  { origins : string list
+  ; methods : string list
+  ; headers : string list
+  ; credentials : bool
+  ; max_age : int option
+  }
 
 (** Default CORS configuration (allows all origins). *)
 val default_cors_config : cors_config

@@ -31,16 +31,22 @@ let get_fs () = !global_fs
     injection and to keep behavior consistent across Eio/non-Eio call sites. *)
 let mkdir_p path =
   let rec go p =
-    if p = "." || p = "/" then ()
-    else if Sys.file_exists p then (
-      if Sys.is_directory p then ()
-      else invalid_arg (Printf.sprintf "Fs_compat.mkdir_p: %S exists and is not a directory" p))
+    if p = "." || p = "/"
+    then ()
+    else if Sys.file_exists p
+    then
+      if Sys.is_directory p
+      then ()
+      else
+        invalid_arg
+          (Printf.sprintf "Fs_compat.mkdir_p: %S exists and is not a directory" p)
     else (
       go (Filename.dirname p);
       try Unix.mkdir p 0o755 with
       | Unix.Unix_error (Unix.EEXIST, _, _) -> ())
   in
   go path
+;;
 
 (** Load entire file contents as string.
     Uses Eio.Path.load when fs is set, falls back to In_channel. *)
@@ -49,8 +55,8 @@ let load path =
   | Some fs ->
     let p = Eio.Path.(fs / path) in
     Eio.Path.load p
-  | None ->
-    In_channel.(with_open_text path input_all)
+  | None -> In_channel.(with_open_text path input_all)
+;;
 
 (** Load entire file contents as bytes (binary mode).
     Uses Eio.Path.load when fs is set, falls back to In_channel. *)
@@ -59,12 +65,12 @@ let load_binary path =
   | Some fs ->
     let p = Eio.Path.(fs / path) in
     Eio.Path.load p
-  | None ->
-    In_channel.(with_open_bin path input_all)
+  | None -> In_channel.(with_open_bin path input_all)
+;;
 
 (** Save string content to file (creates parent dirs if needed).
     Uses Eio.Path.save when fs is set, falls back to Out_channel. *)
-let save ?(append=false) path content =
+let save ?(append = false) path content =
   let dir = Filename.dirname path in
   if dir <> "." then mkdir_p dir;
   match !global_fs with
@@ -73,8 +79,13 @@ let save ?(append=false) path content =
     let create = `Or_truncate 0o644 in
     Eio.Path.save ~append ~create p content
   | None ->
-    let flags = if append then [Open_append; Open_creat] else [Open_wronly; Open_creat; Open_trunc] in
+    let flags =
+      if append
+      then [ Open_append; Open_creat ]
+      else [ Open_wronly; Open_creat; Open_trunc ]
+    in
     Out_channel.(with_open_gen flags 0o644 path (fun oc -> output_string oc content))
+;;
 
 (** Check if a file exists.
     Uses Eio.Path when fs is set, falls back to Sys.file_exists. *)
@@ -86,8 +97,8 @@ let file_exists path =
      | `Regular_file | `Directory -> true
      | _ -> false
      | exception Eio.Io _ -> false)
-  | None ->
-    Sys.file_exists path
+  | None -> Sys.file_exists path
+;;
 
 (** Check if path is a directory.
     Uses Eio.Path when fs is set, falls back to Sys.is_directory. *)
@@ -99,8 +110,8 @@ let is_directory path =
      | `Directory -> true
      | _ -> false
      | exception Eio.Io _ -> false)
-  | None ->
-    Sys.is_directory path
+  | None -> Sys.is_directory path
+;;
 
 (** List directory contents.
     Uses Eio.Path when fs is set, falls back to Sys.readdir. *)
@@ -109,5 +120,5 @@ let readdir path =
   | Some fs ->
     let p = Eio.Path.(fs / path) in
     Eio.Path.read_dir p
-  | None ->
-    Array.to_list (Sys.readdir path)
+  | None -> Array.to_list (Sys.readdir path)
+;;

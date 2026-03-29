@@ -32,6 +32,7 @@ let create_engine config =
   let engine = Ssr.create config in
   Ssr.start engine;
   engine
+;;
 
 (** Shutdown SSR engine *)
 let shutdown = Ssr.shutdown

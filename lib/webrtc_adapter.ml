@@ -55,9 +55,9 @@ module Peer = Webrtc.Webrtc_eio
 let placeholder_dtls_fingerprint =
   { Sdp.hash_func = "sha-256"
   ; Sdp.fingerprint =
-      "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:\
-       00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+      "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
   }
+;;
 
 (** Create a WebRTC peer with Kirin ICE server configuration.
     Converts Kirin {!stun_server} list to {!Ice.ice_config}.
@@ -65,28 +65,27 @@ let placeholder_dtls_fingerprint =
     [Client] maps to [Ice.Controlling], [Server] to [Ice.Controlled]. *)
 let create_peer ?(ice_servers = default_ice_servers) ~role () =
   let ws_ice_servers = List.map ice_server_of_stun ice_servers in
-  let ice_role = match role with
+  let ice_role =
+    match role with
     | Peer.Client -> Ice.Controlling
     | Peer.Server -> Ice.Controlled
   in
   let ice_config =
-    { Peer.default_ice_config with
-      ice_servers = ws_ice_servers
-    ; role = ice_role
-    }
+    { Peer.default_ice_config with ice_servers = ws_ice_servers; role = ice_role }
   in
   Peer.create ~ice_config ~role ()
+;;
 
 (** Create a DataChannel on a peer.
     Shorthand for {!Peer.create_datachannel}. *)
-let create_datachannel peer ~label =
-  Peer.create_datachannel peer ~label
+let create_datachannel peer ~label = Peer.create_datachannel peer ~label
 
 (** Send string data on a DataChannel.
     Converts to bytes internally.
     Returns [Ok bytes_sent] or [Error msg]. *)
 let send_datachannel peer channel data =
   Peer.send_channel peer channel (Bytes.of_string data)
+;;
 
 (** Create an SDP offer for signaling.
     Uses the peer's ICE credentials with a {b placeholder} DTLS fingerprint
@@ -97,10 +96,13 @@ let create_offer peer =
   let ufrag, pwd = Peer.get_local_credentials peer in
   let sdp =
     Sdp.create_datachannel_offer
-      ~ice_ufrag:ufrag ~ice_pwd:pwd
-      ~fingerprint:placeholder_dtls_fingerprint ~sctp_port:5000
+      ~ice_ufrag:ufrag
+      ~ice_pwd:pwd
+      ~fingerprint:placeholder_dtls_fingerprint
+      ~sctp_port:5000
   in
   { sdp_type = Offer; sdp = Sdp.to_string sdp }
+;;
 
 (** Create an SDP answer from a remote offer SDP string.
     Uses a {b placeholder} DTLS fingerprint (all zeros) — not suitable for
@@ -114,10 +116,12 @@ let create_answer peer ~remote_sdp =
     let sdp =
       Sdp.create_answer
         ~offer:offer_session
-        ~ice_ufrag:ufrag ~ice_pwd:pwd
+        ~ice_ufrag:ufrag
+        ~ice_pwd:pwd
         ~fingerprint:placeholder_dtls_fingerprint
     in
     Ok { sdp_type = Answer; sdp = Sdp.to_string sdp }
+;;
 
 (** {1 HTTP/WebSocket Handlers} *)
 
@@ -126,33 +130,34 @@ let create_answer peer ~remote_sdp =
 let signaling_handler () =
   let server = Signaling.create_server () in
   fun req ->
-    if not (Websocket.is_upgrade_request req) then
-      Response.make ~status:`Bad_request (`String "Expected WebSocket upgrade")
-    else
+    if not (Websocket.is_upgrade_request req)
+    then Response.make ~status:`Bad_request (`String "Expected WebSocket upgrade")
+    else (
       let peer_id = Printf.sprintf "peer_%d" (Random.int 100000) in
       let room_id = Request.query "room" req |> Option.value ~default:"default" in
       Signaling.join_room server ~room_id ~peer_id;
       match Websocket.upgrade_response req with
-      | Ok resp ->
-        Response.with_header "X-Peer-Id" peer_id resp
-      | Error msg ->
-        Response.make ~status:`Bad_request (`String msg)
+      | Ok resp -> Response.with_header "X-Peer-Id" peer_id resp
+      | Error msg -> Response.make ~status:`Bad_request (`String msg))
+;;
 
 (** STUN server info endpoint. Returns configured ICE servers as JSON. *)
 let stun_servers_handler _req =
-  let servers = List.map (fun s ->
-    `Assoc [
-      ("urls", `List (List.map (fun u -> `String u) s.urls));
-    ]
-  ) default_ice_servers in
-  Response.json (`Assoc [("iceServers", `List servers)])
+  let servers =
+    List.map
+      (fun s -> `Assoc [ "urls", `List (List.map (fun u -> `String u) s.urls) ])
+      default_ice_servers
+  in
+  Response.json (`Assoc [ "iceServers", `List servers ])
+;;
 
 (** {1 Routes Helper} *)
 
 (** Create WebRTC signaling routes:
     - [GET /webrtc/signaling] -- signaling WebSocket endpoint
     - [GET /webrtc/stun-servers] -- STUN server info endpoint *)
-let routes () = [
-  Router.get "/webrtc/signaling" (signaling_handler ());
-  Router.get "/webrtc/stun-servers" stun_servers_handler;
-]
+let routes () =
+  [ Router.get "/webrtc/signaling" (signaling_handler ())
+  ; Router.get "/webrtc/stun-servers" stun_servers_handler
+  ]
+;;

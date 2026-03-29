@@ -5,4 +5,5 @@
  (preprocess
   (pps js_of_ocaml-ppx))
  (js_of_ocaml
-  (flags (:standard --effects=double-translation))))
+  (flags
+   (:standard --effects=double-translation))))

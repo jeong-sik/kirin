@@ -6,7 +6,8 @@
 
 (** Swagger UI HTML page. *)
 let swagger_ui_html ~spec_url ~title =
-  Printf.sprintf {|<!DOCTYPE html>
+  Printf.sprintf
+    {|<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -31,11 +32,15 @@ let swagger_ui_html ~spec_url ~title =
     };
   </script>
 </body>
-</html>|} title spec_url
+</html>|}
+    title
+    spec_url
+;;
 
 (** ReDoc HTML page. *)
 let redoc_html ~spec_url ~title =
-  Printf.sprintf {|<!DOCTYPE html>
+  Printf.sprintf
+    {|<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -48,4 +53,7 @@ let redoc_html ~spec_url ~title =
   <redoc spec-url="%s"></redoc>
   <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
 </body>
-</html>|} title spec_url
+</html>|}
+    title
+    spec_url
+;;

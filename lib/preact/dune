@@ -2,4 +2,5 @@
  (name kirin_preact)
  (public_name kirin.preact)
  (libraries kirin yojson str unix)
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

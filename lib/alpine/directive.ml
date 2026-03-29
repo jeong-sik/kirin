@@ -22,24 +22,24 @@ type modifier =
   | Capture
 
 (** Event directive *)
-type event_directive = {
-  event_name: string;
-  handler: string;
-  modifiers: modifier list;
-}
+type event_directive =
+  { event_name : string
+  ; handler : string
+  ; modifiers : modifier list
+  }
 
 (** Bind directive *)
-type bind_directive = {
-  attribute: string;
-  expression: string;
-}
+type bind_directive =
+  { attribute : string
+  ; expression : string
+  }
 
 (** For directive *)
-type for_directive = {
-  item: string;
-  index: string option;
-  items: string;
-}
+type for_directive =
+  { item : string
+  ; index : string option
+  ; items : string
+  }
 
 (** Directive *)
 type t =
@@ -64,14 +64,14 @@ type t =
   | Teleport of string
 
 (** Transition configuration *)
-and transition_config = {
-  enter: string option;
-  enter_start: string option;
-  enter_end: string option;
-  leave: string option;
-  leave_start: string option;
-  leave_end: string option;
-}
+and transition_config =
+  { enter : string option
+  ; enter_start : string option
+  ; enter_end : string option
+  ; leave : string option
+  ; leave_start : string option
+  ; leave_end : string option
+  }
 
 (** {1 Directive Creation} *)
 
@@ -91,8 +91,7 @@ let if_ expr = If expr
 let bind ~attr expr = Bind { attribute = attr; expression = expr }
 
 (** Create x-on directive *)
-let on ?(modifiers = []) event handler =
-  On { event_name = event; handler; modifiers }
+let on ?(modifiers = []) event handler = On { event_name = event; handler; modifiers }
 
 (** Create x-text directive *)
 let text expr = Text expr
@@ -118,6 +117,7 @@ let transition ?config () = Transition config
 (** Create transition config *)
 let transition_config ?enter ?enter_start ?enter_end ?leave ?leave_start ?leave_end () =
   { enter; enter_start; enter_end; leave; leave_start; leave_end }
+;;
 
 (** Create x-effect directive *)
 let effect_ expr = Effect expr
@@ -153,12 +153,19 @@ let modifier_of_string = function
   | "passive" -> Some Passive
   | "capture" -> Some Capture
   | s when String.length s > 8 && String.sub s 0 8 = "debounce" ->
-    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with Failure _ | Invalid_argument _ -> 250 in
+    let ms =
+      try int_of_string (String.sub s 8 (String.length s - 8)) with
+      | Failure _ | Invalid_argument _ -> 250
+    in
     Some (Debounce ms)
   | s when String.length s > 8 && String.sub s 0 8 = "throttle" ->
-    let ms = try int_of_string (String.sub s 8 (String.length s - 8)) with Failure _ | Invalid_argument _ -> 250 in
+    let ms =
+      try int_of_string (String.sub s 8 (String.length s - 8)) with
+      | Failure _ | Invalid_argument _ -> 250
+    in
     Some (Throttle ms)
   | _ -> None
+;;
 
 (** Modifier to string *)
 let modifier_to_string = function
@@ -175,6 +182,7 @@ let modifier_to_string = function
   | Dot -> "dot"
   | Passive -> "passive"
   | Capture -> "capture"
+;;
 
 (** {1 Rendering} *)
 
@@ -187,9 +195,10 @@ let to_attribute = function
   | Bind { attribute; expression } ->
     Printf.sprintf "x-bind:%s=\"%s\"" attribute expression
   | On { event_name; handler; modifiers } ->
-    let mods = match modifiers with
+    let mods =
+      match modifiers with
       | [] -> ""
-      | ms -> "." ^ (String.concat "." (List.map modifier_to_string ms))
+      | ms -> "." ^ String.concat "." (List.map modifier_to_string ms)
     in
     Printf.sprintf "x-on:%s%s=\"%s\"" event_name mods handler
   | Text expr -> Printf.sprintf "x-text=\"%s\"" expr
@@ -198,21 +207,32 @@ let to_attribute = function
   | ModelNumber expr -> Printf.sprintf "x-model.number=\"%s\"" expr
   | ModelDebounce (expr, ms) -> Printf.sprintf "x-model.debounce.%dms=\"%s\"" ms expr
   | For { item; index; items } ->
-    let iter = match index with
+    let iter =
+      match index with
       | Some i -> Printf.sprintf "(%s, %s)" item i
       | None -> item
     in
     Printf.sprintf "x-for=\"%s in %s\"" iter items
   | Transition None -> "x-transition"
   | Transition (Some config) ->
-    let parts = [
-      Option.map (fun v -> Printf.sprintf "x-transition:enter=\"%s\"" v) config.enter;
-      Option.map (fun v -> Printf.sprintf "x-transition:enter-start=\"%s\"" v) config.enter_start;
-      Option.map (fun v -> Printf.sprintf "x-transition:enter-end=\"%s\"" v) config.enter_end;
-      Option.map (fun v -> Printf.sprintf "x-transition:leave=\"%s\"" v) config.leave;
-      Option.map (fun v -> Printf.sprintf "x-transition:leave-start=\"%s\"" v) config.leave_start;
-      Option.map (fun v -> Printf.sprintf "x-transition:leave-end=\"%s\"" v) config.leave_end;
-    ] |> List.filter_map Fun.id in
+    let parts =
+      [ Option.map (fun v -> Printf.sprintf "x-transition:enter=\"%s\"" v) config.enter
+      ; Option.map
+          (fun v -> Printf.sprintf "x-transition:enter-start=\"%s\"" v)
+          config.enter_start
+      ; Option.map
+          (fun v -> Printf.sprintf "x-transition:enter-end=\"%s\"" v)
+          config.enter_end
+      ; Option.map (fun v -> Printf.sprintf "x-transition:leave=\"%s\"" v) config.leave
+      ; Option.map
+          (fun v -> Printf.sprintf "x-transition:leave-start=\"%s\"" v)
+          config.leave_start
+      ; Option.map
+          (fun v -> Printf.sprintf "x-transition:leave-end=\"%s\"" v)
+          config.leave_end
+      ]
+      |> List.filter_map Fun.id
+    in
     String.concat " " parts
   | Effect expr -> Printf.sprintf "x-effect=\"%s\"" expr
   | Ref name -> Printf.sprintf "x-ref=\"%s\"" name
@@ -220,57 +240,68 @@ let to_attribute = function
   | Ignore -> "x-ignore"
   | Id names -> Printf.sprintf "x-id=\"%s\"" names
   | Teleport selector -> Printf.sprintf "x-teleport=\"%s\"" selector
+;;
 
 (** Render shorthand syntax *)
 let to_shorthand = function
-  | Bind { attribute; expression } ->
-    Printf.sprintf ":%s=\"%s\"" attribute expression
+  | Bind { attribute; expression } -> Printf.sprintf ":%s=\"%s\"" attribute expression
   | On { event_name; handler; modifiers } ->
-    let mods = match modifiers with
+    let mods =
+      match modifiers with
       | [] -> ""
-      | ms -> "." ^ (String.concat "." (List.map modifier_to_string ms))
+      | ms -> "." ^ String.concat "." (List.map modifier_to_string ms)
     in
     Printf.sprintf "@%s%s=\"%s\"" event_name mods handler
   | d -> to_attribute d
+;;
 
 (** {1 Serialization} *)
 
 (** Modifier to JSON *)
-let modifier_to_json m =
-  `String (modifier_to_string m)
+let modifier_to_json m = `String (modifier_to_string m)
 
 (** Directive to JSON *)
 let to_json = function
-  | Data expr -> `Assoc [("type", `String "data"); ("expression", `String expr)]
-  | Init expr -> `Assoc [("type", `String "init"); ("expression", `String expr)]
-  | Show expr -> `Assoc [("type", `String "show"); ("expression", `String expr)]
-  | If expr -> `Assoc [("type", `String "if"); ("expression", `String expr)]
+  | Data expr -> `Assoc [ "type", `String "data"; "expression", `String expr ]
+  | Init expr -> `Assoc [ "type", `String "init"; "expression", `String expr ]
+  | Show expr -> `Assoc [ "type", `String "show"; "expression", `String expr ]
+  | If expr -> `Assoc [ "type", `String "if"; "expression", `String expr ]
   | Bind { attribute; expression } ->
-    `Assoc [("type", `String "bind"); ("attribute", `String attribute); ("expression", `String expression)]
+    `Assoc
+      [ "type", `String "bind"
+      ; "attribute", `String attribute
+      ; "expression", `String expression
+      ]
   | On { event_name; handler; modifiers } ->
-    `Assoc [
-      ("type", `String "on");
-      ("event", `String event_name);
-      ("handler", `String handler);
-      ("modifiers", `List (List.map modifier_to_json modifiers));
-    ]
-  | Text expr -> `Assoc [("type", `String "text"); ("expression", `String expr)]
-  | Html expr -> `Assoc [("type", `String "html"); ("expression", `String expr)]
-  | Model expr -> `Assoc [("type", `String "model"); ("expression", `String expr)]
-  | ModelNumber expr -> `Assoc [("type", `String "model.number"); ("expression", `String expr)]
+    `Assoc
+      [ "type", `String "on"
+      ; "event", `String event_name
+      ; "handler", `String handler
+      ; "modifiers", `List (List.map modifier_to_json modifiers)
+      ]
+  | Text expr -> `Assoc [ "type", `String "text"; "expression", `String expr ]
+  | Html expr -> `Assoc [ "type", `String "html"; "expression", `String expr ]
+  | Model expr -> `Assoc [ "type", `String "model"; "expression", `String expr ]
+  | ModelNumber expr ->
+    `Assoc [ "type", `String "model.number"; "expression", `String expr ]
   | ModelDebounce (expr, ms) ->
-    `Assoc [("type", `String "model.debounce"); ("expression", `String expr); ("ms", `Int ms)]
+    `Assoc [ "type", `String "model.debounce"; "expression", `String expr; "ms", `Int ms ]
   | For { item; index; items } ->
-    `Assoc [
-      ("type", `String "for");
-      ("item", `String item);
-      ("index", match index with Some i -> `String i | None -> `Null);
-      ("items", `String items);
-    ]
-  | Transition _ -> `Assoc [("type", `String "transition")]
-  | Effect expr -> `Assoc [("type", `String "effect"); ("expression", `String expr)]
-  | Ref name -> `Assoc [("type", `String "ref"); ("name", `String name)]
-  | Cloak -> `Assoc [("type", `String "cloak")]
-  | Ignore -> `Assoc [("type", `String "ignore")]
-  | Id names -> `Assoc [("type", `String "id"); ("names", `String names)]
-  | Teleport selector -> `Assoc [("type", `String "teleport"); ("selector", `String selector)]
+    `Assoc
+      [ "type", `String "for"
+      ; "item", `String item
+      ; ( "index"
+        , match index with
+          | Some i -> `String i
+          | None -> `Null )
+      ; "items", `String items
+      ]
+  | Transition _ -> `Assoc [ "type", `String "transition" ]
+  | Effect expr -> `Assoc [ "type", `String "effect"; "expression", `String expr ]
+  | Ref name -> `Assoc [ "type", `String "ref"; "name", `String name ]
+  | Cloak -> `Assoc [ "type", `String "cloak" ]
+  | Ignore -> `Assoc [ "type", `String "ignore" ]
+  | Id names -> `Assoc [ "type", `String "id"; "names", `String names ]
+  | Teleport selector ->
+    `Assoc [ "type", `String "teleport"; "selector", `String selector ]
+;;

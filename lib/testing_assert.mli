@@ -1,4 +1,5 @@
 exception Assertion_error of string
+
 val fail : string -> 'a
 val equal : ?msg:string -> Yojson.Safe.t -> Yojson.Safe.t -> unit
 val is_true : ?msg:string -> bool -> unit

@@ -1,5 +1,5 @@
 type modifier =
-    Prevent
+  | Prevent
   | Stop
   | Outside
   | Window
@@ -12,19 +12,26 @@ type modifier =
   | Dot
   | Passive
   | Capture
-type event_directive = {
-  event_name : string;
-  handler : string;
-  modifiers : modifier list;
-}
-type bind_directive = { attribute : string; expression : string; }
-type for_directive = {
-  item : string;
-  index : string option;
-  items : string;
-}
+
+type event_directive =
+  { event_name : string
+  ; handler : string
+  ; modifiers : modifier list
+  }
+
+type bind_directive =
+  { attribute : string
+  ; expression : string
+  }
+
+type for_directive =
+  { item : string
+  ; index : string option
+  ; items : string
+  }
+
 type t =
-    Data of string
+  | Data of string
   | Init of string
   | Show of string
   | If of string
@@ -43,14 +50,16 @@ type t =
   | Ignore
   | Id of string
   | Teleport of string
-and transition_config = {
-  enter : string option;
-  enter_start : string option;
-  enter_end : string option;
-  leave : string option;
-  leave_start : string option;
-  leave_end : string option;
-}
+
+and transition_config =
+  { enter : string option
+  ; enter_start : string option
+  ; enter_end : string option
+  ; leave : string option
+  ; leave_start : string option
+  ; leave_end : string option
+  }
+
 val data : string -> t
 val init : string -> t
 val show : string -> t
@@ -64,12 +73,17 @@ val model_number : string -> t
 val model_debounce : ms:int -> string -> t
 val for_ : item:string -> ?index:string -> items:string -> unit -> t
 val transition : ?config:transition_config -> unit -> t
-val transition_config :
-  ?enter:string ->
-  ?enter_start:string ->
-  ?enter_end:string ->
-  ?leave:string ->
-  ?leave_start:string -> ?leave_end:string -> unit -> transition_config
+
+val transition_config
+  :  ?enter:string
+  -> ?enter_start:string
+  -> ?enter_end:string
+  -> ?leave:string
+  -> ?leave_start:string
+  -> ?leave_end:string
+  -> unit
+  -> transition_config
+
 val effect_ : string -> t
 val ref_ : string -> t
 val cloak : t
@@ -81,12 +95,15 @@ val modifier_to_string : modifier -> string
 val to_attribute : t -> string
 val to_shorthand : t -> string
 val modifier_to_json : modifier -> [> `String of string ]
-val to_json :
-  t ->
-  [> `Assoc of
-       (string *
-        [> `Int of int
-         | `List of [> `String of string ] list
-         | `Null
-         | `String of string ])
-       list ]
+
+val to_json
+  :  t
+  -> [> `Assoc of
+          (string
+          * [> `Int of int
+            | `List of [> `String of string ] list
+            | `Null
+            | `String of string
+            ])
+            list
+     ]

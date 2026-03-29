@@ -24,7 +24,9 @@ type param =
   | Blob of string
 
 (** Sort order. *)
-type order = Asc | Desc
+type order =
+  | Asc
+  | Desc
 
 (** Join type. *)
 type join_type =
@@ -42,10 +44,10 @@ type query_type =
   | Delete
 
 (** Built query. *)
-type query = {
-  sql : string;
-  params : param list;
-}
+type query =
+  { sql : string
+  ; params : param list
+  }
 
 (** Query builder state. *)
 type t

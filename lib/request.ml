@@ -6,24 +6,33 @@ open Eio
 type params = (string * string) list
 
 (** Request type with all HTTP request data *)
-type t = {
-  meth : Http.Method.t;
-  uri : Uri.t;
-  headers : Http.Header.t;
-  body_source : Buf_read.t;
-  mutable cached_body : string option;
-  params : params;
-  ctx : Hmap.t;
-  (* Internal: raw http request for advanced use *)
-  raw : Http.Request.t;
-}
+type t =
+  { meth : Http.Method.t
+  ; uri : Uri.t
+  ; headers : Http.Header.t
+  ; body_source : Buf_read.t
+  ; mutable cached_body : string option
+  ; params : params
+  ; ctx : Hmap.t
+  ; (* Internal: raw http request for advanced use *)
+    raw : Http.Request.t
+  }
 
 (** Create a new request from http components *)
 let make ~raw ~body_source =
   let uri = Http.Request.resource raw |> Uri.of_string in
   let headers = Http.Request.headers raw in
   let meth = Http.Request.meth raw in
-  { meth; uri; headers; body_source; cached_body = None; params = []; ctx = Hmap.empty; raw }
+  { meth
+  ; uri
+  ; headers
+  ; body_source
+  ; cached_body = None
+  ; params = []
+  ; ctx = Hmap.empty
+  ; raw
+  }
+;;
 
 (** Get HTTP method *)
 let meth t = t.meth
@@ -45,33 +54,32 @@ let body t =
   match t.cached_body with
   | Some b -> b
   | None ->
-    let b = try 
-      Buf_read.take_all t.body_source
-    with End_of_file -> "" 
+    let b =
+      try Buf_read.take_all t.body_source with
+      | End_of_file -> ""
     in
     t.cached_body <- Some b;
     b
+;;
 
 (** Get raw body source for streaming *)
 let body_source t = t.body_source
 
 (** Get path parameter by name *)
-let param name t =
-  List.assoc_opt name t.params
+let param name t = List.assoc_opt name t.params
 
 (** Get path parameter, raising if not found *)
 let param_exn name t =
   match param name t with
   | Some v -> v
   | None -> failwith ("Missing path parameter: " ^ name)
+;;
 
 (** Get query parameter by name *)
-let query name t =
-  Uri.get_query_param t.uri name
+let query name t = Uri.get_query_param t.uri name
 
 (** Get all query parameters for a key *)
-let query_all name t =
-  Uri.get_query_param' t.uri name
+let query_all name t = Uri.get_query_param' t.uri name
 
 (** Internal: set path parameters after route matching *)
 let with_params params t = { t with params }
@@ -84,12 +92,12 @@ let with_ctx ctx t = { t with ctx }
 
 (** Parse body as JSON *)
 let json_body t =
-  try Ok (Yojson.Safe.from_string (body t))
-  with Yojson.Json_error msg -> Error (`Json_parse_error msg)
+  try Ok (Yojson.Safe.from_string (body t)) with
+  | Yojson.Json_error msg -> Error (`Json_parse_error msg)
+;;
 
 (** Parse body as form data (application/x-www-form-urlencoded) *)
-let form_body t =
-  Uri.query_of_encoded (body t)
+let form_body t = Uri.query_of_encoded (body t)
 
 (** Get content-type header *)
 let content_type t = header "content-type" t
@@ -99,3 +107,4 @@ let is_json t =
   match content_type t with
   | Some ct -> String.sub ct 0 (min 16 (String.length ct)) = "application/json"
   | None -> false
+;;

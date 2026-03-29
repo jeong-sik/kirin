@@ -47,6 +47,7 @@ let error_to_string = function
   | Pool_exhausted -> "Connection pool exhausted"
   | Timeout -> "Database operation timed out"
   | Invalid_uri msg -> Printf.sprintf "Invalid database URI: %s" msg
+;;
 
 (** Connection module type (Caqti compatible) *)
 module type CONNECTION = Caqti_eio.CONNECTION
@@ -55,18 +56,20 @@ module type CONNECTION = Caqti_eio.CONNECTION
 type pool = (Caqti_eio.connection, Caqti_error.t) Caqti_eio.Pool.t
 
 (** Pool configuration *)
-type pool_config = {
-  max_size : int;
-  idle_timeout : float option;  (** seconds *)
-  connect_timeout : float option;  (** seconds *)
-}
+type pool_config =
+  { max_size : int
+  ; idle_timeout : float option (** seconds *)
+  ; connect_timeout : float option (** seconds *)
+  }
 
 (** Default pool configuration *)
-let default_config = {
-  max_size = 10;
-  idle_timeout = Some 300.0;  (* 5 minutes *)
-  connect_timeout = Some 30.0;
-}
+let default_config =
+  { max_size = 10
+  ; idle_timeout = Some 300.0
+  ; (* 5 minutes *)
+    connect_timeout = Some 30.0
+  }
+;;
 
 (** {1 Connection Pool} *)
 
@@ -79,8 +82,8 @@ let with_pool ?(config = default_config) ~sw ~env uri_string f =
     let result = f pool in
     Caqti_eio.Pool.drain pool;
     Ok result
-  | Error err ->
-    Error (Connection_failed (Caqti_error.show err))
+  | Error err -> Error (Connection_failed (Caqti_error.show err))
+;;
 
 (** Connect without creating a pool (single connection) *)
 let connect ~sw ~env uri_string =
@@ -88,6 +91,7 @@ let connect ~sw ~env uri_string =
   match Caqti_eio_unix.connect ~sw ~stdenv:env uri with
   | Ok conn -> Ok conn
   | Error err -> Error (Connection_failed (Caqti_error.show err))
+;;
 
 (** {1 Query Execution} *)
 
@@ -96,29 +100,34 @@ let use pool f =
   match Caqti_eio.Pool.use f pool with
   | Ok x -> Ok x
   | Error err -> Error (Query_failed (Caqti_error.show err))
+;;
 
 (** {1 Transaction Support} *)
 
 (** Execute a function within a transaction *)
 let transaction pool f =
-  match Caqti_eio.Pool.use (fun (module C : CONNECTION) ->
-    match C.start () with
-    | Error err -> Error err
-    | Ok () ->
-      match f (module C : CONNECTION) with
-      | Ok result ->
-        (match C.commit () with
-         | Ok () -> Ok (Ok result)
-         | Error err ->
-           let _ = C.rollback () in
-           Error err)
-      | Error e ->
-        let _ = C.rollback () in
-        Ok (Error e)
-  ) pool with
+  match
+    Caqti_eio.Pool.use
+      (fun (module C : CONNECTION) ->
+         match C.start () with
+         | Error err -> Error err
+         | Ok () ->
+           (match f (module C : CONNECTION) with
+            | Ok result ->
+              (match C.commit () with
+               | Ok () -> Ok (Ok result)
+               | Error err ->
+                 let _ = C.rollback () in
+                 Error err)
+            | Error e ->
+              let _ = C.rollback () in
+              Ok (Error e)))
+      pool
+  with
   | Ok (Ok result) -> Ok result
   | Ok (Error e) -> Error e
   | Error err -> Error (Transaction_failed (Caqti_error.show err))
+;;
 
 (** {1 Re-exports for Convenience} *)
 
@@ -137,21 +146,25 @@ module Infix = Caqti_request.Infix
 let exec_req sql =
   let open Caqti_request.Infix in
   (Caqti_type.unit ->. Caqti_type.unit) sql
+;;
 
 (** Make a find request (exactly one result) - Caqti 2.x style *)
 let find_req in_type out_type sql =
   let open Caqti_request.Infix in
   (in_type ->! out_type) sql
+;;
 
 (** Make a find_opt request (zero or one result) - Caqti 2.x style *)
 let find_opt_req in_type out_type sql =
   let open Caqti_request.Infix in
   (in_type ->? out_type) sql
+;;
 
 (** Make a collect request (multiple results) - Caqti 2.x style *)
 let collect_req in_type out_type sql =
   let open Caqti_request.Infix in
   (in_type ->* out_type) sql
+;;
 
 (** {1 Health Check Integration} *)
 
@@ -159,24 +172,26 @@ let collect_req in_type out_type sql =
 let ping_req =
   let open Caqti_request.Infix in
   (Caqti_type.unit ->! Caqti_type.int) "SELECT 1"
+;;
 
 (** Create a health check for the database pool *)
 let health_check pool =
   fun () ->
-    match use pool (fun (module C : CONNECTION) -> C.find ping_req ()) with
-    | Ok 1 -> Health.Healthy
-    | _ -> Health.Unhealthy "Database connection failed"
+  match use pool (fun (module C : CONNECTION) -> C.find ping_req ()) with
+  | Ok 1 -> Health.Healthy
+  | _ -> Health.Unhealthy "Database connection failed"
+;;
 
 (** {1 URI Utilities} *)
 
 (** Parse database URI *)
 let parse_uri uri_string =
-  try Ok (Uri.of_string uri_string)
-  with Invalid_argument _ -> Error (Invalid_uri uri_string)
+  try Ok (Uri.of_string uri_string) with
+  | Invalid_argument _ -> Error (Invalid_uri uri_string)
+;;
 
 (** Get scheme from URI (postgresql, sqlite3, etc.) *)
 let scheme_of_uri uri = Uri.scheme uri
 
 (** Mask credentials in URI for logging *)
-let safe_uri uri =
-  Uri.with_userinfo uri None
+let safe_uri uri = Uri.with_userinfo uri None

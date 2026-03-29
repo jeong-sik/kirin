@@ -15,15 +15,12 @@ open Kirin
 let () =
   Printf.printf "Kirin MCP Client Example\n";
   Printf.printf "========================\n\n";
-
   (* Create Streamable HTTP transport (for web-based MCP servers) *)
   let transport = Mcp.Transport.create_streamable_http () in
   Printf.printf "Created Streamable HTTP transport\n";
-
   (* Create client *)
   let client = Mcp.Client.create transport in
   Printf.printf "Created MCP client\n";
-
   (* Show client API *)
   Printf.printf "\nAvailable client methods:\n";
   Printf.printf "  - Mcp.Client.initialize client ()\n";
@@ -33,9 +30,9 @@ let () =
   Printf.printf "  - Mcp.Client.read_resource client ~uri\n";
   Printf.printf "  - Mcp.Client.list_prompts client\n";
   Printf.printf "  - Mcp.Client.get_prompt client ~name ~arguments ()\n";
-
   Printf.printf "\nExample: Calling a tool\n";
-  Printf.printf {|
+  Printf.printf
+    {|
   let result = Mcp.Client.call_tool client
     ~name:"greet"
     ~arguments:(`Assoc ["name", `String "World"])
@@ -46,16 +43,15 @@ let () =
     | _ -> ()
   ) result.content
 |};
-
   Printf.printf "\nTo connect to a real MCP server:\n";
   Printf.printf "  1. Start an MCP server (e.g., run mcp_server example)\n";
   Printf.printf "  2. Client POSTs JSON-RPC to /mcp endpoint\n";
   Printf.printf "  3. Server responds with JSON or SSE stream\n";
   Printf.printf "  4. Mcp-Session-Id header tracks the session\n";
-
   (* Show transport check *)
-  Printf.printf "\nTransport type: %s\n"
+  Printf.printf
+    "\nTransport type: %s\n"
     (if Mcp.Transport.is_streamable_http transport then "Streamable HTTP" else "stdio");
-
   ignore client;
   Printf.printf "\nMCP client demo complete.\n"
+;;

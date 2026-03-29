@@ -70,7 +70,7 @@ val create_answer : Peer.t -> remote_sdp:string -> (session_description, string)
 
 (** [signaling_handler ()] creates a WebSocket handler for WebRTC signaling.
     Clients connect with a [?room=<id>] query parameter. *)
-val signaling_handler : unit -> (Request.t -> Response.t)
+val signaling_handler : unit -> Request.t -> Response.t
 
 (** [stun_servers_handler req] returns the configured ICE/STUN servers as JSON. *)
 val stun_servers_handler : Request.t -> Response.t

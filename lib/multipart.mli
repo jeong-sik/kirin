@@ -9,12 +9,12 @@
 (** {1 Types} *)
 
 (** A single part of multipart data. *)
-type part = {
-  name : string;                    (** Form field name. *)
-  filename : string option;         (** Original filename (for file uploads). *)
-  content_type : string option;     (** MIME type (for file uploads). *)
-  content : string;                 (** Raw content. *)
-}
+type part =
+  { name : string (** Form field name. *)
+  ; filename : string option (** Original filename (for file uploads). *)
+  ; content_type : string option (** MIME type (for file uploads). *)
+  ; content : string (** Raw content. *)
+  }
 
 (** Parsed multipart form data. *)
 type t

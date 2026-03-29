@@ -6,14 +6,12 @@
 (** {1 Core Builders} *)
 
 (** Create a hyperscript attribute value *)
-let script commands =
-  String.concat " " commands
+let script commands = String.concat " " commands
 
 (** {1 Event Handlers} *)
 
 (** On event trigger *)
-let on event action =
-  Printf.sprintf "on %s %s" event action
+let on event action = Printf.sprintf "on %s %s" event action
 
 (** On click *)
 let on_click action = on "click" action
@@ -85,14 +83,13 @@ let set_text content = Printf.sprintf "set textContent to '%s'" content
 (** Transition with duration *)
 let transition property value duration =
   Printf.sprintf "transition %s to %s over %s" property value duration
+;;
 
 (** Transition opacity *)
-let fade_out ?(duration = "0.3s") () =
-  transition "opacity" "0" duration
+let fade_out ?(duration = "0.3s") () = transition "opacity" "0" duration
 
 (** Transition opacity in *)
-let fade_in ?(duration = "0.3s") () =
-  transition "opacity" "1" duration
+let fade_in ?(duration = "0.3s") () = transition "opacity" "1" duration
 
 (** {1 Control Flow} *)
 
@@ -103,20 +100,20 @@ let wait duration = Printf.sprintf "wait %s" duration
 let wait_then duration action = Printf.sprintf "wait %s then %s" duration action
 
 (** If condition *)
-let if_ condition then_action =
-  Printf.sprintf "if %s %s" condition then_action
+let if_ condition then_action = Printf.sprintf "if %s %s" condition then_action
 
 (** If-else *)
 let if_else condition then_action else_action =
   Printf.sprintf "if %s %s else %s" condition then_action else_action
+;;
 
 (** Repeat action *)
-let repeat times action =
-  Printf.sprintf "repeat %d times %s end" times action
+let repeat times action = Printf.sprintf "repeat %d times %s end" times action
 
 (** Repeat until *)
 let repeat_until condition action =
   Printf.sprintf "repeat until %s %s end" condition action
+;;
 
 (** {1 DOM Manipulation} *)
 
@@ -133,8 +130,7 @@ let append content target = Printf.sprintf "append '%s' to %s" content target
 let prepend content target = Printf.sprintf "prepend '%s' to %s" content target
 
 (** Put content *)
-let put content location target =
-  Printf.sprintf "put '%s' %s %s" content location target
+let put content location target = Printf.sprintf "put '%s' %s %s" content location target
 
 (** {1 Events} *)
 
@@ -175,38 +171,33 @@ let find selector = Printf.sprintf "find %s in me" selector
 (** {1 Complete Examples} *)
 
 (** Toggle active class on click *)
-let toggle_active_on_click =
-  on_click (toggle_class "active")
+let toggle_active_on_click = on_click (toggle_class "active")
 
 (** Remove element with fade *)
 let remove_with_fade ?(duration = "0.3s") () =
-  script [
-    on_click (fade_out ~duration ());
-    wait_then duration remove_me;
-  ]
+  script [ on_click (fade_out ~duration ()); wait_then duration remove_me ]
+;;
 
 (** Add loading class during HTMX request *)
 let loading_indicator cls =
-  script [
-    on "htmx:beforeRequest" (add_class cls);
-    on "htmx:afterRequest" (remove_class cls);
-  ]
+  script
+    [ on "htmx:beforeRequest" (add_class cls); on "htmx:afterRequest" (remove_class cls) ]
+;;
 
 (** Dismiss alert/toast *)
 let dismissable ?(duration = "0.3s") () =
-  script [
-    on_click (fade_out ~duration ());
-    wait_then duration remove_me;
-  ]
+  script [ on_click (fade_out ~duration ()); wait_then duration remove_me ]
+;;
 
 (** Auto-focus on load *)
-let autofocus_on_load =
-  on_load "focus()"
+let autofocus_on_load = on_load "focus()"
 
 (** Copy to clipboard *)
 let copy_to_clipboard selector =
-  script [
-    on_click (Printf.sprintf "call navigator.clipboard.writeText(%s.textContent)" selector);
-    add_class "copied";
-    wait_then "2s" (remove_class "copied");
-  ]
+  script
+    [ on_click
+        (Printf.sprintf "call navigator.clipboard.writeText(%s.textContent)" selector)
+    ; add_class "copied"
+    ; wait_then "2s" (remove_class "copied")
+    ]
+;;

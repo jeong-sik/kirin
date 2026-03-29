@@ -1,10 +1,11 @@
-(lang dune 3.16)
+(lang dune 3.17)
 
 (name kirin)
 
 (version 2.1.4)
 
 (generate_opam_files true)
+(implicit_transitive_deps false)
 
 (source
  (github jeong-sik/kirin))
@@ -37,8 +38,8 @@ Features:
 - gRPC integration (via grpc-direct)
 - Unified HTTP + gRPC server")
  (depends
-  (ocaml (>= "5.1"))
-  (dune (>= "3.16"))
+  (ocaml (>= "5.2"))
+  (dune (>= "3.17"))
   (eio (>= "1.0"))
   (eio_main (>= "1.0"))
   (cohttp (>= "5.0"))
@@ -62,7 +63,7 @@ Features:
   (graphql (>= "0.14.0"))
   (graphql_parser (>= "0.14.0"))
   (hmap (>= "0.8"))
-  (mcp_protocol_eio (>= "0.15.0"))
+  (mcp_protocol (>= "1.2.0"))
   (bisect_ppx (and (>= 2.8) :with-dev-setup))
   (alcotest :with-test)
   (odoc :with-doc))

@@ -95,13 +95,13 @@ module Histogram : sig
 
   (** [create ~name ~help ?labels ?buckets ()] creates a new histogram.
       [buckets] defines the upper bounds for each bucket (default: standard Prometheus buckets). *)
-  val create :
-    name:string ->
-    help:string ->
-    ?labels:string list ->
-    ?buckets:float array ->
-    unit ->
-    t
+  val create
+    :  name:string
+    -> help:string
+    -> ?labels:string list
+    -> ?buckets:float array
+    -> unit
+    -> t
 
   (** [observe ?labels t value] records a value in the histogram. *)
   val observe : ?labels:label list -> t -> float -> unit
@@ -120,13 +120,13 @@ module Summary : sig
 
   (** [create ~name ~help ?labels ?max_samples ()] creates a new summary.
       [max_samples] is the maximum number of samples to retain (default: 1000). *)
-  val create :
-    name:string ->
-    help:string ->
-    ?labels:string list ->
-    ?max_samples:int ->
-    unit ->
-    t
+  val create
+    :  name:string
+    -> help:string
+    -> ?labels:string list
+    -> ?max_samples:int
+    -> unit
+    -> t
 
   (** [observe t value] records a value. *)
   val observe : t -> float -> unit
@@ -160,27 +160,24 @@ type t
 val create : unit -> t
 
 (** [counter t name ~help ?labels ()] registers and returns a new counter. *)
-val counter :
-  t -> string -> help:string -> ?labels:string list -> unit -> Counter.t
+val counter : t -> string -> help:string -> ?labels:string list -> unit -> Counter.t
 
 (** [gauge t name ~help ?labels ()] registers and returns a new gauge. *)
-val gauge :
-  t -> string -> help:string -> ?labels:string list -> unit -> Gauge.t
+val gauge : t -> string -> help:string -> ?labels:string list -> unit -> Gauge.t
 
 (** [histogram t name ~help ?labels ?buckets ()] registers and returns
     a new histogram. *)
-val histogram :
-  t ->
-  string ->
-  help:string ->
-  ?labels:string list ->
-  ?buckets:float array ->
-  unit ->
-  Histogram.t
+val histogram
+  :  t
+  -> string
+  -> help:string
+  -> ?labels:string list
+  -> ?buckets:float array
+  -> unit
+  -> Histogram.t
 
 (** [summary t name ~help ?labels ()] registers and returns a new summary. *)
-val summary :
-  t -> string -> help:string -> ?labels:string list -> unit -> Summary.t
+val summary : t -> string -> help:string -> ?labels:string list -> unit -> Summary.t
 
 (** {1 Prometheus Export} *)
 
@@ -191,16 +188,16 @@ val export : t -> string
 
 (** [handler t] returns a request handler that serves metrics in Prometheus format.
     Responds with [Content-Type: text/plain; version=0.0.4]. *)
-val handler : t -> (Request.t -> Response.t)
+val handler : t -> Request.t -> Response.t
 
 (** {1 Built-in HTTP Metrics} *)
 
 (** Standard HTTP metrics bundle for use with {!middleware}. *)
-type http_metrics = {
-  requests_total : Counter.t;
-  request_duration : Histogram.t;
-  requests_in_flight : Gauge.t;
-}
+type http_metrics =
+  { requests_total : Counter.t
+  ; request_duration : Histogram.t
+  ; requests_in_flight : Gauge.t
+  }
 
 (** [http_metrics t] creates and registers a standard set of HTTP metrics:
     - [http_requests_total] (counter with method/path/status labels)
@@ -212,9 +209,9 @@ val http_metrics : t -> http_metrics
     HTTP metrics collection. Tracks request count, latency, and in-flight requests.
     [normalize_path] replaces dynamic path segments (UUIDs, numbers) with [:id]
     to prevent Prometheus label cardinality explosion. *)
-val middleware :
-  ?normalize_path:(string -> string) ->
-  http_metrics ->
-  (Request.t -> Response.t) ->
-  Request.t ->
-  Response.t
+val middleware
+  :  ?normalize_path:(string -> string)
+  -> http_metrics
+  -> (Request.t -> Response.t)
+  -> Request.t
+  -> Response.t

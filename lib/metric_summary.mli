@@ -3,13 +3,13 @@
 (** Abstract summary type. *)
 type t
 
-val create :
-  name:string ->
-  help:string ->
-  ?labels:string list ->
-  ?max_samples:int ->
-  unit ->
-  t
+val create
+  :  name:string
+  -> help:string
+  -> ?labels:string list
+  -> ?max_samples:int
+  -> unit
+  -> t
 
 (** [observe t value] records a value. *)
 val observe : t -> float -> unit

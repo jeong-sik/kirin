@@ -10,18 +10,18 @@ open Eio
 (** {1 Types} *)
 
 (** Stdio transport record *)
-type stdio_transport = {
-  ic : Buf_read.t;
-  oc : Buf_write.t;
-}
+type stdio_transport =
+  { ic : Buf_read.t
+  ; oc : Buf_write.t
+  }
 
 (** Streamable HTTP transport record (2025-11-25) *)
-type streamable_http_transport = {
-  endpoint : string;  (** MCP endpoint URL, e.g. "http://localhost:8080/mcp" *)
-  mutable pending_requests : (Jsonrpc.id * Jsonrpc.response Eio.Promise.u) list;
-  mutable message_queue : Jsonrpc.message Eio.Stream.t;
-  mutable session_id : string option;  (** Mcp-Session-Id header value *)
-}
+type streamable_http_transport =
+  { endpoint : string (** MCP endpoint URL, e.g. "http://localhost:8080/mcp" *)
+  ; mutable pending_requests : (Jsonrpc.id * Jsonrpc.response Eio.Promise.u) list
+  ; mutable message_queue : Jsonrpc.message Eio.Stream.t
+  ; mutable session_id : string option (** Mcp-Session-Id header value *)
+  }
 
 (** Transport type *)
 type t =
@@ -35,16 +35,16 @@ exception Transport_error of string
 
 (** Read a single line from stdio *)
 let read_line_stdio ic =
-  try
-    Buf_read.line ic
-  with End_of_file ->
-    raise (Transport_error "Connection closed")
+  try Buf_read.line ic with
+  | End_of_file -> raise (Transport_error "Connection closed")
+;;
 
 (** Write a line to stdio *)
 let write_line_stdio oc line =
   Buf_write.string oc line;
   Buf_write.char oc '\n';
   Buf_write.flush oc
+;;
 
 (** Read a JSON-RPC message from stdio
     MCP uses newline-delimited JSON (NDJSON) format *)
@@ -56,37 +56,43 @@ let read_message_stdio ic =
   with
   | Yojson.Json_error msg ->
     raise (Transport_error (Printf.sprintf "JSON parse error: %s" msg))
+;;
 
 (** Write a JSON-RPC message to stdio *)
 let write_message_stdio oc msg =
   let json = Jsonrpc.encode msg in
   let line = Yojson.Safe.to_string json in
   write_line_stdio oc line
+;;
 
 (** {1 Streamable HTTP Transport} *)
 
 (** Create Streamable HTTP transport (2025-11-25) *)
 let create_streamable_http ?(endpoint = "") () =
-  Streamable_http {
-    endpoint;
-    pending_requests = [];
-    message_queue = Stream.create 100;
-    session_id = None;
-  }
+  Streamable_http
+    { endpoint
+    ; pending_requests = []
+    ; message_queue = Stream.create 100
+    ; session_id = None
+    }
+;;
 
 (** Queue an incoming message (called by HTTP handler) *)
 let queue_message transport msg =
   match transport with
   | Streamable_http t -> Stream.add t.message_queue msg
   | Stdio _ -> raise (Transport_error "Cannot queue message on stdio transport")
+;;
 
 (** Read from Streamable HTTP transport (blocks until message available) *)
 let read_message_streamable_http (t : streamable_http_transport) =
   Stream.take t.message_queue
+;;
 
 (** Register a pending request for response matching *)
 let register_pending_request (t : streamable_http_transport) id resolver =
   t.pending_requests <- (id, resolver) :: t.pending_requests
+;;
 
 (** Resolve a pending request with a response *)
 let resolve_pending_request (t : streamable_http_transport) id response =
@@ -95,17 +101,20 @@ let resolve_pending_request (t : streamable_http_transport) id response =
     t.pending_requests <- List.remove_assoc id t.pending_requests;
     Promise.resolve resolver response
   | None -> ()
+;;
 
 (** Get session ID from transport *)
 let session_id = function
   | Streamable_http t -> t.session_id
   | Stdio _ -> None
+;;
 
 (** Set session ID on transport *)
 let set_session_id transport id =
   match transport with
   | Streamable_http t -> t.session_id <- Some id
   | Stdio _ -> () (* Session IDs are not used with stdio *)
+;;
 
 (** {1 Generic Interface} *)
 
@@ -113,19 +122,19 @@ let set_session_id transport id =
 let read_message = function
   | Stdio { ic; _ } -> read_message_stdio ic
   | Streamable_http t -> read_message_streamable_http t
+;;
 
 (** Write a message to transport *)
 let write_message transport msg =
   match transport with
   | Stdio { oc; _ } -> write_message_stdio oc msg
-  | Streamable_http t ->
-    Stream.add t.message_queue msg
+  | Streamable_http t -> Stream.add t.message_queue msg
+;;
 
 (** {1 Constructors} *)
 
 (** Create stdio transport from Eio streams *)
-let of_stdio ~ic ~oc =
-  Stdio { ic; oc }
+let of_stdio ~ic ~oc = Stdio { ic; oc }
 
 (** Create Streamable HTTP transport *)
 let of_streamable_http = create_streamable_http
@@ -134,6 +143,7 @@ let of_streamable_http = create_streamable_http
 let endpoint = function
   | Streamable_http t -> Some t.endpoint
   | Stdio _ -> None
+;;
 
 (** {1 Utilities} *)
 
@@ -141,11 +151,13 @@ let endpoint = function
 let is_stdio = function
   | Stdio _ -> true
   | Streamable_http _ -> false
+;;
 
 (** Check if transport is Streamable HTTP *)
 let is_streamable_http = function
   | Streamable_http _ -> true
   | Stdio _ -> false
+;;
 
 (** Send a request via HTTP transport and wait for response.
     Registers a pending request with a Promise, queues the message,
@@ -162,6 +174,7 @@ let send_http_request (t : streamable_http_transport) (request : Jsonrpc.request
   register_pending_request t request.id resolver;
   Stream.add t.message_queue (Jsonrpc.Request request);
   Promise.await promise
+;;
 
 (** Send a request and wait for response.
     For stdio: writes the request and reads responses until a matching ID arrives.
@@ -177,9 +190,10 @@ let send_request transport request =
       | _ -> wait_for_response ()
     in
     wait_for_response ()
-  | Streamable_http t ->
-    send_http_request t request
+  | Streamable_http t -> send_http_request t request
+;;
 
 (** Send a notification (no response expected) *)
 let send_notification transport notif =
   write_message transport (Jsonrpc.Notification notif)
+;;

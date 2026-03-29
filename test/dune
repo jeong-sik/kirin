@@ -1,23 +1,73 @@
 (test
  (name test_kirin)
- (modules test_kirin test_helpers
-          test_response_suite test_router_suite test_cookie_suite
-          test_etag_suite test_multipart_suite test_compress_suite
-          test_ratelimit_suite test_websocket_suite test_sse_suite
-          test_template_suite test_tls_suite test_grpc_suite
-          test_graphql_suite test_pool_suite test_backpressure_suite
-          test_cache_suite test_jobs_suite test_parallel_suite
-          test_health_suite test_metrics_suite test_shutdown_suite
-          test_webrtc_suite test_query_suite)
- (libraries kirin alcotest grpc-direct-core eio eio_main str unix))
+ (modules
+  test_kirin
+  test_helpers
+  test_response_suite
+  test_router_suite
+  test_cookie_suite
+  test_etag_suite
+  test_multipart_suite
+  test_compress_suite
+  test_ratelimit_suite
+  test_websocket_suite
+  test_sse_suite
+  test_template_suite
+  test_tls_suite
+  test_grpc_suite
+  test_graphql_suite
+  test_pool_suite
+  test_backpressure_suite
+  test_cache_suite
+  test_jobs_suite
+  test_parallel_suite
+  test_health_suite
+  test_metrics_suite
+  test_shutdown_suite
+  test_webrtc_suite
+  test_query_suite)
+ (libraries
+  kirin
+  alcotest
+  grpc-direct-core
+  eio
+  eio.core
+  eio_main
+  str
+  unix
+  http
+  uri
+  yojson))
 
 (test
  (name test_auth)
- (libraries kirin kirin.auth alcotest str unix eio eio_main hmap))
+ (libraries
+  kirin
+  kirin.auth
+  alcotest
+  str
+  unix
+  eio
+  eio.core
+  eio_main
+  hmap
+  yojson
+  fmt
+  http))
 
 (test
  (name test_mcp)
- (libraries kirin kirin.mcp alcotest str eio eio_main))
+ (libraries
+  kirin
+  kirin.mcp
+  alcotest
+  str
+  eio
+  eio.core
+  eio_main
+  eio.unix
+  yojson
+  fmt))
 
 (test
  (name test_openapi)
@@ -33,7 +83,7 @@
 
 (test
  (name test_testing)
- (libraries kirin alcotest str unix))
+ (libraries kirin alcotest str unix yojson))
 
 (test
  (name test_react)
@@ -45,7 +95,7 @@
 
 (test
  (name test_trpc)
- (libraries kirin kirin.trpc alcotest str unix eio_main))
+ (libraries kirin kirin.trpc alcotest str unix eio_main yojson))
 
 (test
  (name test_tanstack)
@@ -57,11 +107,11 @@
 
 (test
  (name test_svelte)
- (libraries kirin kirin.svelte alcotest str unix eio_main))
+ (libraries kirin kirin.svelte alcotest str unix eio_main yojson))
 
 (test
  (name test_vue)
- (libraries kirin kirin.vue alcotest str unix eio_main))
+ (libraries kirin kirin.vue alcotest str unix eio_main yojson))
 
 (test
  (name test_angular)
@@ -89,7 +139,7 @@
 
 (test
  (name test_remix)
- (libraries kirin kirin.remix alcotest str unix))
+ (libraries kirin kirin.remix alcotest str unix yojson))
 
 (test
  (name test_graphql_relay)
@@ -97,11 +147,11 @@
 
 (test
  (name test_multicore)
- (libraries kirin alcotest eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_streaming)
- (libraries kirin alcotest eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_fs_compat)
@@ -114,7 +164,10 @@
 (test
  (name test_no_shell_node_worker)
  (deps ../lib/react/node_worker.ml)
- (action (run %{exe:test_no_shell_node_worker.exe} %{dep:../lib/react/node_worker.ml})))
+ (action
+  (run
+   %{exe:test_no_shell_node_worker.exe}
+   %{dep:../lib/react/node_worker.ml})))
 
 (test
  (name test_cache)
@@ -130,16 +183,16 @@
 
 (test
  (name test_sse)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_router)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main http))
 
 (test
  (name test_middleware)
- (libraries kirin alcotest eio eio_main unix))
+ (libraries kirin alcotest eio eio.core eio_main unix http))
 
 (test
  (name test_cookie)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main http))

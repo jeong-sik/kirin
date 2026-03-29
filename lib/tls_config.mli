@@ -13,12 +13,12 @@
 (** {1 Types} *)
 
 (** TLS configuration. *)
-type t = {
-  certificate : string;             (** PEM-encoded certificate. *)
-  private_key : string;             (** PEM-encoded private key. *)
-  ca_cert : string option;          (** Optional CA certificate for client auth. *)
-  alpn_protocols : string list;     (** ALPN protocols (e.g., ["h2"; "http/1.1"]). *)
-}
+type t =
+  { certificate : string (** PEM-encoded certificate. *)
+  ; private_key : string (** PEM-encoded private key. *)
+  ; ca_cert : string option (** Optional CA certificate for client auth. *)
+  ; alpn_protocols : string list (** ALPN protocols (e.g., ["h2"; "http/1.1"]). *)
+  }
 
 (** TLS operation errors. *)
 type error =
@@ -35,24 +35,24 @@ type 'a result = ('a, error) Stdlib.result
 (** [make ~cert_file ~key_file ?ca_file ?alpn ()] creates a TLS config
     by loading PEM files from disk. Returns [Error] if files cannot be read.
     @param alpn ALPN protocol list (default: [["http/1.1"]]). *)
-val make :
-  cert_file:string ->
-  key_file:string ->
-  ?ca_file:string ->
-  ?alpn:string list ->
-  unit ->
-  t result
+val make
+  :  cert_file:string
+  -> key_file:string
+  -> ?ca_file:string
+  -> ?alpn:string list
+  -> unit
+  -> t result
 
 (** [from_pem ~certificate ~private_key ?ca_cert ?alpn ()] creates a TLS
     config directly from PEM strings.
     @param alpn ALPN protocol list (default: [["http/1.1"]]). *)
-val from_pem :
-  certificate:string ->
-  private_key:string ->
-  ?ca_cert:string ->
-  ?alpn:string list ->
-  unit ->
-  t
+val from_pem
+  :  certificate:string
+  -> private_key:string
+  -> ?ca_cert:string
+  -> ?alpn:string list
+  -> unit
+  -> t
 
 (** [dev_config ()] returns a self-signed TLS config for development.
     Do not use in production. *)

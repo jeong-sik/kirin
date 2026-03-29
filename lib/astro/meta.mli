@@ -1,32 +1,45 @@
 type meta_tag =
-    Name of { name : string; content : string; }
-  | Property of { property : string; content : string; }
-  | HttpEquiv of { http_equiv : string; content : string; }
+  | Name of
+      { name : string
+      ; content : string
+      }
+  | Property of
+      { property : string
+      ; content : string
+      }
+  | HttpEquiv of
+      { http_equiv : string
+      ; content : string
+      }
   | Charset of string
-type link_tag = {
-  rel : string;
-  href : string;
-  type_ : string option;
-  sizes : string option;
-  media : string option;
-  crossorigin : string option;
-}
-type script_tag = {
-  src : string option;
-  inline : string option;
-  type_ : string option;
-  async : bool;
-  defer : bool;
-  module_ : bool;
-}
-type t = {
-  title : string option;
-  meta : meta_tag list;
-  links : link_tag list;
-  scripts : script_tag list;
-  base : string option;
-  canonical : string option;
-}
+
+type link_tag =
+  { rel : string
+  ; href : string
+  ; type_ : string option
+  ; sizes : string option
+  ; media : string option
+  ; crossorigin : string option
+  }
+
+type script_tag =
+  { src : string option
+  ; inline : string option
+  ; type_ : string option
+  ; async : bool
+  ; defer : bool
+  ; module_ : bool
+  }
+
+type t =
+  { title : string option
+  ; meta : meta_tag list
+  ; links : link_tag list
+  ; scripts : script_tag list
+  ; base : string option
+  ; canonical : string option
+  }
+
 val empty : t
 val with_title : string -> t -> t
 val with_meta : meta_tag -> t -> t
@@ -56,11 +69,16 @@ val preconnect : string -> link_tag
 val preload : href:string -> as_:string -> link_tag
 val favicon : string -> link_tag
 val apple_touch_icon : href:string -> sizes:string -> link_tag
-val seo :
-  title:string ->
-  ?description:string ->
-  ?og_image_url:string ->
-  ?twitter_card_type:string -> ?canonical_url:string -> unit -> t
+
+val seo
+  :  title:string
+  -> ?description:string
+  -> ?og_image_url:string
+  -> ?twitter_card_type:string
+  -> ?canonical_url:string
+  -> unit
+  -> t
+
 val render_meta : meta_tag -> string
 val render_link : link_tag -> string
 val render_script : script_tag -> string

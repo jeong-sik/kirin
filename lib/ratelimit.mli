@@ -10,29 +10,29 @@
 (** {1 Types} *)
 
 (** Rate limit configuration. *)
-type config = {
-  requests_per_second : float;  (** Rate of token replenishment. *)
-  burst_size : int;             (** Maximum tokens (bucket capacity). *)
-}
+type config =
+  { requests_per_second : float (** Rate of token replenishment. *)
+  ; burst_size : int (** Maximum tokens (bucket capacity). *)
+  }
 
 (** Bucket state for a single client. *)
-type bucket = {
-  mutable tokens : float;
-  mutable last_update : float;
-}
+type bucket =
+  { mutable tokens : float
+  ; mutable last_update : float
+  }
 
 (** Information returned when a request is allowed. *)
-type allowed_info = {
-  remaining : int;
-  limit : int;
-  reset_after : float;
-}
+type allowed_info =
+  { remaining : int
+  ; limit : int
+  ; reset_after : float
+  }
 
 (** Information returned when a request is rate-limited. *)
-type limited_info = {
-  retry_after : float;
-  limit : int;
-}
+type limited_info =
+  { retry_after : float
+  ; limit : int
+  }
 
 (** {1 Configuration} *)
 
@@ -64,15 +64,21 @@ val get_client_id : Request.t -> string
 
 (** [check_rate_limit config client_id] consumes a token and returns
     [`Allowed info] or [`Limited info]. *)
-val check_rate_limit :
-  config -> string -> [ `Allowed of allowed_info | `Limited of limited_info ]
+val check_rate_limit
+  :  config
+  -> string
+  -> [ `Allowed of allowed_info | `Limited of limited_info ]
 
 (** {1 Response Helpers} *)
 
 (** [add_rate_limit_headers ~limit ~remaining ~reset_after resp] adds
     X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers. *)
-val add_rate_limit_headers :
-  limit:int -> remaining:int -> reset_after:float -> Response.t -> Response.t
+val add_rate_limit_headers
+  :  limit:int
+  -> remaining:int
+  -> reset_after:float
+  -> Response.t
+  -> Response.t
 
 (** [limit_exceeded_response ~retry_after ~limit] creates a 429 Too Many
     Requests response with Retry-After and rate limit headers. *)
@@ -84,10 +90,12 @@ val limit_exceeded_response : retry_after:float -> limit:int -> Response.t
     @param config Rate limit configuration (default: [default_config]).
     @param get_key Function to extract client key from request
            (default: [get_client_id]). *)
-val middleware :
-  ?config:config ->
-  ?get_key:(Request.t -> string) ->
-  (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware
+  :  ?config:config
+  -> ?get_key:(Request.t -> string)
+  -> (Request.t -> Response.t)
+  -> Request.t
+  -> Response.t
 
 (** {1 Custom Storage} *)
 
@@ -99,8 +107,10 @@ end
 
 (** [middleware_with_storage (module S) ?config ?get_key handler] creates
     rate limiting middleware with a custom storage backend. *)
-val middleware_with_storage :
-  (module Storage) ->
-  ?config:config ->
-  ?get_key:(Request.t -> string) ->
-  (Request.t -> Response.t) -> (Request.t -> Response.t)
+val middleware_with_storage
+  :  (module Storage)
+  -> ?config:config
+  -> ?get_key:(Request.t -> string)
+  -> (Request.t -> Response.t)
+  -> Request.t
+  -> Response.t

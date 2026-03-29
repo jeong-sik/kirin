@@ -3,7 +3,9 @@
  (public_name kirin)
  (libraries
   eio
+  eio.core
   eio_main
+  http
   cohttp
   cohttp-eio
   yojson
@@ -32,7 +34,8 @@
   threads
   str
   dune-build-info
-  mcp_protocol_eio)
+  mcp_protocol.eio)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson))
- (instrumentation (backend bisect_ppx)))
+ (instrumentation
+  (backend bisect_ppx)))

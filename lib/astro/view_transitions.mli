@@ -1,19 +1,33 @@
-type animation = Fade | Slide | None_ | Initial | Custom of string
-type direction = Forward | Backward
-type element = { name : string; animation : animation; persist : bool; }
-type config = {
-  enabled : bool;
-  fallback : bool;
-  animation : animation;
-  elements : element list;
-}
+type animation =
+  | Fade
+  | Slide
+  | None_
+  | Initial
+  | Custom of string
+
+type direction =
+  | Forward
+  | Backward
+
+type element =
+  { name : string
+  ; animation : animation
+  ; persist : bool
+  }
+
+type config =
+  { enabled : bool
+  ; fallback : bool
+  ; animation : animation
+  ; elements : element list
+  }
+
 val default_config : config
 val enable : config -> config
 val disable : config -> config
 val with_fallback : config -> config
 val with_animation : animation -> config -> config
-val element :
-  name:string -> ?animation:animation -> ?persist:bool -> unit -> element
+val element : name:string -> ?animation:animation -> ?persist:bool -> unit -> element
 val add_element : element -> config -> config
 val persist : string -> element
 val animation_to_string : animation -> string
