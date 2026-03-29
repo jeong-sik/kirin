@@ -9,15 +9,15 @@
           test_cache_suite test_jobs_suite test_parallel_suite
           test_health_suite test_metrics_suite test_shutdown_suite
           test_webrtc_suite test_query_suite)
- (libraries kirin alcotest grpc-direct-core eio eio_main str unix http uri yojson))
+ (libraries kirin alcotest grpc-direct-core eio eio.core eio_main str unix http uri yojson))
 
 (test
  (name test_auth)
- (libraries kirin kirin.auth alcotest str unix eio eio_main hmap yojson fmt http))
+ (libraries kirin kirin.auth alcotest str unix eio eio.core eio_main hmap yojson fmt http))
 
 (test
  (name test_mcp)
- (libraries kirin kirin.mcp alcotest str eio eio_main eio.unix yojson fmt))
+ (libraries kirin kirin.mcp alcotest str eio eio.core eio_main eio.unix yojson fmt))
 
 (test
  (name test_openapi)
@@ -97,11 +97,11 @@
 
 (test
  (name test_multicore)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_streaming)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_fs_compat)
@@ -130,16 +130,16 @@
 
 (test
  (name test_sse)
- (libraries kirin alcotest eio eio_main))
+ (libraries kirin alcotest eio eio.core eio_main))
 
 (test
  (name test_router)
- (libraries kirin alcotest eio eio_main http))
+ (libraries kirin alcotest eio eio.core eio_main http))
 
 (test
  (name test_middleware)
- (libraries kirin alcotest eio eio_main unix http))
+ (libraries kirin alcotest eio eio.core eio_main unix http))
 
 (test
  (name test_cookie)
- (libraries kirin alcotest eio eio_main http))
+ (libraries kirin alcotest eio eio.core eio_main http))

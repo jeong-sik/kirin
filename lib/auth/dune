@@ -10,6 +10,7 @@
   yojson          ; JSON handling
   uri             ; URL encoding for OAuth2
   eio
+  eio.core
   unix            ; OS time and random
   hmap)           ; typed heterogeneous map
  (instrumentation (backend bisect_ppx)))

@@ -36,7 +36,7 @@ homepage: "https://github.com/jeong-sik/kirin"
 doc: "https://github.com/jeong-sik/kirin"
 bug-reports: "https://github.com/jeong-sik/kirin/issues"
 depends: [
-  "ocaml" {>= "5.1"}
+  "ocaml" {>= "5.2"}
   "dune" {>= "3.17" & >= "3.17"}
   "eio" {>= "1.0"}
   "eio_main" {>= "1.0"}

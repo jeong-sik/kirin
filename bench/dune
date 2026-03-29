@@ -6,6 +6,7 @@
   yojson
   unix
   http
-  eio)
+  eio
+  eio.core)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson)))

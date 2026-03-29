@@ -3,6 +3,7 @@
  (public_name kirin)
  (libraries
   eio
+  eio.core
   eio_main
   http
   cohttp

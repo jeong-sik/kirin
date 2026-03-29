@@ -38,7 +38,7 @@ Features:
 - gRPC integration (via grpc-direct)
 - Unified HTTP + gRPC server")
  (depends
-  (ocaml (>= "5.1"))
+  (ocaml (>= "5.2"))
   (dune (>= "3.17"))
   (eio (>= "1.0"))
   (eio_main (>= "1.0"))
