@@ -2,8 +2,11 @@
 
 open Alcotest
 
-(* Eio context wrapper for tests that use Eio.Mutex *)
-let with_eio f () = Eio_main.run @@ fun _env -> f ()
+(* Eio context wrapper for tests that use Eio.Mutex / shared time helpers *)
+let with_eio f () =
+  Eio_main.run @@ fun env ->
+  Kirin.Time_compat.set_clock (Eio.Stdenv.clock env);
+  Fun.protect f ~finally:Kirin.Time_compat.clear_clock
 
 (* Route Definition Tests *)
 

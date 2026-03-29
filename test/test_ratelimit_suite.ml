@@ -52,7 +52,10 @@ let test_ratelimit_middleware_limits () =
   check bool "has retry-after" true
     (Option.is_some (Kirin.Response.header "retry-after" resp2))
 
-let with_eio_rl f () = Eio_main.run @@ fun _env -> f ()
+let with_eio_rl f () =
+  Eio_main.run @@ fun env ->
+  Kirin.Time_compat.set_clock (Eio.Stdenv.clock env);
+  Fun.protect f ~finally:Kirin.Time_compat.clear_clock
 
 let tests = [
   test_case "default config" `Quick test_ratelimit_default_config;

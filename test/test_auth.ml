@@ -106,7 +106,10 @@ let password_tests = [
 
 (** {1 Session Tests} *)
 
-let with_eio f () = Eio_main.run @@ fun _env -> f ()
+let with_eio f () =
+  Eio_main.run @@ fun env ->
+  Kirin.Time_compat.set_clock (Eio.Stdenv.clock env);
+  Fun.protect f ~finally:Kirin.Time_compat.clear_clock
 
 let test_session_create () =
   let store = Kirin_auth.Session.create_memory_store () in

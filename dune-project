@@ -62,7 +62,7 @@ Features:
   (graphql (>= "0.14.0"))
   (graphql_parser (>= "0.14.0"))
   (hmap (>= "0.8"))
-  (mcp_protocol_eio (>= "0.15.0"))
+  (mcp_protocol (>= "1.1.0"))
   (bisect_ppx (and (>= 2.8) :with-dev-setup))
   (alcotest :with-test)
   (odoc :with-doc))

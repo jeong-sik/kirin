@@ -28,8 +28,11 @@ let string_contains haystack needle =
     in
     check 0
 
-(** Run a test function inside the Eio runtime (simple, no switch/clock) *)
-let with_eio f () = Eio_main.run @@ fun _env -> f ()
+(** Run a test function inside the Eio runtime with the shared clock wired up. *)
+let with_eio f () =
+  Eio_main.run @@ fun env ->
+  Kirin.Time_compat.set_clock (Eio.Stdenv.clock env);
+  Fun.protect f ~finally:Kirin.Time_compat.clear_clock
 
 (** Alcotest re-exports for convenience *)
 let test_case = test_case
