@@ -1,5 +1,5 @@
 (library
  (name kirin_remix)
  (public_name kirin.remix)
- (libraries kirin yojson str unix)
+ (libraries kirin yojson str unix http)
  (instrumentation (backend bisect_ppx)))

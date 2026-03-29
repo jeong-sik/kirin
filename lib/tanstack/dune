@@ -1,5 +1,5 @@
 (library
  (name kirin_tanstack)
  (public_name kirin.tanstack)
- (libraries kirin yojson unix str)
+ (libraries kirin yojson unix str http)
  (instrumentation (backend bisect_ppx)))

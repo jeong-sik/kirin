@@ -4,6 +4,7 @@
  (libraries
   eio
   eio_main
+  http
   cohttp
   cohttp-eio
   yojson
@@ -32,7 +33,7 @@
   threads
   str
   dune-build-info
-  mcp_protocol_eio)
+  mcp_protocol.eio)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_yojson))
  (instrumentation (backend bisect_ppx)))
