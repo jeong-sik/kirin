@@ -71,10 +71,25 @@ let extract_bearer_token req =
       else
         None
 
+(** Default on_error for JWT auth. Logs the specific reason (token
+    expired / invalid signature / unsupported algorithm / ...)
+    server-side, returns a uniform [{"error":"Unauthorized"}]. Echoing
+    the specific reason to the client lets an attacker probe *which*
+    check tripped — "Token expired" reveals the token was once valid
+    (replayable if a copy can be obtained), "Invalid signature" tells
+    them to focus on signing-key recovery, etc. Standard hardening
+    keeps the response uniform.
+
+    Applications that explicitly want detail in the response (internal
+    debug builds, server-to-server APIs with trusted callers) can pass
+    a custom [~on_error] that surfaces [msg]. *)
+let default_jwt_on_error _req msg =
+  Kirin.Logger.warn "JWT auth failed: %s" msg;
+  Kirin.Response.json ~status:`Unauthorized
+    (`Assoc [("error", `String "Unauthorized")])
+
 (** JWT authentication middleware *)
-let jwt ~secret ?(on_error = fun _req msg ->
-    Kirin.Response.json ~status:`Unauthorized
-      (`Assoc [("error", `String msg)])) handler =
+let jwt ~secret ?(on_error = default_jwt_on_error) handler =
   fun req ->
     match extract_bearer_token req with
     | None -> on_error req "Missing or invalid Authorization header"
@@ -89,8 +104,7 @@ let jwt ~secret ?(on_error = fun _req msg ->
 
 (** JWT middleware with custom claim extraction *)
 let jwt_with_claims ~secret ~extract_user_id ?on_error handler =
-  let on_error = Option.value on_error ~default:(fun _req msg ->
-    Kirin.Response.json ~status:`Unauthorized (`Assoc [("error", `String msg)])) in
+  let on_error = Option.value on_error ~default:default_jwt_on_error in
   fun req ->
     match extract_bearer_token req with
     | None -> on_error req "Missing Authorization header"
