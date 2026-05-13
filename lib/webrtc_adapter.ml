@@ -121,6 +121,35 @@ let create_answer peer ~remote_sdp =
 
 (** {1 HTTP/WebSocket Handlers} *)
 
+(** Read [n] cryptographically random bytes from /dev/urandom and encode
+    as lowercase hex. Used for routing identifiers (peer_id, room_id)
+    that an attacker must not be able to predict or front-run.
+
+    Avoids depending on the auth sub-library (which is sibling) by
+    inlining the same /dev/urandom read pattern Secure_random uses. *)
+let random_hex n =
+  let buf = Bytes.create n in
+  let fd = Unix.openfile "/dev/urandom" [Unix.O_RDONLY] 0 in
+  Fun.protect
+    ~finally:(fun () -> Unix.close fd)
+    (fun () ->
+       let rec loop off =
+         if off < n then
+           let r = Unix.read fd buf off (n - off) in
+           if r <= 0 then failwith "webrtc_adapter: short read from /dev/urandom"
+           else loop (off + r)
+       in
+       loop 0);
+  let hex = Bytes.create (n * 2) in
+  let to_hex x = if x < 10 then Char.chr (x + Char.code '0')
+                 else Char.chr (x - 10 + Char.code 'a') in
+  Bytes.iteri (fun i c ->
+    let b = Char.code c in
+    Bytes.set hex (i * 2) (to_hex (b lsr 4));
+    Bytes.set hex (i * 2 + 1) (to_hex (b land 0xf))
+  ) buf;
+  Bytes.to_string hex
+
 (** Create signaling server WebSocket handler.
     Use with Kirin.websocket for signaling. *)
 let signaling_handler () =
@@ -129,7 +158,11 @@ let signaling_handler () =
     if not (Websocket.is_upgrade_request req) then
       Response.make ~status:`Bad_request (`String "Expected WebSocket upgrade")
     else
-      let peer_id = Printf.sprintf "peer_%d" (Random.int 100000) in
+      (* 12 random bytes = 24 hex chars = 96 bits of entropy. Birthday-
+         collision probability is negligible up to ~2^48 simultaneous
+         peers, and an attacker cannot guess the next peer_id from the
+         previous one (no Mersenne Twister state to recover). *)
+      let peer_id = "peer_" ^ random_hex 12 in
       let room_id = Request.query "room" req |> Option.value ~default:"default" in
       Signaling.join_room server ~room_id ~peer_id;
       match Websocket.upgrade_response req with
