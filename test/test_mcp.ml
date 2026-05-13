@@ -919,10 +919,29 @@ let test_client_next_id_monotonic () =
   in
   check bool "100 IDs strictly increasing" true (is_sorted ints)
 
+let test_client_create_with_deadline_fields_set () =
+  Eio_main.run @@ fun env ->
+  let clock = Eio.Stdenv.clock env in
+  let transport = Tr.of_streamable_http () in
+  let client = C.create ~clock ~timeout:2.5 transport in
+  check bool "default_clock set" true (Option.is_some client.C.default_clock);
+  check (option (float 0.0001)) "default_timeout set" (Some 2.5) client.C.default_timeout
+
+let test_client_create_no_deadline_defaults_to_none () =
+  Eio_main.run @@ fun _env ->
+  let transport = Tr.of_streamable_http () in
+  let client = C.create transport in
+  check bool "default_clock None" true (Option.is_none client.C.default_clock);
+  check (option (float 0.0001)) "default_timeout None" None client.C.default_timeout
+
 let client_tests = [
   test_case "create" `Quick test_client_create;
   test_case "next_id" `Quick test_client_next_id;
   test_case "next_id monotonic" `Quick test_client_next_id_monotonic;
+  test_case "create with deadline fields set" `Quick
+    test_client_create_with_deadline_fields_set;
+  test_case "create without deadline defaults to None" `Quick
+    test_client_create_no_deadline_defaults_to_none;
 ]
 
 (** {1 Governance Tests} *)
