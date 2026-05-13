@@ -17,11 +17,18 @@ type config = {
 let default_not_found _req =
   Response.html ~status:`Not_found "<h1>404 Not Found</h1>"
 
-(** Default error handler *)
+(** Default error handler. Logs the exception server-side and returns a
+    fixed-body 500. Older versions embedded [Printexc.to_string exn] in the
+    response body, which exposed internal file paths, stack-frame names,
+    and any secret values that happened to be in the exception message —
+    a classic accidental information-disclosure default.
+
+    Applications that want detailed error pages during development should
+    construct a debug handler explicitly via [config.error_handler]. *)
 let default_error_handler exn _req =
+  Kirin.Logger.error "tanstack handler exception: %s" (Printexc.to_string exn);
   Response.html ~status:`Internal_server_error
-    (Printf.sprintf "<h1>500 Internal Server Error</h1><pre>%s</pre>"
-       (Printexc.to_string exn))
+    "<h1>500 Internal Server Error</h1>"
 
 (** Default config *)
 let default_config manifest = {
