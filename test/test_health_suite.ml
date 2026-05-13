@@ -55,8 +55,9 @@ let test_health_ready_control () =
   check bool "ready again" true (H.is_ready health)
 
 let test_health_uptime () =
+  Eio_main.run @@ fun env ->
   let health = H.create () in
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   let _, json = H.check health in
   let uptime = match json with
     | `Assoc fields ->

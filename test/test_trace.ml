@@ -48,8 +48,9 @@ let test_set_error () =
   check bool "now error" true (span.status = `Error "timeout")
 
 let test_duration () =
+  Eio_main.run @@ fun env ->
   let span = Kirin.Trace.start ~name:"op" () in
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   Kirin.Trace.finish span;
   let dur = Kirin.Trace.duration span in
   check bool "duration > 0" true (dur > 0.0);

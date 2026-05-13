@@ -71,18 +71,18 @@ let basic_tests = [
 (* -- TTL expiry ---------------------------------------------------- *)
 
 let test_ttl_expiry () =
-  Eio_main.run @@ fun _env ->
+  Eio_main.run @@ fun env ->
   let cache = Kirin.Cache.create ~max_size:10 () in
   Kirin.Cache.set ~ttl:0.0 cache "short" "val";
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   let result = Kirin.Cache.get cache "short" in
   check (option string) "expired" None result
 
 let test_default_ttl () =
-  Eio_main.run @@ fun _env ->
+  Eio_main.run @@ fun env ->
   let cache = Kirin.Cache.create ~max_size:10 ~default_ttl:0.0 () in
   Kirin.Cache.set cache "k" "v";
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   let result = Kirin.Cache.get cache "k" in
   check (option string) "default ttl expired" None result
 
@@ -93,10 +93,10 @@ let test_no_ttl_never_expires () =
   check (option string) "still here" (Some "here") (Kirin.Cache.get cache "forever")
 
 let test_per_entry_ttl_overrides_default () =
-  Eio_main.run @@ fun _env ->
+  Eio_main.run @@ fun env ->
   let cache = Kirin.Cache.create ~max_size:10 ~default_ttl:3600.0 () in
   Kirin.Cache.set ~ttl:0.0 cache "short" "val";
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   check (option string) "per-entry ttl expired" None (Kirin.Cache.get cache "short")
 
 let ttl_tests = [
@@ -176,12 +176,12 @@ let test_clear () =
   check (option string) "a gone" None (Kirin.Cache.get cache "a")
 
 let test_cleanup () =
-  Eio_main.run @@ fun _env ->
+  Eio_main.run @@ fun env ->
   let cache = Kirin.Cache.create ~max_size:10 () in
   Kirin.Cache.set ~ttl:0.0 cache "expired1" "v";
   Kirin.Cache.set ~ttl:0.0 cache "expired2" "v";
   Kirin.Cache.set cache "alive" "v";
-  Unix.sleepf 0.01;
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   let removed = Kirin.Cache.cleanup cache in
   check int "2 cleaned" 2 removed;
   check int "1 remaining" 1 (Kirin.Cache.size cache)
