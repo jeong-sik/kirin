@@ -28,8 +28,17 @@ let string_contains haystack needle =
     in
     check 0
 
-(** Run a test function inside the Eio runtime (simple, no switch/clock) *)
-let with_eio f () = Eio_main.run @@ fun _env -> f ()
+(** Run a test function inside the Eio runtime.
+
+    Sets the global [Time_compat] clock from [Eio.Stdenv.clock env] so any
+    [Kirin.Time_compat.sleep] / [.now] call inside the test resolves. Without
+    this, tests that exercise TTL / sleep paths (Cache, Metrics histogram
+    time, ...) fail with `Time_compat: clock not initialized` because
+    [set_clock] is normally only called inside [Kirin.run], which the test
+    runner never invokes. *)
+let with_eio f () = Eio_main.run @@ fun env ->
+  Kirin.Time_compat.set_clock (Eio.Stdenv.clock env);
+  f ()
 
 (** Alcotest re-exports for convenience *)
 let test_case = test_case
