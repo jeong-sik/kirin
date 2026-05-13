@@ -202,10 +202,19 @@ let routes ?(prefix = "/mcp") ~ctx (server : Server.t) : Router.route list =
         ~message:(Printf.sprintf "JSON parse error: %s" msg) () in
       let resp = Jsonrpc.error_response ~id:Jsonrpc.Null error in
       Response.json (Jsonrpc.encode_response resp)
+    | Eio.Cancel.Cancelled _ as e ->
+      (* Cancellation is structured-concurrency control flow, not an
+         application error. Absorbing it into an Internal_error response
+         prevents the parent switch from unwinding. *)
+      raise e
     | e ->
+      (* Log the underlying exception server-side; never leak its
+         message (which may contain file paths, stack frames, or secret
+         values embedded in error strings) to the JSON-RPC client. *)
+      Logger.error "MCP handler exception: %s" (Printexc.to_string e);
       let error = Jsonrpc.make_error
         ~code:Jsonrpc.Internal_error
-        ~message:(Printexc.to_string e) () in
+        ~message:"Internal error" () in
       let resp = Jsonrpc.error_response ~id:Jsonrpc.Null error in
       Response.json (Jsonrpc.encode_response resp)
   in
