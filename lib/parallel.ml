@@ -233,6 +233,26 @@ module Pool = struct
     else
       reduce ~domains:pool.size combine init items
 
+  (** Try-variants return a Result instead of raising on a shut-down pool.
+
+      The single [Atomic.get] is both the guard and the gate — there is no
+      window where the pool can be shut down between an [is_active] check
+      and the work submission. Use these when graceful degradation matters
+      (background workers continuing past shutdown signal, request handlers
+      not crashing on stale pool refs, etc.). *)
+
+  let try_map pool f items =
+    if not (Atomic.get pool.active) then Stdlib.Error `Pool_shutdown
+    else Stdlib.Ok (map pool f items)
+
+  let try_iter pool f items =
+    if not (Atomic.get pool.active) then Stdlib.Error `Pool_shutdown
+    else (iter pool f items; Stdlib.Ok ())
+
+  let try_reduce pool combine init items =
+    if not (Atomic.get pool.active) then Stdlib.Error `Pool_shutdown
+    else Stdlib.Ok (reduce pool combine init items)
+
   (** Get pool size *)
   let size pool = pool.size
 
