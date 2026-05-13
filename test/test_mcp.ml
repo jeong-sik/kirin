@@ -852,6 +852,27 @@ let test_transport_queue_on_stdio_fails () =
   | exception Tr.Transport_error _ -> ()
   | _ -> fail "expected Transport_error"
 
+let test_transport_send_http_request_timeout () =
+  Eio_main.run @@ fun env ->
+  let clock = Eio.Stdenv.clock env in
+  let t = match Tr.of_streamable_http () with
+    | Tr.Streamable_http x -> x
+    | Tr.Stdio _ -> fail "expected Streamable_http"
+  in
+  let req = J.make_request ~id:(J.Int 1) ~method_:"test/nop" () in
+  let before = List.length t.pending_requests in
+  match Tr.send_http_request ~clock ~timeout:0.05 t req with
+  | exception Tr.Transport_error msg ->
+    check bool "error mentions timeout"
+      true
+      (String.length msg > 0
+       && (try let _ = Str.search_forward (Str.regexp_string "timed out") msg 0 in true
+           with Not_found -> false));
+    check int "pending entry deregistered after timeout"
+      before
+      (List.length t.pending_requests)
+  | _ -> fail "expected Transport_error after timeout"
+
 let transport_tests = [
   test_case "stdio create" `Quick test_transport_stdio_create;
   test_case "streamable http create" `Quick test_transport_streamable_http_create;
@@ -859,6 +880,8 @@ let transport_tests = [
   test_case "session id streamable" `Quick test_transport_session_id_streamable;
   test_case "queue message streamable" `Quick test_transport_queue_message_streamable;
   test_case "queue on stdio fails" `Quick test_transport_queue_on_stdio_fails;
+  test_case "send_http_request timeout deregisters pending"
+    `Quick test_transport_send_http_request_timeout;
 ]
 
 (** {1 Client Tests} *)

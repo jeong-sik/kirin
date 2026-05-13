@@ -37,8 +37,25 @@ val endpoint : t -> string option
 val is_stdio : t -> bool
 val is_streamable_http : t -> bool
 val send_http_request :
+  ?clock:[> float Eio.Time.clock_ty ] Eio.Resource.t ->
+  ?timeout:float ->
   streamable_http_transport ->
   Jsonrpc.request -> Jsonrpc.response
+(** Send an HTTP MCP request and await its response.
+
+    Pass [~clock] and [~timeout] together to bound the await with
+    [Eio.Time.with_timeout]; on expiry the pending entry is deregistered and
+    [Transport_error "MCP HTTP request timed out after Ns"] is raised.
+
+    Omitting either keeps the historical unbounded await — release relies on
+    the enclosing [Eio.Switch] being cancelled. Code paths that may run
+    outside a bounded switch should always pass both. *)
+
 val send_request :
+  ?clock:[> float Eio.Time.clock_ty ] Eio.Resource.t ->
+  ?timeout:float ->
   t -> Jsonrpc.request -> Jsonrpc.response
+(** Send a request on either transport. [clock]/[timeout] apply to HTTP only;
+    stdio is line-based and ignores them. *)
+
 val send_notification : t -> Jsonrpc.notification -> unit

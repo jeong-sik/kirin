@@ -152,25 +152,38 @@ let is_streamable_http = function
     and blocks the current fiber until the response arrives via
     [resolve_pending_request].
 
-    The [Promise.await] call here has no explicit timeout.  This is safe
-    because Eio's structured concurrency guarantees that all fibers
-    spawned inside a [Switch.run] scope are cancelled when the switch
-    exits (whether normally or via exception).  Callers that need a
-    wall-clock deadline should wrap the call in [Eio.Time.with_timeout]. *)
-let send_http_request (t : streamable_http_transport) (request : Jsonrpc.request) =
+    When [clock] and [timeout] are both provided, [Promise.await] is wrapped
+    in [Eio.Time.with_timeout]. On expiry the pending entry is deregistered
+    (so a late response cannot resolve a stale resolver) and
+    [Transport_error] is raised.
+
+    Without [clock]/[timeout] the await is unbounded: it relies on the
+    enclosing [Eio.Switch] being cancelled to release. Callers running
+    outside a bounded switch must pass an explicit deadline. *)
+let send_http_request ?clock ?timeout (t : streamable_http_transport) (request : Jsonrpc.request) =
   let promise, resolver = Promise.create () in
   register_pending_request t request.id resolver;
   Stream.add t.message_queue (Jsonrpc.Request request);
-  Promise.await promise
+  match clock, timeout with
+  | Some clk, Some sec ->
+    (match Eio.Time.with_timeout clk sec (fun () -> Ok (Promise.await promise)) with
+     | Ok v -> v
+     | Error `Timeout ->
+       t.pending_requests <- List.remove_assoc request.id t.pending_requests;
+       raise (Transport_error
+                (Printf.sprintf "MCP HTTP request timed out after %.1fs" sec)))
+  | _, _ -> Promise.await promise
 
 (** Send a request and wait for response.
     For stdio: writes the request and reads responses until a matching ID arrives.
-    For HTTP: queues the request and awaits a Promise resolved by the HTTP handler. *)
-let send_request transport request =
+    For HTTP: queues the request and awaits a Promise resolved by the HTTP handler.
+
+    [clock]/[timeout] are forwarded to [send_http_request] for HTTP transports.
+    They are ignored for stdio (line-based read; no Eio scheduling primitive). *)
+let send_request ?clock ?timeout transport request =
   match transport with
   | Stdio { ic; oc } ->
     write_message_stdio oc (Jsonrpc.Request request);
-    (* Read responses until we get one matching our id *)
     let rec wait_for_response () =
       match read_message_stdio ic with
       | Jsonrpc.Response resp when resp.id = request.id -> resp
@@ -178,7 +191,7 @@ let send_request transport request =
     in
     wait_for_response ()
   | Streamable_http t ->
-    send_http_request t request
+    send_http_request ?clock ?timeout t request
 
 (** Send a notification (no response expected) *)
 let send_notification transport notif =
