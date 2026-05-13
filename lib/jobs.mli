@@ -120,6 +120,12 @@ val submit_all : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) 
     @raise Failure if job_id is unknown *)
 val status : 'a t -> job_id -> 'a status
 
+(** [try_status t job_id] returns the current status, or [Error `Unknown_job]
+    if the id is not in the results table. Use this when callers should
+    tolerate a typoed or stale id without crashing. *)
+val try_status :
+  'a t -> job_id -> ('a status, [> `Unknown_job ]) result
+
 (** [is_complete t job_id] returns [true] if the job has completed or failed. *)
 val is_complete : 'a t -> job_id -> bool
 
@@ -127,6 +133,12 @@ val is_complete : 'a t -> job_id -> bool
     Suspends the current fiber without blocking OS threads.
     @raise Failure if job_id is unknown *)
 val wait : 'a t -> job_id -> 'a status
+
+(** [try_wait t job_id] waits for a job to complete, returning
+    [Error `Unknown_job] without entering the wait loop if the id is
+    unknown — callers cannot deadlock on a typo. *)
+val try_wait :
+  'a t -> job_id -> ('a status, [> `Unknown_job ]) result
 
 (** {1 Queue Control} *)
 

@@ -87,6 +87,37 @@ let test_jobs_priority () =
   check int "all queued" 3 stats.queue_size;
   J.stop queue
 
+let test_jobs_try_status_known_and_unknown () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
+  let id = J.submit queue (fun () -> 42) in
+  (match J.try_status queue id with
+   | Ok _ -> ()
+   | Error `Unknown_job -> fail "known job_id should not be Unknown_job");
+  (match J.try_status queue "bogus_id" with
+   | Ok _ -> fail "bogus id should not return Ok"
+   | Error `Unknown_job -> ());
+  J.stop queue
+
+let test_jobs_try_wait_known_and_unknown () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
+  let id = J.submit queue (fun () -> "done") in
+  (match J.try_wait queue id with
+   | Ok (J.Completed "done") -> ()
+   | Ok other ->
+       fail (Printf.sprintf "unexpected status: %s"
+               (match other with
+                | J.Pending -> "Pending"
+                | J.Running -> "Running"
+                | J.Completed _ -> "Completed(other)"
+                | J.Failed _ -> "Failed"))
+   | Error `Unknown_job -> fail "known job_id should not be Unknown_job");
+  (match J.try_wait queue "bogus_id" with
+   | Ok _ -> fail "bogus id should not return Ok"
+   | Error `Unknown_job -> ());
+  J.stop queue
+
 let tests = [
   test_case "jobs create" `Quick test_jobs_create;
   test_case "jobs submit" `Quick test_jobs_submit;
@@ -97,4 +128,8 @@ let tests = [
   test_case "jobs cancel" `Quick test_jobs_cancel;
   test_case "jobs clear" `Quick test_jobs_clear;
   test_case "jobs priority" `Quick test_jobs_priority;
+  test_case "jobs try_status known and unknown" `Quick
+    test_jobs_try_status_known_and_unknown;
+  test_case "jobs try_wait known and unknown" `Quick
+    test_jobs_try_wait_known_and_unknown;
 ]
