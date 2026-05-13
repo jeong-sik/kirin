@@ -189,24 +189,32 @@ let interpolate template args =
     Str.global_replace re value acc
   ) template args
 
+(** Maximum depth of the fallback chain. Two [set_fallback] calls can
+    construct a cycle (en→ko, ko→en) — without a bound this recursion
+    overflows the stack and crashes the calling fiber. A real i18n
+    config never chains beyond 2-3 fallbacks; cap conservatively. *)
+let max_fallback_depth = 16
+
 (** Get translation for a key in a locale *)
 let get_translation t locale key =
-  let rec find_in_locale loc =
-    match Hashtbl.find_opt t.locales loc with
-    | None -> None
-    | Some ld ->
-      match Hashtbl.find_opt ld.translations key with
-      | Some tr -> Some tr
-      | None ->
-        match ld.fallback with
-        | None -> None
-        | Some fb -> find_in_locale fb
+  let rec find_in_locale depth loc =
+    if depth > max_fallback_depth then None
+    else
+      match Hashtbl.find_opt t.locales loc with
+      | None -> None
+      | Some ld ->
+        match Hashtbl.find_opt ld.translations key with
+        | Some tr -> Some tr
+        | None ->
+          match ld.fallback with
+          | None -> None
+          | Some fb -> find_in_locale (depth + 1) fb
   in
-  match find_in_locale locale with
+  match find_in_locale 0 locale with
   | Some tr -> Some tr
   | None ->
     if locale <> t.default_locale then
-      find_in_locale t.default_locale
+      find_in_locale 0 t.default_locale
     else
       None
 
