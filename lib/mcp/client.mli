@@ -4,9 +4,22 @@ type t = {
     Protocol.server_capabilities option;
   mutable server_info : Protocol.implementation_info option;
   mutable request_id : int;
+  default_clock : float Eio.Time.clock_ty Eio.Resource.t option;
+  default_timeout : float option;
 }
 exception Client_error of string
-val create : Transport.t -> t
+
+val create :
+  ?clock:float Eio.Time.clock_ty Eio.Resource.t ->
+  ?timeout:float ->
+  Transport.t -> t
+(** Create an MCP client.
+
+    Pass [~clock] and [~timeout] together to bound every HTTP request issued
+    through this client; on expiry the underlying transport raises
+    [Transport.Transport_error]. Omitting either keeps the historical
+    unbounded await. *)
+
 val next_id : t -> Jsonrpc.id
 val send_request :
   t ->
