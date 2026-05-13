@@ -160,7 +160,16 @@ let middleware ~secret ?(field_name = default_field_name)
           match validate ~secret ~session_id ~field_name ~header_name req with
           | Ok () -> handler req
           | Error msg ->
-              Kirin.Response.text ~status:`Forbidden ("CSRF validation failed: " ^ msg)
+              (* Log the specific reason server-side; never echo it to the
+                 client. The pre-fix code returned messages like
+                 "Invalid signature" vs "Session mismatch" vs "Token
+                 expired", which let an attacker probe *which* check
+                 failed and tune their attack — focus on signing-key
+                 guessing if the signature was the rejection, focus on
+                 session hijack if the signature passed, etc. Uniform
+                 rejection denies that oracle. *)
+              Kirin.Logger.warn "CSRF validation failed: %s" msg;
+              Kirin.Response.text ~status:`Forbidden "CSRF validation failed"
 
 (** {1 Template Helpers} *)
 
