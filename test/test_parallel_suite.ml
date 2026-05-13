@@ -65,6 +65,22 @@ let test_parallel_recommended () =
   let n = P.recommended_domains () in
   check bool "at least 1 domain" true (n >= 1)
 
+let test_parallel_try_race_nonempty () =
+  match P.try_race [(fun () -> 42)] with
+  | Ok 42 -> ()
+  | Ok n -> fail (Printf.sprintf "unexpected result %d" n)
+  | Error `Empty_task_list -> fail "nonempty list should not be Empty_task_list"
+
+let test_parallel_try_race_empty () =
+  match P.try_race [] with
+  | Ok _ -> fail "empty list should not return Ok"
+  | Error `Empty_task_list -> ()
+
+let test_parallel_race_still_raises_on_empty () =
+  match P.race [] with
+  | _ -> fail "race should raise on empty"
+  | exception Failure _ -> ()
+
 let tests = [
   test_case "parallel map" `Quick test_parallel_map;
   test_case "parallel iter" `Quick test_parallel_iter;
@@ -75,4 +91,8 @@ let tests = [
   test_case "parallel pool" `Quick test_parallel_pool;
   test_case "parallel chunk_list" `Quick test_parallel_chunk_list;
   test_case "parallel recommended" `Quick test_parallel_recommended;
+  test_case "try_race nonempty" `Quick test_parallel_try_race_nonempty;
+  test_case "try_race empty" `Quick test_parallel_try_race_empty;
+  test_case "race still raises on empty" `Quick
+    test_parallel_race_still_raises_on_empty;
 ]

@@ -187,13 +187,28 @@ let all tasks =
     let first_result = (List.hd tasks) () in
     first_result :: List.map Domain.join spawned
 
-(** Run computations and return first to complete (racing) *)
+(** Run computations and return first to complete (racing), or
+    [Error `Empty_task_list] if the input is empty.
+
+    Single Atomic-like guarantee: the emptiness check happens before
+    [all] spawns any Domains, so callers passing a possibly-empty list
+    pay no scheduling cost on the empty path. *)
+let try_race tasks =
+  match tasks with
+  | [] -> Stdlib.Error `Empty_task_list
+  | _ ->
+    (* This is a simplified implementation; a full one would need
+       cancellation. *)
+    Stdlib.Ok (List.hd (all tasks))
+
+(** Run computations and return first to complete (racing).
+    @raise Failure on an empty task list. Use [try_race] to handle that
+    case explicitly. *)
 let race tasks =
-  (* Note: This is a simplified implementation.
-     A full implementation would need cancellation support. *)
-  match all tasks with
-  | [] -> failwith "Parallel.race: empty task list"
-  | results -> List.hd results
+  match try_race tasks with
+  | Stdlib.Ok v -> v
+  | Stdlib.Error `Empty_task_list ->
+    failwith "Parallel.race: empty task list"
 
 (** {1 Domain Pool} *)
 

@@ -56,8 +56,15 @@ val triple : (unit -> 'a) -> (unit -> 'b) -> (unit -> 'c) -> 'a * 'b * 'c
 (** [all tasks] runs a list of computations in parallel. *)
 val all : (unit -> 'a) list -> 'a list
 
-(** [race tasks] runs computations and returns the first result. *)
+(** [race tasks] runs computations and returns the first result.
+    @raise Failure on an empty task list. *)
 val race : (unit -> 'a) list -> 'a
+
+(** [try_race tasks] returns [Error `Empty_task_list] instead of raising
+    when [tasks] is empty. Use this when the caller cannot statically
+    guarantee a non-empty list. *)
+val try_race :
+  (unit -> 'a) list -> ('a, [> `Empty_task_list ]) Stdlib.result
 
 (** {1 Domain Pool} *)
 
