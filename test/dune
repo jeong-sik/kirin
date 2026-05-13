@@ -109,7 +109,7 @@
 
 (test
  (name test_trace)
- (libraries kirin alcotest hmap unix))
+ (libraries kirin alcotest hmap eio eio_main))
 
 (test
  (name test_no_shell_node_worker)
@@ -118,7 +118,7 @@
 
 (test
  (name test_cache)
- (libraries kirin alcotest eio_main unix))
+ (libraries kirin alcotest eio eio_main))
 
 (test
  (name test_pool)
