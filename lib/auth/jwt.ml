@@ -150,6 +150,20 @@ let claims_of_json json =
     jti = get_string "jti";
   }
 
+(** Safe wrappers — JWT inputs are attacker-controlled. Any uncaught
+    Yojson.Json_error / Util.Type_error / Failure from parsing must
+    become a structured [Error] instead of escaping to the server's
+    500 handler (where the message would be exposed to the client). *)
+let parse_json_safe s =
+  try Ok (Yojson.Safe.from_string s)
+  with Yojson.Json_error _ | Failure _ -> Error "Invalid JSON"
+
+let read_string_field json field =
+  let open Yojson.Safe.Util in
+  try Ok (json |> member field |> to_string)
+  with Yojson.Safe.Util.Type_error _ | Failure _ ->
+    Error (Printf.sprintf "Missing or non-string field: %s" field)
+
 (** Decode and verify JWT *)
 let decode ~secret token =
   match String.split_on_char '.' token with
@@ -158,9 +172,12 @@ let decode ~secret token =
       (match base64url_decode header_b64 with
        | Error _ -> Error "Invalid header encoding"
        | Ok header_str ->
-           let header_json = Yojson.Safe.from_string header_str in
-           let open Yojson.Safe.Util in
-           let alg_str = header_json |> member "alg" |> to_string in
+           (match parse_json_safe header_str with
+            | Error _ -> Error "Invalid header JSON"
+            | Ok header_json ->
+           (match read_string_field header_json "alg" with
+            | Error _ -> Error "Missing alg in header"
+            | Ok alg_str ->
            (match algorithm_of_string alg_str with
             | None -> Error ("Unsupported algorithm: " ^ alg_str)
             | Some algorithm ->
@@ -175,7 +192,9 @@ let decode ~secret token =
                   (match base64url_decode payload_b64 with
                    | Error _ -> Error "Invalid payload encoding"
                    | Ok payload_str ->
-                       let payload = Yojson.Safe.from_string payload_str in
+                       (match parse_json_safe payload_str with
+                        | Error _ -> Error "Invalid payload JSON"
+                        | Ok payload ->
                        let claims = claims_of_json payload in
 
                        (* Validate expiration *)
@@ -188,7 +207,7 @@ let decode ~secret token =
                              | Some nbf when nbf > now -> Error "Token not yet valid"
                              | _ ->
                                  let header = { alg = algorithm; typ = "JWT" } in
-                                 Ok { header; claims; payload })))))
+                                 Ok { header; claims; payload }))))))))
   | _ -> Error "Invalid token format"
 
 (** Decode without verification (for debugging) *)
@@ -197,16 +216,18 @@ let decode_unsafe token =
   | [header_b64; payload_b64; _] ->
       (match base64url_decode header_b64, base64url_decode payload_b64 with
        | Ok header_str, Ok payload_str ->
-           let header_json = Yojson.Safe.from_string header_str in
-           let payload = Yojson.Safe.from_string payload_str in
-           let open Yojson.Safe.Util in
-           let alg_str = header_json |> member "alg" |> to_string in
+           (match parse_json_safe header_str, parse_json_safe payload_str with
+            | Ok header_json, Ok payload ->
+           (match read_string_field header_json "alg" with
+            | Error _ -> Error "Missing alg in header"
+            | Ok alg_str ->
            (match algorithm_of_string alg_str with
             | None -> Error ("Unsupported algorithm: " ^ alg_str)
             | Some algorithm ->
                 let header = { alg = algorithm; typ = "JWT" } in
                 let claims = claims_of_json payload in
-                Ok { header; claims; payload })
+                Ok { header; claims; payload }))
+            | _ -> Error "Invalid header or payload JSON")
        | _ -> Error "Invalid encoding")
   | _ -> Error "Invalid token format"
 
