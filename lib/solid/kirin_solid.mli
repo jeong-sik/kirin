@@ -81,7 +81,7 @@ val routes : options:Handler.options -> Kirin.Router.route list
 val data_routes :
   loaders:(string *
            (url:string ->
-            params:'a list ->
+            params:Kirin.Request.params ->
             Yojson.Safe.t Router.loader_result))
           list ->
   Kirin.Router.route list
