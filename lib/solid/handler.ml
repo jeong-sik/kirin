@@ -84,8 +84,7 @@ let page_handler ~options req =
 (** Data loader handler *)
 let data_handler ~options:_ ~loader req =
   let url = Kirin.Request.path req in
-  (* Note: params are extracted by Kirin's router and available via Request.param *)
-  let params = [] in  (* TODO: Get from route context when available *)
+  let params = req.Kirin.Request.params in
   match loader ~url ~params with
   | Router.Data data ->
     Kirin.Response.json (`Assoc [

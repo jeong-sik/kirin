@@ -86,7 +86,7 @@ let page_handler ~options req =
 (** Data loader handler for +page.server.ts style loading *)
 let load_handler ~loader req =
   let url = Kirin.Request.path req in
-  let params = [] in  (* TODO: Extract from route context *)
+  let params = req.Kirin.Request.params in
 
   let ctx = Loader.create_context
     ~url ~params ~route_id:url
