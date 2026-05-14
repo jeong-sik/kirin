@@ -87,6 +87,91 @@ let test_jobs_priority () =
   check int "all queued" 3 stats.queue_size;
   J.stop queue
 
+(* Before this PR the [retry_delay] in [J.config] was dead config:
+   the retry branch in [process_job] re-queued failed jobs
+   synchronously, so a task that always raises burned through
+   [max_retries] in zero wall-clock time and pinned a worker into a
+   tight retry spin.  These tests pin the new behaviour:
+
+   - retry_delay is *actually applied* on each retry
+   - the job still eventually fails after [max_retries]
+   - other workers in the same queue are not blocked by a retrying
+     job (sleep happens outside the mutex) *)
+
+let test_retry_delay_is_applied () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  (* Single worker, 0.05s retry delay, max_retries=3.  A task that
+     always raises should take *at least* 2 × 0.05s = 0.1s of
+     wall-clock time before reaching the Failed state.  Without the
+     fix, the same workload completed in microseconds. *)
+  let queue = J.create ~sw ~clock ~workers:1 ~retry_delay:0.05 () in
+  let start = Eio.Time.now clock in
+  let result =
+    J.submit_and_wait
+      ~max_retries:3
+      queue
+      (fun () -> failwith "always fails")
+  in
+  let elapsed = Eio.Time.now clock -. start in
+  (match result with
+   | J.Failed _ -> ()
+   | _ -> fail "expected Failed after retries");
+  (* 3 attempts means 2 retries inserted, each preceded by a 0.05s
+     sleep.  Allow a small margin for scheduler jitter. *)
+  check bool
+    (Printf.sprintf "elapsed %.3fs >= 0.08s" elapsed)
+    true
+    (elapsed >= 0.08);
+  J.stop queue
+
+let test_retry_eventually_fails () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:1 ~retry_delay:0.0 () in
+  let attempts = ref 0 in
+  let result =
+    J.submit_and_wait
+      ~max_retries:3
+      queue
+      (fun () ->
+        incr attempts;
+        failwith "always fails")
+  in
+  (match result with
+   | J.Failed _ -> ()
+   | _ -> fail "expected Failed status");
+  check int "ran exactly max_retries attempts" 3 !attempts;
+  J.stop queue
+
+let test_retry_does_not_block_other_workers () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  (* Two workers, slow retry on the failing job, fast success on the
+     other.  If the retry-delay sleep were taken under the mutex the
+     succeeding job would have to wait at least one full delay
+     period; with the fix it should complete in well under that. *)
+  let queue = J.create ~sw ~clock ~workers:2 ~retry_delay:0.5 () in
+  let _failing =
+    J.submit
+      ~priority:J.Low
+      ~max_retries:5
+      queue
+      (fun () -> failwith "always fails")
+  in
+  (* Give the failing job a head start so it claims one of the two
+     workers and enters its retry sleep. *)
+  Eio.Time.sleep clock 0.02;
+  let succ_start = Eio.Time.now clock in
+  let succ_id = J.submit queue (fun () -> "ok") in
+  let res = J.wait queue succ_id in
+  let succ_elapsed = Eio.Time.now clock -. succ_start in
+  (match res with
+   | J.Completed v -> check string "got ok" "ok" v
+   | _ -> fail "expected Completed");
+  check bool
+    (Printf.sprintf "succeeding job completed in %.3fs (< 0.3s)" succ_elapsed)
+    true
+    (succ_elapsed < 0.3);
+  J.stop queue
+
 let tests = [
   test_case "jobs create" `Quick test_jobs_create;
   test_case "jobs submit" `Quick test_jobs_submit;
@@ -97,4 +182,7 @@ let tests = [
   test_case "jobs cancel" `Quick test_jobs_cancel;
   test_case "jobs clear" `Quick test_jobs_clear;
   test_case "jobs priority" `Quick test_jobs_priority;
+  test_case "retry_delay is applied" `Quick test_retry_delay_is_applied;
+  test_case "retry eventually fails after max_retries" `Quick test_retry_eventually_fails;
+  test_case "retry does not block other workers" `Quick test_retry_does_not_block_other_workers;
 ]
