@@ -150,15 +150,42 @@ let run_hooks t =
 
 (** {1 Shutdown Process} *)
 
-(** Wait for connections to drain *)
+(* Poll-based drain that *actually* honours [config.timeout].
+
+   The previous implementation called [Eio.Condition.await] inside
+   a [now () < deadline] while-loop.  [await] has no timeout
+   parameter — it only returns when [connection_end] broadcasts.
+   If every active connection is stuck (slow client, deadlocked
+   handler, dropped socket without RST), [connection_end] is never
+   called, no broadcast arrives, and [await] waits forever.  The
+   [now () < deadline] guard is never re-evaluated, so the
+   configured timeout is silently dead: K8s has to send SIGKILL
+   after [terminationGracePeriodSeconds] to actually stop the
+   process and the graceful-drain contract is broken.
+
+   Switch to a short [Time_compat.sleep] poll loop so the deadline
+   is observed independent of any broadcast.  Polling is wasteful
+   in steady state, but [wait_for_drain] only runs once per
+   process lifetime, and 50ms is fine-grained enough that the
+   typical drain finishes in one or two cycles. *)
+let wait_for_drain_poll_interval = 0.05
+
 let wait_for_drain t =
   let deadline = now () +. t.config.timeout in
-  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-    while t.active_connections > 0 && now () < deadline do
-      Eio.Condition.await t.condition t.mutex
-    done;
-    t.active_connections = 0
-  )
+  let drained = ref false in
+  let timed_out = ref false in
+  while not !drained && not !timed_out do
+    let count = with_lock t (fun () -> t.active_connections) in
+    if count = 0 then drained := true
+    else if now () >= deadline then timed_out := true
+    else begin
+      let remaining = deadline -. now () in
+      let s = min wait_for_drain_poll_interval (max 0.0 remaining) in
+      if s > 0.0 then Time_compat.sleep s
+      else timed_out := true
+    end
+  done;
+  !drained
 
 (** Initiate graceful shutdown *)
 let initiate t =
