@@ -56,9 +56,22 @@ end
 
 (** {1 Client Identification} *)
 
-(** [get_client_id req] extracts a client identifier from the request.
-    Checks X-Forwarded-For, then X-Real-IP, then falls back to ["unknown"]. *)
-val get_client_id : Request.t -> string
+(** [get_client_id ?trust_forwarded req] extracts a client
+    identifier from the request.
+
+    When [trust_forwarded] is [false] (the default) the
+    [X-Forwarded-For] / [X-Real-IP] headers are *ignored* and
+    ["unknown"] is returned.  Those headers are caller-controlled,
+    so trusting them unconditionally lets any client bypass the
+    limit (send a random IP per request) or burn a victim's
+    bucket (send the victim's IP) — both observed bypass surfaces
+    on rate-limited APIs.
+
+    Set [trust_forwarded:true] only behind a reverse proxy (nginx,
+    ALB, Cloudflare) that rewrites those headers from the actual
+    socket peer.  In that mode the first comma-separated address in
+    [X-Forwarded-For] is used, falling back to [X-Real-IP]. *)
+val get_client_id : ?trust_forwarded:bool -> Request.t -> string
 
 (** {1 Rate Checking} *)
 

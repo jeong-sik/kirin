@@ -57,19 +57,45 @@ module Store = struct
       List.iter (Hashtbl.remove buckets) !to_remove)
 end
 
-(** Get client identifier from request (IP address) *)
-let get_client_id req =
-  (* Try X-Forwarded-For first, then X-Real-IP, then connection IP *)
-  match Request.header "x-forwarded-for" req with
-  | Some xff ->
-    (* Take first IP from X-Forwarded-For *)
-    (match String.split_on_char ',' xff with
-    | ip :: _ -> String.trim ip
-    | [] -> "unknown")
-  | None ->
-    match Request.header "x-real-ip" req with
-    | Some ip -> ip
-    | None -> "unknown"
+(* X-Forwarded-For / X-Real-IP can be set by *any* HTTP client, so
+   trusting them unconditionally turns the rate limiter into a
+   sieve: a request that sends
+   [X-Forwarded-For: <random ip>] each time burns through unique
+   buckets and bypasses the limit entirely.  Worse, a request that
+   sends [X-Forwarded-For: <victim>] drains the victim's bucket
+   instead of its own — targeted lockout.
+
+   These headers are only safe when the request arrived through a
+   trusted reverse proxy that overwrites them; the application has
+   to opt in to that contract.  Default to [false]: ignore the
+   forwarded headers entirely and fall back to ["unknown"].
+   Deployments that *do* sit behind a known proxy (nginx, ALB,
+   Cloudflare) can pass [~trust_forwarded:true]. *)
+let trim_first_csv s =
+  match String.split_on_char ',' s with
+  | [] -> ""
+  | first :: _ -> String.trim first
+
+(** [get_client_id ?trust_forwarded req] extracts a client
+    identifier from the request.
+
+    When [trust_forwarded] is [false] (the default) the forwarded
+    headers are ignored — they are caller-controlled and forging
+    them is the rate-limit bypass surface.  When [true], the first
+    address in [X-Forwarded-For] is used, falling back to
+    [X-Real-IP].  Only enable [trust_forwarded] behind a reverse
+    proxy that rewrites those headers itself. *)
+let get_client_id ?(trust_forwarded = false) req =
+  if not trust_forwarded then "unknown"
+  else
+    match Request.header "x-forwarded-for" req with
+    | Some xff when xff <> "" ->
+      let ip = trim_first_csv xff in
+      if ip = "" then "unknown" else ip
+    | _ ->
+      match Request.header "x-real-ip" req with
+      | Some ip when ip <> "" -> ip
+      | _ -> "unknown"
 
 (** Check if request is allowed and consume a token.
     The entire read-modify-write is performed under Store.mu so that
@@ -124,8 +150,14 @@ let limit_exceeded_response ~retry_after ~limit =
   |> Response.with_header "x-ratelimit-limit" (string_of_int limit)
   |> Response.with_header "x-ratelimit-remaining" "0"
 
+(* Monomorphic wrapper so [middleware]'s [?get_key] signature
+   stays [Request.t -> string] — exposing the [?trust_forwarded]
+   default through the middleware would change its callable type
+   and break callers that already pass [~get_key]. *)
+let default_get_key req = get_client_id req
+
 (** Rate limiting middleware *)
-let middleware ?(config = default_config) ?(get_key = get_client_id) : (Request.t -> Response.t) -> (Request.t -> Response.t) =
+let middleware ?(config = default_config) ?(get_key = default_get_key) : (Request.t -> Response.t) -> (Request.t -> Response.t) =
   fun handler req ->
     let client_id = get_key req in
     match check_rate_limit config client_id with
@@ -142,7 +174,7 @@ module type Storage = sig
 end
 
 (** Advanced: Create middleware with custom storage *)
-let middleware_with_storage (module S : Storage) ?(config = default_config) ?(get_key = get_client_id) =
+let middleware_with_storage (module S : Storage) ?(config = default_config) ?(get_key = default_get_key) =
   fun handler req ->
     let client_id = get_key req in
     let now = Unix.gettimeofday () in
