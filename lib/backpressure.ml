@@ -61,16 +61,28 @@ module Buffer = struct
     not_empty : Eio.Condition.t;
   }
 
-  (** Create a bounded buffer *)
-  let create ?(capacity = 1000) ?(strategy = Block) () = {
-    items = [];
-    size = 0;
-    capacity;
-    strategy;
-    mutex = Eio.Mutex.create ();
-    not_full = Eio.Condition.create ();
-    not_empty = Eio.Condition.create ();
-  }
+  (** Create a bounded buffer.
+
+      [capacity] must be strictly positive — with [capacity <= 0]
+      the buffer is always full and the [Block] strategy turns
+      [push] into a permanent deadlock against a producer that has
+      no matching consumer.  Reject at construction rather than
+      letting the misconfiguration silently freeze a fiber. *)
+  let create ?(capacity = 1000) ?(strategy = Block) () =
+    if capacity <= 0 then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Buffer.create: capacity must be > 0 (got %d)"
+           capacity);
+    {
+      items = [];
+      size = 0;
+      capacity;
+      strategy;
+      mutex = Eio.Mutex.create ();
+      not_full = Eio.Condition.create ();
+      not_empty = Eio.Condition.create ();
+    }
 
   (** Check if buffer is full *)
   let is_full t = t.size >= t.capacity
@@ -81,30 +93,46 @@ module Buffer = struct
   (** Current buffer size *)
   let length t = t.size
 
-  (** Push item to buffer (may block or drop based on strategy) *)
+  (** Push item to buffer (may block or drop based on strategy).
+
+      Before this PR, [Drop_newest]'s loop body was [()] — a no-op
+      inside [while is_full t].  The loop condition stayed true
+      forever and the fiber went into an unbounded CPU spin.
+      [Drop_newest] was thus a fatal silent bug: any caller that
+      picked it pinned a worker the moment the buffer hit capacity.
+
+      The new control flow tracks two booleans:
+      - [should_insert] — false only on [Drop_newest], skipping the
+        post-loop insert
+      - [keep_waiting] — drives the wait/drop loop; explicitly
+        cleared by [Drop_newest] so we always make progress
+
+      [Drop_oldest] re-evaluates [is_full] after a successful drop;
+      with [capacity > 0] (enforced at construction) a single drop
+      is enough, but the re-check keeps the invariant local. *)
   let push t item =
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-      (* Handle full buffer based on strategy *)
-      while is_full t do
+      let should_insert = ref true in
+      let keep_waiting = ref (is_full t) in
+      while !keep_waiting do
         match t.strategy with
         | Block ->
-          Eio.Condition.await t.not_full t.mutex
+          Eio.Condition.await t.not_full t.mutex;
+          keep_waiting := is_full t
         | Drop_oldest ->
-          (* Remove oldest (last in reversed list) *)
           (match List.rev t.items with
            | [] -> ()
            | _ :: rest ->
              t.items <- List.rev rest;
-             t.size <- t.size - 1)
+             t.size <- t.size - 1);
+          keep_waiting := is_full t
         | Drop_newest ->
-          (* Just don't add the new item *)
-          ()
+          should_insert := false;
+          keep_waiting := false
         | Error ->
           raise Buffer_overflow
       done;
-
-      (* Add item if not using Drop_newest when full *)
-      if not (is_full t && t.strategy = Drop_newest) then begin
+      if !should_insert then begin
         t.items <- item :: t.items;
         t.size <- t.size + 1;
         Eio.Condition.broadcast t.not_empty

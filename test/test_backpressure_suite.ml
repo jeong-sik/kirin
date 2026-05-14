@@ -105,11 +105,55 @@ let test_window_update_size () =
   BP.Window.update_size win 1000;
   check int "capped at max" 500 (BP.Window.current_size win)
 
+(* Before this PR, [Drop_newest] inside [Buffer.push] was a fatal
+   silent bug: the strategy's loop body was [()] inside
+   [while is_full t], so once the buffer hit capacity the fiber
+   spun the CPU forever — the strategy "drop the incoming item if
+   the buffer is full" was effectively unimplemented. *)
+
+let test_buffer_drop_newest_does_not_spin () =
+  let buf = BP.Buffer.create ~capacity:2 ~strategy:Drop_newest () in
+  BP.Buffer.push buf 1;
+  BP.Buffer.push buf 2;
+  (* Buffer at capacity.  These calls would spin forever before
+     this PR; if the test returns at all, the push loop
+     terminates. *)
+  BP.Buffer.push buf 3;
+  BP.Buffer.push buf 4;
+  check int "size capped at capacity" 2 (BP.Buffer.length buf);
+  (* The retained items are the original two in FIFO order; the
+     newer ones must have been dropped. *)
+  check int "first stays" 1 (BP.Buffer.pop buf);
+  check int "second stays" 2 (BP.Buffer.pop buf);
+  check int "buffer drained" 0 (BP.Buffer.length buf)
+
+let test_buffer_drop_newest_room_after_pop () =
+  (* Once the consumer drains an item the producer can refill the
+     slot — Drop_newest is a per-push decision, not a permanent
+     "buffer closed" state. *)
+  let buf = BP.Buffer.create ~capacity:1 ~strategy:Drop_newest () in
+  BP.Buffer.push buf 1;
+  BP.Buffer.push buf 2;  (* dropped *)
+  check int "first kept" 1 (BP.Buffer.pop buf);
+  BP.Buffer.push buf 3;  (* room is back *)
+  check int "third kept after drain" 3 (BP.Buffer.pop buf)
+
+let test_buffer_capacity_zero_rejected () =
+  check_raises "capacity 0"
+    (Invalid_argument "Backpressure.Buffer.create: capacity must be > 0 (got 0)")
+    (fun () -> ignore (BP.Buffer.create ~capacity:0 ()));
+  check_raises "capacity -1"
+    (Invalid_argument "Backpressure.Buffer.create: capacity must be > 0 (got -1)")
+    (fun () -> ignore (BP.Buffer.create ~capacity:(-1) ()))
+
 let tests = [
   test_case "buffer create" `Quick (with_eio test_buffer_create);
   test_case "buffer push pop" `Quick (with_eio test_buffer_push_pop);
   test_case "buffer try_pop" `Quick (with_eio test_buffer_try_pop);
   test_case "buffer drop oldest" `Quick (with_eio test_buffer_drop_oldest);
+  test_case "buffer drop newest terminates" `Quick (with_eio test_buffer_drop_newest_does_not_spin);
+  test_case "buffer drop newest room after pop" `Quick (with_eio test_buffer_drop_newest_room_after_pop);
+  test_case "buffer capacity <= 0 rejected" `Quick (with_eio test_buffer_capacity_zero_rejected);
   test_case "channel create" `Quick (with_eio test_channel_create);
   test_case "channel send recv" `Quick (with_eio test_channel_send_recv);
   test_case "channel close" `Quick (with_eio test_channel_close);
