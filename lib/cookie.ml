@@ -50,8 +50,45 @@ let get_all req =
   | Some header_value -> parse_cookies header_value
   | None -> []
 
+(* Reject CR / LF / NUL anywhere in a string that will be interpolated
+   raw into a Set-Cookie header. These three bytes are the wire-level
+   header terminators / separators; a caller that lands one of them in
+   [name], [path], [domain], or [expires] would otherwise emit a
+   response like
+
+     Set-Cookie: name=value
+     Set-Cookie: evil=1; Path=...
+
+   — i.e. CRLF injection of a second arbitrary cookie. Other ASCII
+   control bytes are not as universally a separator (tab is legal OWS,
+   for example), so we limit the reject set to the three bytes that
+   are *always* unsafe in an HTTP header value.
+
+   Raising [Invalid_argument] is the right shape: the caller is the
+   server code constructing the cookie, not an end-user input parser,
+   so silently sanitizing would hide a programming bug rather than
+   surface it. The cookie [value] is left to [Uri.pct_encode] (CR / LF
+   / NUL all encode to percent-escape, so they cannot escape on the
+   wire), but [name] is *not* pct-encoded, so we must validate it
+   explicitly — a caller building dynamic cookie names from user input
+   (e.g. ["pref-" ^ user_id]) would be unsafe without this gate. *)
+let reject_header_injection ~field s =
+  String.iter (fun c ->
+    let code = Char.code c in
+    if code = 0x0A || code = 0x0D || code = 0x00 then
+      invalid_arg
+        (Printf.sprintf
+           "Cookie.%s contains illegal control character (0x%02X); \
+            refusing to emit Set-Cookie header"
+           field code)
+  ) s
+
 (** Build Set-Cookie header value *)
 let build_set_cookie name value attrs =
+  reject_header_injection ~field:"name" name;
+  Option.iter (reject_header_injection ~field:"expires") attrs.expires;
+  Option.iter (reject_header_injection ~field:"domain") attrs.domain;
+  Option.iter (reject_header_injection ~field:"path") attrs.path;
   let buf = Buffer.create 128 in
   (* Name=Value *)
   Buffer.add_string buf name;
