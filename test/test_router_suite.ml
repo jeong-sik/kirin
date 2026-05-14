@@ -113,7 +113,69 @@ let test_static_safe_path () =
   check bool "traversal" false (Kirin.Static.is_safe_path "../etc/passwd");
   check bool "hidden traversal" false (Kirin.Static.is_safe_path "foo/../../bar")
 
+(* Symlink-escape regression tests. The textual [..] check cannot see
+   filesystem-level symlinks, so [resolve_under] is the guard that
+   actually keeps responses inside [dir]. These tests must not be
+   deleted in a "tidy up" pass: they pin the guard against decay. *)
+let with_temp_dir f =
+  let stem = Filename.temp_file "kirin_static_" "" in
+  Unix.unlink stem;
+  Unix.mkdir stem 0o755;
+  let cleanup () =
+    let rec rm p =
+      match (Unix.lstat p).st_kind with
+      | S_DIR ->
+        Array.iter (fun child -> rm (Filename.concat p child)) (Sys.readdir p);
+        Unix.rmdir p
+      | _ -> Unix.unlink p
+    in
+    try rm stem with _ -> ()
+  in
+  Fun.protect ~finally:cleanup (fun () -> f stem)
+
+let write_file path content =
+  let oc = open_out path in
+  output_string oc content;
+  close_out oc
+
+let test_static_resolve_regular_file () =
+  with_temp_dir (fun dir ->
+    let path = Filename.concat dir "hello.txt" in
+    write_file path "hi";
+    match Kirin.Static.resolve_under ~dir "hello.txt" with
+    | Some _ -> ()
+    | None -> Alcotest.fail "expected regular file to resolve")
+
+let test_static_resolve_missing_file () =
+  with_temp_dir (fun dir ->
+    check (option string) "missing file falls through (not 403)"
+      None (Kirin.Static.resolve_under ~dir "does-not-exist.txt"))
+
+let test_static_resolve_symlink_within_dir () =
+  with_temp_dir (fun dir ->
+    let real = Filename.concat dir "real.txt" in
+    let link = Filename.concat dir "alias.txt" in
+    write_file real "ok";
+    Unix.symlink "real.txt" link;
+    match Kirin.Static.resolve_under ~dir "alias.txt" with
+    | Some _ -> ()
+    | None -> Alcotest.fail "symlink that stays inside dir must resolve")
+
+let test_static_resolve_symlink_escape () =
+  with_temp_dir (fun dir ->
+    with_temp_dir (fun outside ->
+      let secret = Filename.concat outside "secret.txt" in
+      write_file secret "PASSWORD";
+      let link = Filename.concat dir "innocent.txt" in
+      Unix.symlink secret link;
+      check (option string) "symlink that escapes dir is rejected"
+        None (Kirin.Static.resolve_under ~dir "innocent.txt")))
+
 let static_tests = [
   test_case "mime type detection" `Quick test_static_mime_type;
   test_case "path safety check" `Quick test_static_safe_path;
+  test_case "resolve regular file" `Quick test_static_resolve_regular_file;
+  test_case "resolve missing falls through" `Quick test_static_resolve_missing_file;
+  test_case "resolve symlink within dir" `Quick test_static_resolve_symlink_within_dir;
+  test_case "resolve symlink escape rejected" `Quick test_static_resolve_symlink_escape;
 ]
