@@ -48,11 +48,28 @@ let is_ready t =
   t.manual_ready
 (** {1 Check Logic} *)
 
+(* A registered check is a user-provided closure.  Before this PR
+   it was called directly inside [Hashtbl.fold], so a single check
+   that raised collapsed the entire aggregation — [/health],
+   [/healthz], [/ready] and friends all returned 500 and kubelet
+   saw the pod as crashed.  One buggy probe should not gate every
+   other probe; map a raised exception to an [Unhealthy] status
+   that names the failure and lets the remaining checks contribute.
+   [Eio.Cancel.Cancelled] is re-raised because that one *does*
+   need to unwind the fiber. *)
+let safe_run_check name check =
+  try check ()
+  with
+  | Eio.Cancel.Cancelled _ as e -> raise e
+  | exn ->
+    Unhealthy
+      (Printf.sprintf "check %S raised: %s" name (Printexc.to_string exn))
+
 (** Run all checks and aggregate status *)
-let check t = 
-  let results = Hashtbl.fold (fun name check acc -> 
-    (name, check ()) :: acc 
-  ) t.checks [] in 
+let check t =
+  let results = Hashtbl.fold (fun name check acc ->
+    (name, safe_run_check name check) :: acc
+  ) t.checks [] in
   
   let overall = List.fold_left (fun acc (_, status) -> 
     match acc, status with 
@@ -110,17 +127,39 @@ let live_handler _t =
     Response.make ~status:`OK ~headers:default_headers 
       (`String "{\"status\":\"alive\"}")
 
-(** Readiness probe handler (for /ready) *)
-let ready_handler t = 
-  fun _req -> 
-    let status, _ = check t in 
-    match status with 
-    | Healthy | Degraded _ -> 
-      Response.make ~status:`OK ~headers:default_headers 
-        (`String "{\"status\":\"ready\"}") 
-    | Unhealthy _ -> 
-      Response.make ~status:`Service_unavailable ~headers:default_headers 
-        (`String "{\"status\":\"not_ready\"}") 
+(** Pure: readiness verdict.
+
+    Honours both the manual [is_ready] flag *and* the aggregated
+    [check] result.  The manual flag exists for graceful K8s
+    rolling updates: an operator calls [set_ready t false] just
+    before SIGTERM so the kubelet starts draining traffic while
+    in-flight requests finish.  Before this PR the flag was a
+    silent no-op in [ready_handler] — [set_ready false] was
+    dropped because the handler only consulted [check].  Extracted
+    here as a pure verdict so callers can drive K8s probes (or
+    a custom transport) without depending on Kirin's Request/Response
+    types, and so the regression is unit-testable. *)
+let ready_status t : [ `Ready | `Not_ready_drain | `Not_ready_unhealthy ] =
+  if not (is_ready t) then `Not_ready_drain
+  else
+    let status, _ = check t in
+    match status with
+    | Healthy | Degraded _ -> `Ready
+    | Unhealthy _ -> `Not_ready_unhealthy
+
+(** Readiness probe handler (for /ready). *)
+let ready_handler t =
+  fun _req ->
+    match ready_status t with
+    | `Ready ->
+      Response.make ~status:`OK ~headers:default_headers
+        (`String "{\"status\":\"ready\"}")
+    | `Not_ready_drain ->
+      Response.make ~status:`Service_unavailable ~headers:default_headers
+        (`String "{\"status\":\"not_ready\",\"reason\":\"drain\"}")
+    | `Not_ready_unhealthy ->
+      Response.make ~status:`Service_unavailable ~headers:default_headers
+        (`String "{\"status\":\"not_ready\"}")
 
 (** {1 Routes} *)
 

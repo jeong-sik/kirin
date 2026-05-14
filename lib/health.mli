@@ -50,8 +50,22 @@ val is_ready : t -> bool
 (** [check t] runs all registered checks and returns the aggregated status
     along with a JSON object containing status, uptime, and per-check details.
     Status is [Unhealthy] if any check is unhealthy, [Degraded] if any is
-    degraded, [Healthy] otherwise. *)
+    degraded, [Healthy] otherwise.
+
+    A check that raises is converted into [Unhealthy "check \"name\"
+    raised: ..."] so one buggy probe cannot collapse the entire
+    aggregation.  [Eio.Cancel.Cancelled] is re-raised; that one
+    must unwind the fiber. *)
 val check : t -> status * Yojson.Safe.t
+
+(** [ready_status t] is the verdict that [ready_handler] uses,
+    exposed as a pure value:
+    - [`Ready] when [is_ready t] is [true] *and* [check t] is not
+      [Unhealthy];
+    - [`Not_ready_drain] when [is_ready t] is [false] (operator
+      drain in progress);
+    - [`Not_ready_unhealthy] when [check t] is [Unhealthy]. *)
+val ready_status : t -> [ `Ready | `Not_ready_drain | `Not_ready_unhealthy ]
 
 (** {1 HTTP Handlers} *)
 
