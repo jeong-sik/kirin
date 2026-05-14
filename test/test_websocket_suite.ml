@@ -109,6 +109,73 @@ let test_ws_close_frame () =
     (Option.map (fun c -> c = Kirin.Websocket.Normal) code);
   check string "reason" "Bye" reason
 
+(* Build a 64-bit length header (no mask) declaring [announced] bytes
+   of payload, without actually providing them. The decoder must
+   reject the announcement before any allocation that scales with
+   [announced]. *)
+let build_64bit_header ~announced =
+  let buf = Bytes.create 10 in
+  Bytes.set buf 0 '\x82';            (* FIN=1, opcode=binary *)
+  Bytes.set buf 1 '\x7f';            (* MASK=0, len indicator=127 *)
+  for i = 0 to 7 do
+    Bytes.set buf (2 + i)
+      (Char.chr ((announced lsr ((7 - i) * 8)) land 0xFF))
+  done;
+  Bytes.to_string buf
+
+let test_ws_decode_rejects_oversized () =
+  (* Announce 2 GiB, far past the 16 MiB default. The decoder must
+     refuse before trying to confirm those bytes have arrived. *)
+  let header = build_64bit_header ~announced:(2 * 1024 * 1024 * 1024) in
+  (match Kirin.ws_decode header with
+   | Ok _ -> fail "expected oversized payload to be rejected"
+   | Error msg ->
+     (* Message should be the size-cap class, not the
+        "incomplete frame" class — they have very different
+        operational meanings to the caller. *)
+     check bool "rejected by size cap" true
+       (String.length msg > 0
+        && (try let _ = Str.search_forward
+                  (Str.regexp_string "exceeds maximum") msg 0 in true
+            with Not_found -> false)))
+
+let test_ws_decode_respects_custom_cap () =
+  (* Use the 16-bit indicator (announced=200) and a tiny custom cap. *)
+  let raw =
+    let header = Bytes.create 4 in
+    Bytes.set header 0 '\x82';
+    Bytes.set header 1 '\x7e';
+    Bytes.set header 2 '\x00';
+    Bytes.set header 3 '\xc8';      (* 200 *)
+    Bytes.to_string header ^ String.make 200 'A'
+  in
+  (match Kirin.ws_decode ~max_payload_size:100 raw with
+   | Ok _ -> fail "expected payload above custom cap to be rejected"
+   | Error _ -> ());
+  (* Same input is accepted when the cap is raised above 200. *)
+  (match Kirin.ws_decode ~max_payload_size:1024 raw with
+   | Ok (frame, _) ->
+     check int "payload length" 200 (String.length frame.payload)
+   | Error msg -> fail ("expected acceptance, got: " ^ msg))
+
+let test_ws_decode_rejects_64bit_high_bit_set () =
+  (* 64-bit length with high bit set wraps the OCaml 63-bit int to a
+     negative number when read with lsl-or; that must be rejected as
+     oversized, never as "incomplete frame" (which invites buffering). *)
+  let buf = Bytes.create 10 in
+  Bytes.set buf 0 '\x82';
+  Bytes.set buf 1 '\x7f';
+  Bytes.set buf 2 '\xff';            (* high byte's high bit set *)
+  for i = 3 to 9 do Bytes.set buf i '\xff' done;
+  (match Kirin.ws_decode (Bytes.to_string buf) with
+   | Ok _ -> fail "expected high-bit-set 64-bit length to be rejected"
+   | Error msg ->
+     check bool "rejected as oversized, not as incomplete"
+       true
+       (try let _ = Str.search_forward
+              (Str.regexp_string "exceeds maximum") msg 0 in true
+        with Not_found -> false))
+
 let test_ws_ping_pong () =
   let ping = Kirin.ws_ping ~payload:"ping-data" () in
   check bool "is ping" (ping.opcode = Kirin.Ping) true;
@@ -125,6 +192,10 @@ let tests = [
   test_case "encode text frame" `Quick test_ws_encode_text_frame;
   test_case "encode large frame" `Quick test_ws_encode_large_frame;
   test_case "decode masked frame" `Quick test_ws_decode_masked_frame;
+  test_case "decode rejects oversized payload" `Quick test_ws_decode_rejects_oversized;
+  test_case "decode respects custom cap" `Quick test_ws_decode_respects_custom_cap;
+  test_case "decode rejects 64-bit high-bit-set length" `Quick
+    test_ws_decode_rejects_64bit_high_bit_set;
   test_case "close frame" `Quick test_ws_close_frame;
   test_case "ping pong" `Quick test_ws_ping_pong;
 ]

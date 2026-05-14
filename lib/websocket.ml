@@ -150,8 +150,30 @@ let encode_frame frame =
   Buffer.add_string buf frame.payload;
   Buffer.contents buf
 
-(** Decode a frame from client (client-to-server: masked) *)
-let decode_frame data =
+(** Default per-frame payload cap.
+
+    16 MiB. RFC 6455 permits a 64-bit length field, and OCaml [int] on
+    a 64-bit host is signed 63-bit — even before any allocation, an
+    attacker-controlled length of 2^31 forces the upstream reader to
+    buffer that many bytes before [decode_frame] ever sees a complete
+    frame. Without an explicit cap there is no principled way to emit
+    the [1009 MessageTooBig] close code RFC 6455 reserved for this
+    exact case.
+
+    16 MiB covers realistic text/binary messages while keeping
+    per-connection memory bounded. Callers that legitimately need
+    larger frames can raise this per [decode_frame] call. *)
+let default_max_payload_size = 16 * 1024 * 1024
+
+(** Decode a frame from client (client-to-server: masked).
+
+    @param max_payload_size caps the announced payload length before any
+           allocation. Defaults to [default_max_payload_size]. When the
+           client-announced length exceeds the cap (including the
+           negative-overflow case from a 64-bit length whose high bit
+           is set), returns [Error] with a message the caller can map
+           to a [1009 MessageTooBig] close frame. *)
+let decode_frame ?(max_payload_size = default_max_payload_size) data =
   let len = String.length data in
   if len < 2 then Error "Frame too short"
   else
@@ -166,42 +188,63 @@ let decode_frame data =
     match opcode_of_int opcode_int with
     | None -> Error (Printf.sprintf "Unknown opcode: 0x%X" opcode_int)
     | Some opcode ->
-      let header_len, payload_len =
+      (* Split the length parse into three distinct outcomes so the
+         caller cannot confuse "incomplete, please read more" with
+         "oversized, drop the connection". The old sentinel of -1
+         collapsed both into a single Error string. *)
+      let length_result =
         if payload_len_indicator < 126 then
-          (2, payload_len_indicator)
+          `Ok (2, payload_len_indicator)
         else if payload_len_indicator = 126 then
-          if len < 4 then (4, -1)  (* Need more data *)
+          if len < 4 then `Need_more
           else
             let plen = (Char.code data.[2] lsl 8) lor (Char.code data.[3]) in
-            (4, plen)
-        else (* 127 *)
-          if len < 10 then (10, -1)  (* Need more data *)
+            `Ok (4, plen)
+        else (* 127, 64-bit length *)
+          if len < 10 then `Need_more
           else begin
             let plen = ref 0 in
             for i = 0 to 7 do
               plen := (!plen lsl 8) lor (Char.code data.[2 + i])
             done;
-            (10, !plen)
+            if !plen < 0 then
+              (* High bit of the 64-bit field is set; [lsl 8] wrapped
+                 the OCaml 63-bit int into a negative number. Treat as
+                 oversized, never as "incomplete" — declaring it
+                 incomplete would invite the caller to keep buffering
+                 an attacker-chosen number of bytes. *)
+              `Oversized
+            else
+              `Ok (10, !plen)
           end
       in
 
-      if payload_len < 0 then Error "Incomplete frame header"
-      else
-        let mask_len = if masked then 4 else 0 in
-        let total_len = header_len + mask_len + payload_len in
-
-        if len < total_len then
-          Error (Printf.sprintf "Incomplete frame: need %d, have %d" total_len len)
+      match length_result with
+      | `Need_more -> Error "Incomplete frame header"
+      | `Oversized ->
+        Error "Payload length exceeds maximum allowed size"
+      | `Ok (header_len, payload_len) ->
+        if payload_len > max_payload_size then
+          Error
+            (Printf.sprintf
+               "Payload length %d exceeds maximum allowed size %d"
+               payload_len max_payload_size)
         else
-          let payload =
-            let raw_payload = String.sub data (header_len + mask_len) payload_len in
-            if masked then
-              let mask_key = String.sub data header_len 4 in
-              apply_mask mask_key raw_payload
-            else
-              raw_payload
-          in
-          Ok ({ fin; opcode; payload }, total_len)
+          let mask_len = if masked then 4 else 0 in
+          let total_len = header_len + mask_len + payload_len in
+
+          if len < total_len then
+            Error (Printf.sprintf "Incomplete frame: need %d, have %d" total_len len)
+          else
+            let payload =
+              let raw_payload = String.sub data (header_len + mask_len) payload_len in
+              if masked then
+                let mask_key = String.sub data header_len 4 in
+                apply_mask mask_key raw_payload
+              else
+                raw_payload
+            in
+            Ok ({ fin; opcode; payload }, total_len)
 
 (** Create a text frame *)
 let text_frame ?(fin = true) payload =
