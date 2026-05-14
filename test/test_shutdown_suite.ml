@@ -53,6 +53,65 @@ let test_shutdown_status_json () =
     check bool "has connections" true (List.mem_assoc "active_connections" fields)
   | _ -> fail "expected JSON object"
 
+(* Before this PR, [wait_for_drain] called [Eio.Condition.await]
+   inside a [now () < deadline] while-loop.  [await] has no
+   timeout parameter, so a connection that never calls
+   [connection_end] (slow client, deadlocked handler, dropped
+   socket without RST) left the wait hanging forever — the
+   configured [timeout] was silently dead and K8s had to SIGKILL
+   the process after [terminationGracePeriodSeconds].
+
+   These tests pin the new contract: [initiate] returns within
+   approximately [timeout] seconds even when no connection ever
+   ends, and still drains promptly in the normal case. *)
+
+let test_initiate_honours_timeout_when_drain_hangs () =
+  Eio_main.run @@ fun env ->
+  let clock = Eio.Stdenv.clock env in
+  Kirin.Time_compat.set_clock clock;
+  Fun.protect
+    ~finally:(fun () -> Kirin.Time_compat.clear_clock ())
+    (fun () ->
+      let shutdown = S.create ~timeout:0.15 () in
+      let started = S.connection_start shutdown in
+      check bool "stuck connection registered" true started;
+      let t0 = Unix.gettimeofday () in
+      S.initiate shutdown;
+      let elapsed = Unix.gettimeofday () -. t0 in
+      (* The drain must give up between [timeout] and a small
+         margin (poll interval + scheduler jitter).  Before this
+         PR it would hang indefinitely. *)
+      check bool
+        (Printf.sprintf "initiate returned in %.3fs (~timeout 0.15s)" elapsed)
+        true
+        (elapsed >= 0.15 && elapsed < 1.0);
+      (* State must be Stopped even after a force-timeout drain. *)
+      check bool "stopped after forced drain" true (S.is_stopped shutdown))
+
+let test_initiate_drains_promptly_in_normal_case () =
+  Eio_main.run @@ fun env ->
+  let clock = Eio.Stdenv.clock env in
+  Kirin.Time_compat.set_clock clock;
+  Fun.protect
+    ~finally:(fun () -> Kirin.Time_compat.clear_clock ())
+    (fun () ->
+      Eio.Switch.run @@ fun sw ->
+      let shutdown = S.create ~timeout:5.0 () in
+      let _ = S.connection_start shutdown in
+      (* End the connection 50ms after initiate begins. *)
+      Eio.Fiber.fork ~sw (fun () ->
+        Eio.Time.sleep clock 0.05;
+        S.connection_end shutdown);
+      let t0 = Unix.gettimeofday () in
+      S.initiate shutdown;
+      let elapsed = Unix.gettimeofday () -. t0 in
+      (* Drain returned well before the 5s timeout. *)
+      check bool
+        (Printf.sprintf "drained in %.3fs (< 1s)" elapsed)
+        true
+        (elapsed < 1.0);
+      check bool "stopped" true (S.is_stopped shutdown))
+
 let tests = [
   test_case "shutdown create" `Quick (with_eio test_shutdown_create);
   test_case "shutdown custom timeout" `Quick (with_eio test_shutdown_custom_timeout);
@@ -60,4 +119,6 @@ let tests = [
   test_case "shutdown connection tracking" `Quick (with_eio test_shutdown_connection_tracking);
   test_case "shutdown reject during" `Quick test_shutdown_reject_during_shutdown;
   test_case "shutdown status json" `Quick (with_eio test_shutdown_status_json);
+  test_case "initiate honours timeout when drain hangs" `Quick test_initiate_honours_timeout_when_drain_hangs;
+  test_case "initiate drains promptly in normal case" `Quick test_initiate_drains_promptly_in_normal_case;
 ]
