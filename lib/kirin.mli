@@ -170,7 +170,7 @@ val ws_close :
   ?code:Websocket.close_code ->
   ?reason:string -> unit -> Websocket.frame
 val ws_encode : Websocket.frame -> string
-val ws_decode : string -> (Websocket.frame * int, string) result
+val ws_decode : ?max_payload_size:int -> string -> (Websocket.frame * int, string) result
 val ws_echo_handler : Websocket.handler
 
 type ws_opcode = Websocket.opcode =

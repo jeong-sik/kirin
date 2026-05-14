@@ -68,9 +68,25 @@ val apply_mask : string -> string -> string
 (** [encode_frame frame] encodes a frame for server-to-client transmission (no mask). *)
 val encode_frame : frame -> string
 
-(** [decode_frame data] decodes a client-to-server frame (masked).
-    Returns the frame and the number of bytes consumed, or an error. *)
-val decode_frame : string -> (frame * int, string) result
+(** Default per-frame payload cap used by [decode_frame] (16 MiB).
+    Exposed so callers can reuse the same baseline when sizing their
+    own buffers or building their own framing layer. *)
+val default_max_payload_size : int
+
+(** [decode_frame ?max_payload_size data] decodes a client-to-server
+    frame (masked). Returns the frame and the number of bytes consumed,
+    or an error.
+
+    @param max_payload_size caps the announced payload length before
+           any allocation. Defaults to [default_max_payload_size].
+           Frames whose announced length exceeds the cap are rejected
+           with an [Error] message suitable for emitting a
+           [1009 MessageTooBig] close. Frames whose 64-bit length
+           overflowed OCaml's signed 63-bit [int] are rejected as
+           oversized rather than as incomplete — declaring them
+           incomplete would invite the caller to keep buffering an
+           attacker-chosen number of bytes. *)
+val decode_frame : ?max_payload_size:int -> string -> (frame * int, string) result
 
 (** {1 Frame Constructors} *)
 
