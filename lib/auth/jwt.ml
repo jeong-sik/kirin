@@ -150,6 +150,33 @@ let claims_of_json json =
     jti = get_string "jti";
   }
 
+(* JWT input is attacker-controlled: [token] can be any byte stream
+   that survives the dot-split. [Yojson.Safe.from_string] raises
+   [Yojson.Json_error] on malformed JSON, [Yojson.Safe.Util.to_string]
+   raises [Type_error] when [alg] is not a string, and
+   [claims_of_json] can raise the same Type_error if the payload is
+   not an object. The old code let those escape — every request with
+   a malformed JWT crashed the handler. Catching them and returning a
+   normal [Error] is the right shape: [decode] is documented as
+   returning [Result.t], and callers already dispatch on it. *)
+let jwt_parse_failure_msg = "Malformed JWT payload"
+
+let safe_yojson_parse s =
+  try Ok (Yojson.Safe.from_string s) with _ -> Error jwt_parse_failure_msg
+
+let safe_alg_string header_json =
+  try
+    match Yojson.Safe.Util.member "alg" header_json with
+    | `String s -> Some s
+    | _ -> None
+  with _ -> None
+
+let safe_claims_of_json payload =
+  try claims_of_json payload
+  with _ ->
+    { iss = None; sub = None; aud = None;
+      exp = None; nbf = None; iat = None; jti = None }
+
 (** Decode and verify JWT *)
 let decode ~secret token =
   match String.split_on_char '.' token with
@@ -158,55 +185,69 @@ let decode ~secret token =
       (match base64url_decode header_b64 with
        | Error _ -> Error "Invalid header encoding"
        | Ok header_str ->
-           let header_json = Yojson.Safe.from_string header_str in
-           let open Yojson.Safe.Util in
-           let alg_str = header_json |> member "alg" |> to_string in
-           (match algorithm_of_string alg_str with
-            | None -> Error ("Unsupported algorithm: " ^ alg_str)
-            | Some algorithm ->
-                (* Verify signature *)
-                let signing_input = header_b64 ^ "." ^ payload_b64 in
-                let expected_sig = sign ~algorithm ~secret signing_input in
-                let expected_sig_b64 = base64url_encode expected_sig in
-                if not (Eqaf.equal signature_b64 expected_sig_b64) then
-                  Error "Invalid signature"
-                else
-                  (* Decode payload *)
-                  (match base64url_decode payload_b64 with
-                   | Error _ -> Error "Invalid payload encoding"
-                   | Ok payload_str ->
-                       let payload = Yojson.Safe.from_string payload_str in
-                       let claims = claims_of_json payload in
+         (match safe_yojson_parse header_str with
+          | Error _ -> Error "Invalid header JSON"
+          | Ok header_json ->
+            (match safe_alg_string header_json with
+             | None -> Error "Missing or invalid alg in header"
+             | Some alg_str ->
+               (match algorithm_of_string alg_str with
+                | None -> Error ("Unsupported algorithm: " ^ alg_str)
+                | Some algorithm ->
+                    (* Verify signature *)
+                    let signing_input = header_b64 ^ "." ^ payload_b64 in
+                    let expected_sig = sign ~algorithm ~secret signing_input in
+                    let expected_sig_b64 = base64url_encode expected_sig in
+                    if not (Eqaf.equal signature_b64 expected_sig_b64) then
+                      Error "Invalid signature"
+                    else
+                      (* Decode payload *)
+                      (match base64url_decode payload_b64 with
+                       | Error _ -> Error "Invalid payload encoding"
+                       | Ok payload_str ->
+                         (match safe_yojson_parse payload_str with
+                          | Error _ -> Error "Invalid payload JSON"
+                          | Ok payload ->
+                            let claims = safe_claims_of_json payload in
+                            (* Validate expiration.
 
-                       (* Validate expiration *)
-                       let now = Unix.gettimeofday () in
-                       (match claims.exp with
-                        | Some exp when exp < now -> Error "Token expired"
-                        | _ ->
-                            (* Validate not-before *)
-                            (match claims.nbf with
-                             | Some nbf when nbf > now -> Error "Token not yet valid"
+                               RFC 7519 §4.1.4: current time MUST be
+                               *before* exp. [exp <= now] (strict)
+                               closes the boundary case the previous
+                               [exp < now] left as "still valid". *)
+                            let now = Unix.gettimeofday () in
+                            (match claims.exp with
+                             | Some exp when exp <= now -> Error "Token expired"
                              | _ ->
-                                 let header = { alg = algorithm; typ = "JWT" } in
-                                 Ok { header; claims; payload })))))
+                                 (* Validate not-before *)
+                                 (match claims.nbf with
+                                  | Some nbf when nbf > now -> Error "Token not yet valid"
+                                  | _ ->
+                                      let header = { alg = algorithm; typ = "JWT" } in
+                                      Ok { header; claims; payload }))))))))
   | _ -> Error "Invalid token format"
 
-(** Decode without verification (for debugging) *)
+(** Decode without verification (for debugging).
+
+    Same exception-safety as [decode]: malformed base64 / JSON / [alg]
+    yields an [Error], never a raise. *)
 let decode_unsafe token =
   match String.split_on_char '.' token with
   | [header_b64; payload_b64; _] ->
       (match base64url_decode header_b64, base64url_decode payload_b64 with
        | Ok header_str, Ok payload_str ->
-           let header_json = Yojson.Safe.from_string header_str in
-           let payload = Yojson.Safe.from_string payload_str in
-           let open Yojson.Safe.Util in
-           let alg_str = header_json |> member "alg" |> to_string in
-           (match algorithm_of_string alg_str with
-            | None -> Error ("Unsupported algorithm: " ^ alg_str)
-            | Some algorithm ->
-                let header = { alg = algorithm; typ = "JWT" } in
-                let claims = claims_of_json payload in
-                Ok { header; claims; payload })
+         (match safe_yojson_parse header_str, safe_yojson_parse payload_str with
+          | Ok header_json, Ok payload ->
+            (match safe_alg_string header_json with
+             | None -> Error "Missing or invalid alg in header"
+             | Some alg_str ->
+               (match algorithm_of_string alg_str with
+                | None -> Error ("Unsupported algorithm: " ^ alg_str)
+                | Some algorithm ->
+                    let header = { alg = algorithm; typ = "JWT" } in
+                    let claims = safe_claims_of_json payload in
+                    Ok { header; claims; payload }))
+          | _ -> Error jwt_parse_failure_msg)
        | _ -> Error "Invalid encoding")
   | _ -> Error "Invalid token format"
 
