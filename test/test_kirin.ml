@@ -33,4 +33,5 @@ let () =
     ("Query", Test_query_suite.query_tests);
     ("Migrate", Test_query_suite.migrate_tests);
     ("Db", Test_query_suite.db_tests);
+    ("Cluster", Test_cluster_suite.tests);
   ]
