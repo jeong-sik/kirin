@@ -99,11 +99,69 @@ let test_per_entry_ttl_overrides_default () =
   Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
   check (option string) "per-entry ttl expired" None (Kirin.Cache.get cache "short")
 
+(* NaN TTL would make [is_expired] return false forever — every read
+   of [now () > nan] is false under IEEE 754.  The entry would stay
+   pinned and silently leak the cache slot; if the TTL is influenced
+   by external input (HTTP cache-control header, configuration file),
+   that is also a cache-poisoning vector.  Each entry point that takes
+   a TTL must reject NaN at the boundary. *)
+let test_set_rejects_nan_ttl () =
+  Eio_main.run @@ fun _env ->
+  let cache = Kirin.Cache.create ~max_size:10 () in
+  check_raises "set ~ttl:nan raises Invalid_argument"
+    (Invalid_argument "Cache.set: ttl is NaN")
+    (fun () -> Kirin.Cache.set ~ttl:Float.nan cache "k" "v");
+  (* Confirm nothing was inserted. *)
+  check int "cache untouched" 0 (Kirin.Cache.size cache)
+
+let test_get_or_set_rejects_nan_ttl () =
+  Eio_main.run @@ fun _env ->
+  let cache = Kirin.Cache.create ~max_size:10 () in
+  check_raises "get_or_set ~ttl:nan raises Invalid_argument"
+    (Invalid_argument "Cache.get_or_set: ttl is NaN")
+    (fun () ->
+      ignore (Kirin.Cache.get_or_set ~ttl:Float.nan cache "k"
+                (fun () -> "computed")));
+  check int "cache untouched" 0 (Kirin.Cache.size cache)
+
+let test_create_rejects_nan_default_ttl () =
+  Eio_main.run @@ fun _env ->
+  check_raises "create ~default_ttl:nan raises Invalid_argument"
+    (Invalid_argument "Cache.create: ttl is NaN")
+    (fun () ->
+      ignore (Kirin.Cache.create ~max_size:10 ~default_ttl:Float.nan ()))
+
+let test_infinity_ttl_treated_as_permanent () =
+  (* +infinity is the documented "never expires" extreme: [now () > inf]
+     is false, so the entry persists.  This pins that semantics as the
+     contract we keep after the NaN reject, and asserts the entry is
+     still readable after a real sleep. *)
+  Eio_main.run @@ fun env ->
+  let cache = Kirin.Cache.create ~max_size:10 () in
+  Kirin.Cache.set ~ttl:Float.infinity cache "k" "v";
+  Eio.Time.sleep (Eio.Stdenv.clock env) 0.01;
+  check (option string) "still here" (Some "v") (Kirin.Cache.get cache "k")
+
+let test_negative_infinity_ttl_expires_immediately () =
+  (* -infinity makes expires_at = -inf < now, so the entry is expired
+     on first read.  This pins the symmetric case so a future change
+     that "smartly clamps" negative TTL cannot regress into a permanent
+     entry. *)
+  Eio_main.run @@ fun _env ->
+  let cache = Kirin.Cache.create ~max_size:10 () in
+  Kirin.Cache.set ~ttl:Float.neg_infinity cache "k" "v";
+  check (option string) "instantly expired" None (Kirin.Cache.get cache "k")
+
 let ttl_tests = [
   test_case "ttl expiry" `Quick test_ttl_expiry;
   test_case "default ttl" `Quick test_default_ttl;
   test_case "no ttl never expires" `Quick test_no_ttl_never_expires;
   test_case "per-entry ttl overrides default" `Quick test_per_entry_ttl_overrides_default;
+  test_case "set rejects NaN ttl" `Quick test_set_rejects_nan_ttl;
+  test_case "get_or_set rejects NaN ttl" `Quick test_get_or_set_rejects_nan_ttl;
+  test_case "create rejects NaN default_ttl" `Quick test_create_rejects_nan_default_ttl;
+  test_case "infinity ttl never expires" `Quick test_infinity_ttl_treated_as_permanent;
+  test_case "negative infinity ttl expires immediately" `Quick test_negative_infinity_ttl_expires_immediately;
 ]
 
 (* -- LRU eviction -------------------------------------------------- *)
