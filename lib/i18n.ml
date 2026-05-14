@@ -140,8 +140,48 @@ let add_plural locale ~key ~one ~other ?zero ?few ?many t =
   Hashtbl.replace t.locales locale locale_data;
   t
 
-(** Set fallback locale *)
+(** Maximum walk depth for the cycle check. Matches the lookup-time
+    cap used in [get_translation] (currently inlined as a literal there;
+    a follow-up RFC could unify both as a module-level constant). 16 is
+    well above any practical chain length. *)
+let cycle_check_max_depth = 16
+
+(** Check whether following [fallback] in [t] would land back on
+    [origin] — i.e. installing [origin → fallback] would close a cycle.
+
+    Walks the existing fallback chain from [fallback]. A separate
+    runtime depth cap already prevents stack overflow on a cycle, but
+    *creating* a cycle silently makes every key in the cycle "missing"
+    (lookup terminates at the cap with None). Reject at the setter so
+    the configuration mistake surfaces immediately. *)
+let creates_cycle t ~origin ~fallback =
+  let rec walk depth loc =
+    if depth > cycle_check_max_depth then false
+    else if loc = origin then true
+    else match Hashtbl.find_opt t.locales loc with
+      | None -> false
+      | Some ld ->
+        match ld.fallback with
+        | None -> false
+        | Some next -> walk (depth + 1) next
+  in
+  walk 0 fallback
+
+(** Set fallback locale.
+
+    Raises [Invalid_argument] when installing this fallback would create
+    a cycle (e.g. setting en's fallback to ko on a config that already
+    has ko's fallback set to en). Catching the cycle at install time
+    means a misconfigured chain surfaces immediately instead of making
+    every lookup quietly return the default once the depth cap trips. *)
 let set_fallback ~locale ~fallback t =
+  if locale = fallback then
+    invalid_arg
+      (Printf.sprintf "I18n.set_fallback: locale %S cannot fall back to itself" locale);
+  if creates_cycle t ~origin:locale ~fallback then
+    invalid_arg
+      (Printf.sprintf "I18n.set_fallback: %S -> %S would create a fallback cycle"
+         locale fallback);
   match Hashtbl.find_opt t.locales locale with
   | Some ld ->
     Hashtbl.replace t.locales locale { ld with fallback = Some fallback };
