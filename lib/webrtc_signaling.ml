@@ -127,16 +127,49 @@ let join_room server ~room_id ~peer_id =
   Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
     Hashtbl.replace room.peers peer_id ())
 
+(* Lock ordering: [server.mutex] first, then [room.mutex].
+   [get_or_create_room] / [leave_room] hold the server lock only
+   while looking up or mutating [server.rooms]; nobody holds
+   [room.mutex] while *acquiring* [server.mutex], so the
+   server-then-room ordering is the only direction taken and
+   no deadlock is possible. *)
+
 let leave_room server ~room_id ~peer_id =
-  match Hashtbl.find_opt server.rooms room_id with
-  | None -> ()
-  | Some room ->
-    Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
-      Hashtbl.remove room.peers peer_id)
+  (* Hold the server lock long enough to (a) find the room safely
+     against concurrent [join_room] mutation, and (b) collect the
+     room from [server.rooms] when the last peer leaves.  Without
+     the cleanup, a stream of unique [room_id]s — easy to drive
+     from untrusted Join messages — accumulates entries forever
+     and never frees them, even after every peer disconnects. *)
+  Eio.Mutex.use_rw ~protect:true server.mutex (fun () ->
+    match Hashtbl.find_opt server.rooms room_id with
+    | None -> ()
+    | Some room ->
+      Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
+        Hashtbl.remove room.peers peer_id;
+        if Hashtbl.length room.peers = 0 then
+          Hashtbl.remove server.rooms room_id))
 
 let get_peers server room_id =
-  match Hashtbl.find_opt server.rooms room_id with
+  (* Snapshot the room reference under [server.mutex], then read
+     its peer set under [room.mutex].  Reading [server.rooms]
+     directly without the lock could observe a half-built bucket
+     while a concurrent [get_or_create_room] / [leave_room] is
+     mutating the table. *)
+  let room_opt =
+    Eio.Mutex.use_ro server.mutex (fun () ->
+      Hashtbl.find_opt server.rooms room_id)
+  in
+  match room_opt with
   | None -> []
   | Some room ->
     Eio.Mutex.use_ro room.mutex (fun () ->
       Hashtbl.fold (fun id _ acc -> id :: acc) room.peers [])
+
+(** [room_exists server room_id] reports whether [room_id] is
+    currently tracked.  Useful for tests that need to verify the
+    empty-room cleanup contract without inspecting the internal
+    [server.rooms] Hashtbl directly. *)
+let room_exists server room_id =
+  Eio.Mutex.use_ro server.mutex (fun () ->
+    Hashtbl.mem server.rooms room_id)
