@@ -72,6 +72,70 @@ let test_etag_middleware_304 () =
     check int "304 status" 304 (Kirin.Response.status_code resp2)
   | None -> failwith "no etag header"
 
+(* RFC 7232 §3.1 — If-Match MUST use strong comparison.
+
+   Before the fix, [check_if_match] reused [parse_if_none_match] +
+   [any_match] which defaulted to weak comparison, so a client could
+   pass W/"v" against Strong "v" and bypass the precondition. These
+   tests pin each side of the new strong-only semantics. *)
+
+let test_etag_if_match_strong_passes () =
+  let req = make_test_request
+    ~headers:[("if-match", "\"abc\"")]
+    ~meth:`PUT
+    "/" in
+  let result = Kirin.Etag.check_if_match req (Kirin.Etag.Strong "abc") in
+  check bool "strong client + strong server passes" true (result = `Ok)
+
+let test_etag_if_match_weak_rejected () =
+  (* RFC says: W/"v" against Strong "v" must NOT satisfy If-Match.
+     Two clients holding weak validators of "same" semantic content
+     cannot use that to coordinate a lost-update race. *)
+  let req = make_test_request
+    ~headers:[("if-match", "W/\"abc\"")]
+    ~meth:`PUT
+    "/" in
+  let result = Kirin.Etag.check_if_match req (Kirin.Etag.Strong "abc") in
+  check bool "weak client + strong server rejected" true
+    (result = `Precondition_failed)
+
+let test_etag_if_match_weak_to_weak_rejected () =
+  (* Even weak/weak is rejected under strong comparison: weak ETags
+     are explicitly outside the allowed set for If-Match. *)
+  let req = make_test_request
+    ~headers:[("if-match", "W/\"abc\"")]
+    ~meth:`PUT
+    "/" in
+  let result = Kirin.Etag.check_if_match req (Kirin.Etag.Weak "abc") in
+  check bool "weak/weak rejected for If-Match" true
+    (result = `Precondition_failed)
+
+let test_etag_if_match_wildcard_passes () =
+  let req = make_test_request
+    ~headers:[("if-match", "*")]
+    ~meth:`PUT
+    "/" in
+  let result = Kirin.Etag.check_if_match req (Kirin.Etag.Strong "anything") in
+  check bool "wildcard passes" true (result = `Ok);
+  let result_weak = Kirin.Etag.check_if_match req (Kirin.Etag.Weak "anything") in
+  check bool "wildcard passes even for weak server etag" true (result_weak = `Ok)
+
+let test_etag_if_match_absent_passes () =
+  let req = make_test_request ~meth:`PUT "/" in
+  let result = Kirin.Etag.check_if_match req (Kirin.Etag.Strong "anything") in
+  check bool "no header => no precondition" true (result = `Ok)
+
+let test_etag_generate_uses_sha256 () =
+  (* Pin the digest output size. SHA-256 hex is 64 chars; MD5 was 32.
+     A future refactor that quietly drops back to MD5 (smaller hash,
+     attractive perf number) would trip this. The pin makes the
+     digest choice load-bearing rather than incidental. *)
+  let etag = Kirin.Etag.generate "Hello, World!" in
+  match etag with
+  | Kirin.Etag.Strong s ->
+    check int "SHA-256 hex length" 64 (String.length s)
+  | _ -> failwith "expected strong etag"
+
 let tests = [
   test_case "parse strong etag" `Quick test_etag_parse_strong;
   test_case "parse weak etag" `Quick test_etag_parse_weak;
@@ -80,4 +144,10 @@ let tests = [
   test_case "etag matches" `Quick test_etag_matches;
   test_case "middleware adds etag" `Quick test_etag_middleware_adds_header;
   test_case "middleware 304" `Quick test_etag_middleware_304;
+  test_case "if-match strong passes" `Quick test_etag_if_match_strong_passes;
+  test_case "if-match weak rejected" `Quick test_etag_if_match_weak_rejected;
+  test_case "if-match weak/weak rejected" `Quick test_etag_if_match_weak_to_weak_rejected;
+  test_case "if-match wildcard passes" `Quick test_etag_if_match_wildcard_passes;
+  test_case "if-match absent passes" `Quick test_etag_if_match_absent_passes;
+  test_case "generate uses SHA-256" `Quick test_etag_generate_uses_sha256;
 ]

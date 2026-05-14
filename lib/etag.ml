@@ -36,17 +36,30 @@ let to_string = function
   | Strong s -> Printf.sprintf "\"%s\"" s
   | Weak s -> Printf.sprintf "W/\"%s\"" s
 
-(** Generate ETag from content using MD5 hash *)
+(* SHA-256 instead of MD5 for the content fingerprint.
+
+   ETag is nominally a cache validator, not a cryptographic identifier
+   — but the validator's only job is "different content => different
+   tag", which fails the moment a hash collision is achievable. MD5
+   collisions are practical, so an attacker who can influence cached
+   content can land two distinct bodies under the same ETag and cause
+   the cache to return stale or wrong content for a subsequent
+   request (cache poisoning). SHA-256 closes that without changing
+   the public API: the tag is opaque to clients and longer hex digits
+   are fine for any RFC-compliant ETag value. Existing cached entries
+   become one-shot misses on the upgrade — bounded cost. *)
+
+(** Generate ETag from content using SHA-256 hash *)
 let generate ?(weak = false) content =
-  let hash = Digestif.MD5.digest_string content in
-  let hex = Digestif.MD5.to_hex hash in
+  let hash = Digestif.SHA256.digest_string content in
+  let hex = Digestif.SHA256.to_hex hash in
   if weak then Weak hex else Strong hex
 
 (** Generate weak ETag from file stats (mtime + size) *)
 let generate_from_stats ~mtime ~size =
   let data = Printf.sprintf "%f-%d" mtime size in
-  let hash = Digestif.MD5.digest_string data in
-  let hex = Digestif.MD5.to_hex hash in
+  let hash = Digestif.SHA256.digest_string data in
+  let hex = Digestif.SHA256.to_hex hash in
   Weak hex
 
 (** Check if two ETags match
@@ -101,14 +114,27 @@ let middleware : (Request.t -> Response.t) -> (Request.t -> Response.t) =
       else
         resp
 
-(** Check precondition for If-Match (for PUT/DELETE) *)
+(** Check precondition for If-Match (for PUT/DELETE).
+
+    RFC 7232 §3.1: If-Match MUST use the strong comparison function.
+    The previous implementation reused [any_match] with its default
+    [~weak_comparison:true], so a client could send [If-Match: W/"v"]
+    against a server holding [Strong "v"] and pass the precondition.
+    That defeats the entire purpose of the header — concurrent
+    PUT/DELETE clients could race using only a weak validator, which
+    by definition may not have changed when the byte content did,
+    and the lost-update guard would silently let one of them through.
+
+    Now: strong comparison is enforced explicitly. Wildcard "*" still
+    matches anything per RFC §3.1. *)
 let check_if_match req current_etag =
   match Request.header "if-match" req with
   | None -> `Ok  (* No precondition *)
   | Some "*" -> `Ok  (* Wildcard matches anything *)
   | Some value ->
-    let client_etags = parse_if_none_match value in  (* Same parsing *)
-    if any_match client_etags current_etag then
+    let client_etags = parse_if_none_match value in
+    let strong_match etag = matches ~weak_comparison:false etag current_etag in
+    if List.exists strong_match client_etags then
       `Ok
     else
       `Precondition_failed  (* 412 *)
