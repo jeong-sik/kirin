@@ -67,5 +67,13 @@ val authorization_url_pkce :
 val exchange_code_params_pkce :
   provider -> string -> string -> (string * string) list
 val login_handler :
-  provider -> ?scope:string list -> unit -> 'a -> Kirin.Response.t
+  provider -> ?scope:string list -> ?secure:bool -> unit -> 'a -> Kirin.Response.t
+(** [login_handler provider ?scope ?secure ()] returns the handler.
+    [secure] defaults to [true]: the [oauth_state] cookie is the sole
+    CSRF guard for the callback, so it must never travel cleartext.
+    Local-dev callers on plain HTTP can opt out with [~secure:false]. *)
+
 val verify_state : Kirin.Request.t -> string -> bool
+(** Constant-time comparison of the [oauth_state] cookie against the
+    [state] value returned by the OAuth provider. Avoids the prefix-leak
+    timing oracle that OCaml's [=] would expose on every callback. *)
