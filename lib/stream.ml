@@ -115,22 +115,54 @@ let read_file_to_stream ~path ~chunk_size stream =
       in
       loop ())
 
+(* Both [filename] and [content_type] are interpolated straight into
+   HTTP response header values; CR/LF/NUL in either would split the
+   response and let a caller inject arbitrary headers (CWE-113).
+   The filename additionally lives inside a quoted-string in the
+   Content-Disposition form ["attachment; filename=\"...\""] — a bare
+   double-quote terminates that string and lets the caller append
+   directives in the same header (same shape, smaller blast radius).
+   Reject the dangerous bytes at the boundary like [cookie.ml] does
+   for Set-Cookie. *)
+let validate_header_value ~caller ~field value =
+  String.iter (fun c ->
+    match c with
+    | '\r' | '\n' | '\x00' ->
+      invalid_arg
+        (Printf.sprintf
+           "Stream.%s: %s contains disallowed byte 0x%02X"
+           caller field (Char.code c))
+    | _ -> ()
+  ) value
+
+let validate_filename_header ~caller filename =
+  validate_header_value ~caller ~field:"filename" filename;
+  String.iter (fun c ->
+    if c = '"' then
+      invalid_arg
+        (Printf.sprintf
+           "Stream.%s: filename contains disallowed byte 0x22 (quote)"
+           caller)
+  ) filename
+
 (** Create a file download response with streaming. *)
-let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) path = 
-  let filename = match filename with 
-    | Some f -> f 
-    | None -> Filename.basename path 
-  in 
-  let content_type = match content_type with 
-    | Some ct -> ct 
-    | None -> mime_of_filename path 
-  in 
-  let headers = Http.Header.init () 
-    |> fun h -> Http.Header.add h "content-type" content_type 
-    |> fun h -> Http.Header.add h "content-disposition" 
-        (Printf.sprintf "attachment; filename=\"%s\"" filename) 
-    |> fun h -> Http.Header.add h "transfer-encoding" "chunked" 
-  in 
+let file_response ?filename ?content_type ?(chunk_size = default_chunk_size) path =
+  let filename = match filename with
+    | Some f -> f
+    | None -> Filename.basename path
+  in
+  validate_filename_header ~caller:"file_response" filename;
+  let content_type = match content_type with
+    | Some ct -> ct
+    | None -> mime_of_filename path
+  in
+  validate_header_value ~caller:"file_response" ~field:"content_type" content_type;
+  let headers = Http.Header.init ()
+    |> fun h -> Http.Header.add h "content-type" content_type
+    |> fun h -> Http.Header.add h "content-disposition"
+        (Printf.sprintf "attachment; filename=\"%s\"" filename)
+    |> fun h -> Http.Header.add h "transfer-encoding" "chunked"
+  in
   
   let stream_producer stream =
     Fun.protect ~finally:(fun () -> Eio.Stream.add stream None)
@@ -147,6 +179,7 @@ let file_inline ?content_type ?(chunk_size = default_chunk_size) path =
     | Some ct -> ct
     | None -> mime_of_filename path
   in
+  validate_header_value ~caller:"file_inline" ~field:"content_type" content_type;
   let headers = Http.Header.init ()
     |> fun h -> Http.Header.add h "content-type" content_type
     |> fun h -> Http.Header.add h "transfer-encoding" "chunked"

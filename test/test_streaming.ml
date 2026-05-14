@@ -177,8 +177,88 @@ let cancellation_tests = [
   test_case "producer normal completion" `Quick test_producer_normal_completion;
 ]
 
+(* Header-injection regression tests.
+
+   [Kirin.Stream.file_response]/[file_inline] interpolate caller-supplied
+   [filename] and [content_type] strings into HTTP response header
+   values via [Printf.sprintf]. CR/LF/NUL in either is CWE-113 response
+   splitting; a double-quote in [filename] terminates the
+   ["attachment; filename=\"...\""] quoted-string and lets the caller
+   inject extra Content-Disposition directives in the same header.
+
+   These tests pin each disallowed byte individually so a future
+   "simplification" that drops one case fails this suite instead of
+   the regression sitting silent until exploited. *)
+let expect_invalid_arg name f =
+  match f () with
+  | exception Invalid_argument _ -> ()
+  | _ -> failf "%s: expected Invalid_argument, got success" name
+
+let test_file_response_rejects_filename_crlf () =
+  Eio_main.run @@ fun _env ->
+  expect_invalid_arg "CR in filename"
+    (fun () -> Kirin.Stream.file_response ~filename:"a\rb" "/tmp/test");
+  expect_invalid_arg "LF in filename"
+    (fun () -> Kirin.Stream.file_response ~filename:"a\nb" "/tmp/test");
+  expect_invalid_arg "NUL in filename"
+    (fun () -> Kirin.Stream.file_response ~filename:"a\x00b" "/tmp/test")
+
+let test_file_response_rejects_filename_quote () =
+  (* A bare quote closes the Content-Disposition quoted-string and lets
+     the caller append directives. *)
+  Eio_main.run @@ fun _env ->
+  expect_invalid_arg "double-quote in filename"
+    (fun () -> Kirin.Stream.file_response ~filename:"a\";x=y" "/tmp/test")
+
+let test_file_response_rejects_content_type_crlf () =
+  Eio_main.run @@ fun _env ->
+  expect_invalid_arg "CRLF in content_type"
+    (fun () ->
+       Kirin.Stream.file_response
+         ~filename:"safe.txt"
+         ~content_type:"text/plain\r\nSet-Cookie: x=y"
+         "/tmp/test")
+
+let test_file_inline_rejects_content_type_crlf () =
+  Eio_main.run @@ fun _env ->
+  expect_invalid_arg "CRLF in inline content_type"
+    (fun () ->
+       Kirin.Stream.file_inline
+         ~content_type:"text/plain\r\nSet-Cookie: x=y"
+         "/tmp/test")
+
+let test_file_response_accepts_safe_filename () =
+  (* The validator must not be over-eager: ordinary names with spaces,
+     dots, hyphens, parens and non-ASCII bytes must still pass. *)
+  Eio_main.run @@ fun _env ->
+  Eio.Switch.run @@ fun _sw ->
+  let resp =
+    Kirin.Stream.file_response
+      ~filename:"report (2026).pdf"
+      ~content_type:"application/pdf"
+      "/tmp/test"
+  in
+  (* Just observing that construction did not raise is the assertion;
+     the producer body is not executed because we never read it. *)
+  ignore resp;
+  check bool "constructed" true true
+
+let header_injection_tests = [
+  test_case "file_response rejects CRLF/NUL in filename" `Quick
+    test_file_response_rejects_filename_crlf;
+  test_case "file_response rejects double-quote in filename" `Quick
+    test_file_response_rejects_filename_quote;
+  test_case "file_response rejects CRLF in content_type" `Quick
+    test_file_response_rejects_content_type_crlf;
+  test_case "file_inline rejects CRLF in content_type" `Quick
+    test_file_inline_rejects_content_type_crlf;
+  test_case "file_response accepts safe filename" `Quick
+    test_file_response_accepts_safe_filename;
+]
+
 let () =
   run "Streaming" [
     "Eio Stream", streaming_tests;
     "Cancellation", cancellation_tests;
+    "Header Injection", header_injection_tests;
   ]
