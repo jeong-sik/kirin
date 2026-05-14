@@ -93,6 +93,21 @@ let now () = Unix.gettimeofday ()
 let with_lock mutex f =
   Eio.Mutex.use_rw ~protect:true mutex (fun () -> f ())
 
+(* IEEE 754 NaN comparisons always evaluate to false, so an [expires_at]
+   that has gone through [now () +. nan] would make [is_expired] return
+   [false] *forever* — the entry stays pinned and silently leaks the
+   cache slot.  If the TTL is attacker-influenced (e.g. parsed from an
+   HTTP cache-control header) that is also a cache-poisoning vector.
+   Reject NaN at the boundary instead of letting it bleed into a
+   silent-failure path. *)
+let reject_nan_ttl ~caller t =
+  if Float.is_nan t then
+    invalid_arg (Printf.sprintf "Cache.%s: ttl is NaN" caller)
+
+let validate_ttl_option ~caller = function
+  | None -> ()
+  | Some t -> reject_nan_ttl ~caller t
+
 (** Update access counter for a key (O(1)) *)
 let touch_key cache key =
   cache.access_counter <- cache.access_counter + 1;
@@ -110,11 +125,16 @@ let find_lru_key cache =
   ) cache.access_times;
   !min_key
 
-(** Check if entry is expired *)
+(** Check if entry is expired.
+
+    Defense-in-depth against NaN [expires_at]: even if a NaN somehow
+    reaches the field (e.g. via a future code path that bypasses
+    [reject_nan_ttl]), treat it as expired so the slot is reclaimed on
+    the next read instead of remaining pinned forever. *)
 let is_expired entry =
   match entry.expires_at with
   | None -> false
-  | Some exp -> now () > exp
+  | Some exp -> Float.is_nan exp || now () > exp
 
 (** {1 Cache Creation} *)
 
@@ -124,6 +144,7 @@ let is_expired entry =
     @param default_ttl Default TTL in seconds (default: None = no expiration)
 *)
 let create ?(max_size = 1000) ?default_ttl ?(cleanup_interval = 60.0) () =
+  validate_ttl_option ~caller:"create" default_ttl;
   let config = { max_size; default_ttl; cleanup_interval } in
   let stats = {
     hits = 0;
@@ -180,6 +201,7 @@ let get cache key =
     @param ttl Optional TTL override (uses default_ttl if not specified)
 *)
 let set ?ttl cache key value =
+  validate_ttl_option ~caller:"set" ttl;
   with_lock cache.mutex (fun () ->
     let time = now () in
     let ttl = match ttl with
@@ -245,6 +267,7 @@ let mem cache key =
     storing the result we re-check under the lock; if another fiber
     already populated the entry we return the existing value. *)
 let get_or_set ?ttl cache key compute =
+  validate_ttl_option ~caller:"get_or_set" ttl;
   match get cache key with
   | Some v -> v
   | None ->
