@@ -5,14 +5,55 @@ type algorithm =
   | Gzip
   | Deflate
 
-(** Parse Accept-Encoding header and return preferred algorithm *)
+(* RFC 7231 §3.1.2.1 + §5.3.4: an Accept-Encoding token is a
+   coding name plus optional parameters, the most common of which
+   is [q=<float>].  Two contracts the old [List.mem]-based parser
+   silently broke:
+
+   - codings are case-insensitive ([GZIP] is the same as [gzip])
+   - [q=0] is an explicit *reject*, not a no-op — the client is
+     saying "I cannot or will not accept this encoding"
+
+   The old code therefore (a) refused to compress for clients
+   that capitalised their header (browsers don't, but proxies and
+   custom HTTP clients sometimes do), and (b) compressed *anyway*
+   for clients that explicitly opted out via [q=0].  The latter
+   is the more concerning surface: a client running in a
+   CRIME/BREACH-aware environment may set
+   [Accept-Encoding: gzip;q=0] precisely to disable compression,
+   and the server has to honour that. *)
+let parse_encoding_token raw =
+  match String.split_on_char ';' raw with
+  | [] -> None
+  | name :: params ->
+    let name = String.trim name |> String.lowercase_ascii in
+    if name = "" then None
+    else
+      let q =
+        List.fold_left (fun acc param ->
+          match String.split_on_char '=' (String.trim param) with
+          | [k; v] when String.lowercase_ascii (String.trim k) = "q" ->
+            (match float_of_string_opt (String.trim v) with
+             | Some f -> f
+             | None -> acc)
+          | _ -> acc
+        ) 1.0 params
+      in
+      Some (name, q)
+
+(** Parse Accept-Encoding header and return the preferred algorithm
+    that the client *accepts* with [q > 0].  Priority gzip > deflate
+    matches the pre-PR ordering. *)
 let parse_accept_encoding header_value =
-  (* Accept-Encoding: gzip, deflate, br *)
-  let encodings = String.split_on_char ',' header_value in
-  let encodings = List.map String.trim encodings in
-  (* Priority: gzip > deflate *)
-  if List.mem "gzip" encodings then Some Gzip
-  else if List.mem "deflate" encodings then Some Deflate
+  let tokens =
+    String.split_on_char ',' header_value
+    |> List.filter_map parse_encoding_token
+  in
+  let accepts name =
+    List.exists (fun (n, q) -> n = name && q > 0.0) tokens
+  in
+  if accepts "gzip" then Some Gzip
+  else if accepts "deflate" then Some Deflate
   else None
 
 (** Content types that should not be compressed *)
