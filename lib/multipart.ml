@@ -13,14 +13,60 @@ type t = {
   parts : part list;
 }
 
-(** Extract boundary from Content-Type header *)
+(* RFC 2046 §5.1.1 — boundary is 1..70 characters from a restricted
+   character class.  Beyond the spec, three concrete misparses fall
+   out of accepting anything:
+
+   - empty boundary  → delimiter is just "--", which appears all
+     over real bodies and turns the parser into garbage
+   - whitespace-only / CR-LF in boundary → splitter aligns on bytes
+     that occur naturally in part headers, again producing garbage
+   - 70+ char boundary → spec-violating sender; tolerating it
+     makes denial-of-service easier (the value still has to be
+     searched linearly against the whole body)
+
+   Reject these at [extract_boundary] so an attacker-shaped header
+   never reaches [parse].  Returning [None] is the existing failure
+   shape: [from_request] already maps it to a no-multipart request. *)
+let is_valid_boundary_char c =
+  (c >= 'a' && c <= 'z')
+  || (c >= 'A' && c <= 'Z')
+  || (c >= '0' && c <= '9')
+  || c = '\'' || c = '(' || c = ')' || c = '+' || c = '_'
+  || c = ',' || c = '-' || c = '.' || c = '/' || c = ':'
+  || c = '=' || c = '?' || c = ' '
+
+let boundary_is_rfc2046_valid s =
+  let n = String.length s in
+  if n < 1 || n > 70 then false
+  else begin
+    let ok = ref true in
+    String.iter (fun c -> if not (is_valid_boundary_char c) then ok := false) s;
+    !ok
+  end
+
+(* Strip a single layer of double-quotes if present (some senders
+   wrap the boundary as [boundary="..."]).  Done before the
+   character-class check so [boundary="abc"] passes. *)
+let unquote s =
+  let n = String.length s in
+  if n >= 2 && s.[0] = '"' && s.[n - 1] = '"'
+  then String.sub s 1 (n - 2)
+  else s
+
+(** Extract boundary from Content-Type header.
+    Returns [None] when the boundary parameter is absent, empty,
+    longer than RFC 2046's 70-char limit, or contains bytes outside
+    the spec's allowed class. *)
 let extract_boundary content_type =
   (* Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW *)
   let parts = String.split_on_char ';' content_type in
   List.find_map (fun part ->
     let part = String.trim part in
     if String.length part > 9 && String.sub part 0 9 = "boundary=" then
-      Some (String.sub part 9 (String.length part - 9))
+      let raw = String.sub part 9 (String.length part - 9) in
+      let b = unquote raw in
+      if boundary_is_rfc2046_valid b then Some b else None
     else
       None
   ) parts
@@ -104,53 +150,84 @@ let parse_part content =
   | Some name -> Some { name; filename; content_type; content = body }
   | None -> None
 
-(** Parse multipart form data *)
-let parse ~boundary body =
+(** Default cap on the number of parts the splitter will accumulate.
+    A normal form has a handful; anything past the cap is almost
+    certainly a denial-of-service shape (an attacker driving the
+    parser into [O(N * body)] [String.sub] allocations by repeating
+    boundaries).  Real forms never approach this. *)
+let default_max_parts = 1000
+
+(** Parse multipart form data.
+
+    [?max_parts] caps the number of part fragments the splitter
+    keeps.  Once the cap is hit, the entire result is discarded
+    and an empty [{parts = []}] is returned — *not* a truncated
+    partial parse — because a partial result is attacker-shaped
+    and may be more dangerous than no result at all. *)
+let parse ?(max_parts = default_max_parts) ~boundary body =
   let delimiter = "--" ^ boundary in
   let _end_delimiter = delimiter ^ "--" in
 
+  let overflow = ref false in
+  let take_or_overflow acc part_content =
+    if List.length acc >= max_parts then begin
+      overflow := true;
+      acc
+    end else
+      part_content :: acc
+  in
+
   (* Split by delimiter *)
   let rec split_parts acc start =
-    match find_substring body delimiter start with
-    | None -> List.rev acc
-    | Some idx ->
-      if idx > start then begin
-        (* Content before this delimiter *)
-        let part_content = String.sub body start (idx - start) in
-        (* Remove trailing \r\n *)
-        let part_content =
-          let len = String.length part_content in
-          if len >= 2 && String.sub part_content (len - 2) 2 = "\r\n"
-          then String.sub part_content 0 (len - 2)
-          else part_content
-        in
-        if String.length part_content > 0 then
-          split_parts (part_content :: acc) (idx + String.length delimiter)
-        else
-          split_parts acc (idx + String.length delimiter)
-      end else begin
-        (* Skip to after delimiter *)
-        let after_delim = idx + String.length delimiter in
-        (* Check if this is end delimiter *)
-        if after_delim + 2 <= String.length body &&
-           String.sub body after_delim 2 = "--"
-        then List.rev acc
-        else begin
-          (* Skip \r\n after delimiter *)
-          let next_start =
-            if after_delim + 2 <= String.length body &&
-               String.sub body after_delim 2 = "\r\n"
-            then after_delim + 2
-            else after_delim
+    if !overflow then acc
+    else
+      match find_substring body delimiter start with
+      | None -> List.rev acc
+      | Some idx ->
+        if idx > start then begin
+          (* Content before this delimiter *)
+          let part_content = String.sub body start (idx - start) in
+          (* Remove trailing \r\n *)
+          let part_content =
+            let len = String.length part_content in
+            if len >= 2 && String.sub part_content (len - 2) 2 = "\r\n"
+            then String.sub part_content 0 (len - 2)
+            else part_content
           in
-          split_parts acc next_start
+          if String.length part_content > 0 then
+            split_parts (take_or_overflow acc part_content) (idx + String.length delimiter)
+          else
+            split_parts acc (idx + String.length delimiter)
+        end else begin
+          (* Skip to after delimiter *)
+          let after_delim = idx + String.length delimiter in
+          (* Check if this is end delimiter *)
+          if after_delim + 2 <= String.length body &&
+             String.sub body after_delim 2 = "--"
+          then List.rev acc
+          else begin
+            (* Skip \r\n after delimiter *)
+            let next_start =
+              if after_delim + 2 <= String.length body &&
+                 String.sub body after_delim 2 = "\r\n"
+              then after_delim + 2
+              else after_delim
+            in
+            split_parts acc next_start
+          end
         end
-      end
   in
 
   let raw_parts = split_parts [] 0 in
-  let parts = List.filter_map parse_part raw_parts in
-  { parts }
+  if !overflow then
+    (* Refuse to expose a partial parse — log nothing here (the
+       caller's middleware decides on telemetry) and return the
+       empty multipart so the request looks like one with no
+       parts. *)
+    { parts = [] }
+  else
+    let parts = List.filter_map parse_part raw_parts in
+    { parts }
 
 (** Parse multipart from request *)
 let from_request req =
