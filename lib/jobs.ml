@@ -128,7 +128,24 @@ let take_job t =
     };
     Some job
 
-(** Process a single job, updating state under mutex on completion. *)
+(* [retry_delay] in [config] used to be dead config: the retry branch
+   re-queued the job synchronously, so a task that always raises was
+   retried [max_retries] times instantly — pinning a worker into a
+   tight retry spin and starving the rest of the queue.  Same shape
+   as the fork-bomb supervisor anti-pattern but at the fiber level.
+
+   Fix: split the post-task work into two phases.
+
+   1. Under the mutex, decide what to do ([`Done] for success or
+      final failure; [`Retry] when the job has retries left) and
+      record any state that does not depend on the sleep.
+   2. Outside the mutex, if [`Retry] was chosen, sleep for
+      [retry_delay] then re-acquire the mutex and re-queue.
+
+   Sleeping outside the mutex lets other workers keep draining the
+   queue while this one waits.  [running] is rechecked after the
+   sleep so [stop] takes effect promptly. *)
+
 let process_job t job =
   let result =
     try Ok (job.task ())
@@ -136,42 +153,67 @@ let process_job t job =
     | Eio.Cancel.Cancelled _ as exn -> raise exn
     | exn -> Error exn
   in
-  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-    match result with
-    | Ok value ->
-      job.status <- Completed value;
-      job.completed_at <- Some (Eio.Time.now t.clock);
-      Hashtbl.replace t.results job.id (Completed value);
-      t.stats <- {
-        t.stats with
-        total_completed = t.stats.total_completed + 1;
-        currently_running = t.stats.currently_running - 1;
-      };
-      Eio.Condition.broadcast t.job_completed
-    | Error exn ->
-      job.retries <- job.retries + 1;
-      if job.retries < job.max_retries then begin
+  let action =
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      match result with
+      | Ok value ->
+        job.status <- Completed value;
+        job.completed_at <- Some (Eio.Time.now t.clock);
+        Hashtbl.replace t.results job.id (Completed value);
+        t.stats <- {
+          t.stats with
+          total_completed = t.stats.total_completed + 1;
+          currently_running = t.stats.currently_running - 1;
+        };
+        Eio.Condition.broadcast t.job_completed;
+        `Done
+      | Error exn ->
+        job.retries <- job.retries + 1;
+        if job.retries < job.max_retries then begin
+          (* Defer the actual re-queue until after the retry-delay
+             sleep so a task that always raises cannot spin a worker
+             through every retry attempt instantly.  Account for the
+             job as no-longer-running now; it will get re-counted
+             into [queue_size] when we re-enqueue below. *)
+          t.stats <- {
+            t.stats with
+            currently_running = t.stats.currently_running - 1;
+          };
+          `Retry
+        end else begin
+          job.status <- Failed exn;
+          job.completed_at <- Some (Eio.Time.now t.clock);
+          Hashtbl.replace t.results job.id (Failed exn);
+          t.stats <- {
+            t.stats with
+            total_failed = t.stats.total_failed + 1;
+            currently_running = t.stats.currently_running - 1;
+          };
+          Eio.Condition.broadcast t.job_completed;
+          `Done
+        end
+    )
+  in
+  match action with
+  | `Done -> ()
+  | `Retry ->
+    if t.config.retry_delay > 0.0 then
+      Eio.Time.sleep t.clock t.config.retry_delay;
+    Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+      if t.running then begin
         job.status <- Pending;
         Hashtbl.replace t.results job.id Pending;
         t.jobs <- insert_by_priority job t.jobs;
         t.stats <- {
           t.stats with
-          currently_running = t.stats.currently_running - 1;
           queue_size = t.stats.queue_size + 1;
         };
         Eio.Condition.broadcast t.job_available
-      end else begin
-        job.status <- Failed exn;
-        job.completed_at <- Some (Eio.Time.now t.clock);
-        Hashtbl.replace t.results job.id (Failed exn);
-        t.stats <- {
-          t.stats with
-          total_failed = t.stats.total_failed + 1;
-          currently_running = t.stats.currently_running - 1;
-        };
-        Eio.Condition.broadcast t.job_completed
       end
-  )
+      (* If [stop] was called during the sleep, drop the retry on
+         the floor — the queue is shutting down and the result
+         table already shows the most recent failed attempt. *)
+    )
 
 (** Worker fiber loop: take jobs and process them until stopped. *)
 let worker_loop t =
