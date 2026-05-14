@@ -308,17 +308,64 @@ module Window = struct
     space_available : Eio.Condition.t;
   }
 
-  (** Create a window *)
-  let create ?(initial_size = 65536) ?(max_size = 1048576) () = {
-    size = initial_size;
-    max_size;
-    in_flight = 0;
-    mutex = Eio.Mutex.create ();
-    space_available = Eio.Condition.create ();
-  }
+  (** Create a window.
 
-  (** Reserve space in the window (blocks if full) *)
+      All sizes must be strictly positive, and [initial_size <=
+      max_size].  A zero or negative size makes [reserve]
+      permanently block (the wait loop's condition can never
+      become false through [release]), turning a misconfiguration
+      into a silent fiber leak. *)
+  let create ?(initial_size = 65536) ?(max_size = 1048576) () =
+    if max_size <= 0 then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Window.create: max_size must be > 0 (got %d)"
+           max_size);
+    if initial_size <= 0 then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Window.create: initial_size must be > 0 (got %d)"
+           initial_size);
+    if initial_size > max_size then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Window.create: initial_size (%d) > max_size (%d)"
+           initial_size max_size);
+    {
+      size = initial_size;
+      max_size;
+      in_flight = 0;
+      mutex = Eio.Mutex.create ();
+      space_available = Eio.Condition.create ();
+    }
+
+  (** Reserve space in the window (blocks if full).
+
+      Rejects two attacker-shaped (or buggy-caller) inputs that
+      would otherwise corrupt the window invariant:
+
+      - [amount <= 0]: the wait condition [in_flight + amount >
+        size] is trivially false for non-positive amounts, so the
+        loop falls through and [in_flight] gets decreased — the
+        next caller sees a negative [in_flight] and reserves
+        succeed against capacity that does not actually exist.
+      - [amount > max_size]: the wait condition can never become
+        false even with a full [release] + [update_size] (a
+        fresh window is at [max_size] and that is still less
+        than [amount]).  The fiber would block forever — a
+        silent deadlock distinct from a normal "wait for
+        capacity" wait because no caller action can unblock it. *)
   let reserve t amount =
+    if amount <= 0 then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Window.reserve: amount must be > 0 (got %d)"
+           amount);
+    if amount > t.max_size then
+      invalid_arg
+        (Printf.sprintf
+           "Backpressure.Window.reserve: amount %d exceeds max_size %d (would block forever)"
+           amount t.max_size);
     Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
       while t.in_flight + amount > t.size do
         Eio.Condition.await t.space_available t.mutex
