@@ -30,16 +30,82 @@ let with_id id e = { e with id = Some id }
 (** Add retry interval to SSE event *)
 let with_retry ms e = { e with retry = Some ms }
 
+(* SSE wire format is line-oriented: each field occupies one line
+   and a blank line terminates the event.  The HTML living
+   standard treats CR, LF, *and* CRLF as line breaks
+   (whatwg.org/html§server-sent-events).
+
+   Two surfaces matter at encode time:
+
+   1. The [event] and [id] fields MUST stay on a single line.  If
+      a caller smuggles a [\n] or [\r] inside either, the encoded
+      output gets extra rows the receiver reads as legitimate
+      additional SSE fields — SSE-protocol injection.  Reject
+      those bytes here rather than silently writing a malformed
+      (attacker-shaped) stream.
+
+   2. The [data] field is intentionally multi-line, but the old
+      splitter only recognised [\n].  A standalone [\r] therefore
+      escaped into the wire and the receiver would interpret it
+      as a line break anyway — same injection by a different
+      route.  Split on CR / LF / CRLF so what we emit matches the
+      spec's parsing rules. *)
+
+let contains_cr_or_lf s =
+  let bad = ref false in
+  String.iter (fun c -> if c = '\r' || c = '\n' then bad := true) s;
+  !bad
+
+let validate_single_line ~field s =
+  if contains_cr_or_lf s then
+    invalid_arg
+      (Printf.sprintf
+         "Sse.encode: %s field contains CR/LF; SSE protocol injection rejected"
+         field)
+
+(* Split a string on any of CR, LF, CRLF.  Empty input yields one
+   empty segment, matching [String.split_on_char] semantics so the
+   prior "empty data still emits a single [data: ] line" behaviour
+   is preserved. *)
+let split_sse_lines s =
+  let buf = Buffer.create (String.length s) in
+  let acc = ref [] in
+  let flush () = acc := Buffer.contents buf :: !acc; Buffer.clear buf in
+  let n = String.length s in
+  let i = ref 0 in
+  while !i < n do
+    let c = s.[!i] in
+    if c = '\r' then begin
+      flush ();
+      (* CRLF is one break, not two. *)
+      if !i + 1 < n && s.[!i + 1] = '\n' then incr i;
+      incr i
+    end else if c = '\n' then begin
+      flush ();
+      incr i
+    end else begin
+      Buffer.add_char buf c;
+      incr i
+    end
+  done;
+  flush ();
+  List.rev !acc
+
 (** Encode SSE event to string.
-    Field order: event, data, id, retry (common convention, matches MDN examples) *)
+    Field order: event, data, id, retry (common convention, matches MDN examples).
+
+    Raises [Invalid_argument] when [event] or [id] contain CR/LF —
+    SSE protocol injection guard. *)
 let encode e =
+  Option.iter (validate_single_line ~field:"event") e.event;
+  Option.iter (validate_single_line ~field:"id") e.id;
   let buf = Buffer.create 64 in
   (* 1. event type *)
   (match e.event with
    | Some t -> Buffer.add_string buf ("event: " ^ t ^ "\n")
    | None -> ());
-  (* 2. data (handles multi-line) *)
-  String.split_on_char '\n' e.data
+  (* 2. data (CR/LF/CRLF all break lines) *)
+  split_sse_lines e.data
   |> List.iter (fun line ->
        Buffer.add_string buf ("data: " ^ line ^ "\n"));
   (* 3. id *)
