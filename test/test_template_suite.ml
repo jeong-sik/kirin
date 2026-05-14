@@ -74,6 +74,47 @@ let test_template_html_response () =
   check (option string) "content-type" (Some "text/html; charset=utf-8")
     (Kirin.Response.header "content-type" resp)
 
+(* Cyclic-partial guard regression tests. The cap stops a partial
+   resolver cycle from blowing the OCaml call stack. Without the cap,
+   [test_template_partial_cycle_terminates] below would stack-overflow
+   the test process instead of producing a string. *)
+
+let test_template_partial_resolves_normal () =
+  (* Non-cyclic partials still work — sanity / non-regression. *)
+  let partials = function
+    | "greeting" -> Some "Hello, {{name}}!"
+    | _ -> None
+  in
+  let ctx = `Assoc [("name", `String "world")] in
+  let out = Kirin.Template.render ~partials ctx "<p>{{> greeting}}</p>" in
+  check string "partial expanded" "<p>Hello, world!</p>" out
+
+let test_template_partial_cycle_terminates () =
+  (* Self-referential partial. Without the depth cap this stack-overflows. *)
+  let partials = function
+    | "loop" -> Some "x{{> loop}}"
+    | _ -> None
+  in
+  let ctx = `Assoc [] in
+  let out = Kirin.Template.render ~partials ctx "{{> loop}}" in
+  (* The cap fires before the stack does and the offending partial site
+     emits "". The surrounding "x" characters from successful inner
+     expansions accumulate, but bounded by max_partial_depth. *)
+  check bool "render returned without stack overflow" true (String.length out >= 0);
+  check bool "output length is bounded (< 1MB)" true (String.length out < 1_000_000)
+
+let test_template_partial_mutual_cycle_terminates () =
+  (* Two-step cycle: a -> b -> a -> ... Same depth-based termination. *)
+  let partials = function
+    | "a" -> Some "A{{> b}}"
+    | "b" -> Some "B{{> a}}"
+    | _ -> None
+  in
+  let ctx = `Assoc [] in
+  let out = Kirin.Template.render ~partials ctx "{{> a}}" in
+  check bool "render returned without stack overflow" true (String.length out >= 0);
+  check bool "output length is bounded" true (String.length out < 1_000_000)
+
 let tests = [
   test_case "simple variable" `Quick test_template_simple_var;
   test_case "html escape" `Quick test_template_html_escape;
@@ -87,4 +128,7 @@ let tests = [
   test_case "dot notation" `Quick test_template_dot_notation;
   test_case "interpolate" `Quick test_template_interpolate;
   test_case "html response" `Quick test_template_html_response;
+  test_case "partial resolves normally" `Quick test_template_partial_resolves_normal;
+  test_case "self-cycle terminates" `Quick test_template_partial_cycle_terminates;
+  test_case "mutual cycle terminates" `Quick test_template_partial_mutual_cycle_terminates;
 ]
