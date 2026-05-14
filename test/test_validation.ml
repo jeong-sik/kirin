@@ -108,6 +108,60 @@ let format_tests = [
     | Ok _ -> ()
     | Error _ -> Alcotest.fail "Should be valid datetime"
   );
+
+  (* Anchor-bypass regression tests. OCaml [Str]'s [^]/[$] match at
+     newline boundaries, so a value with an embedded CR/LF was sailing
+     through "^...$" patterns. Each rejection reason is pinned
+     individually so a future "simplification" that drops one defense
+     trips a specific test rather than silently re-opening the hole. *)
+
+  "email rejects embedded LF (CRLF injection)", `Quick, (fun () ->
+    let schema = Validation.email () in
+    match Validation.validate schema
+            (`String "user@example.com\nSet-Cookie: evil=1") with
+    | Ok _ -> Alcotest.fail "embedded LF must NOT pass email format"
+    | Error errs ->
+      Alcotest.(check string) "error code" "format_invalid" (List.hd errs).code
+  );
+
+  "email rejects embedded CR", `Quick, (fun () ->
+    let schema = Validation.email () in
+    match Validation.validate schema
+            (`String "user@example.com\rX-Injected: 1") with
+    | Ok _ -> Alcotest.fail "embedded CR must NOT pass email format"
+    | Error _ -> ()
+  );
+
+  "email rejects embedded NUL", `Quick, (fun () ->
+    let schema = Validation.email () in
+    match Validation.validate schema (`String "user@example.com\x00evil") with
+    | Ok _ -> Alcotest.fail "embedded NUL must NOT pass email format"
+    | Error _ -> ()
+  );
+
+  "email rejects trailing garbage after match", `Quick, (fun () ->
+    (* Even without a newline, the prior code accepted a prefix match.
+       This pins the "match must cover the whole input" defense. *)
+    let schema = Validation.email () in
+    match Validation.validate schema (`String "user@example.com<script>") with
+    | Ok _ -> Alcotest.fail "trailing junk must NOT pass email format"
+    | Error _ -> ()
+  );
+
+  "uuid rejects embedded newline", `Quick, (fun () ->
+    let schema = Validation.uuid () in
+    match Validation.validate schema
+            (`String "550e8400-e29b-41d4-a716-446655440000\nINJECTED") with
+    | Ok _ -> Alcotest.fail "embedded newline must NOT pass uuid format"
+    | Error _ -> ()
+  );
+
+  "date rejects embedded newline", `Quick, (fun () ->
+    let schema = Validation.date () in
+    match Validation.validate schema (`String "2024-12-25\nINJECTED") with
+    | Ok _ -> Alcotest.fail "embedded newline must NOT pass date format"
+    | Error _ -> ()
+  );
 ]
 
 let number_tests = [
