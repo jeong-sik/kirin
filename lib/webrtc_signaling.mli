@@ -51,9 +51,19 @@ val get_or_create_room : server -> string -> room
 val join_room : server -> room_id:string -> peer_id:string -> unit
 
 (** [leave_room server ~room_id ~peer_id] removes a peer from a room.
-    No-op if the room or peer does not exist. *)
+    No-op if the room or peer does not exist.
+
+    Removes the room itself from [server.rooms] when the last peer
+    leaves, so a stream of unique room ids cannot accumulate empty
+    entries forever. *)
 val leave_room : server -> room_id:string -> peer_id:string -> unit
 
 (** [get_peers server room_id] returns the list of peer IDs in a room.
     Returns an empty list if the room does not exist. *)
 val get_peers : server -> string -> string list
+
+(** [room_exists server room_id] reports whether the server is
+    currently tracking a room with this id.  Contract: an empty
+    room is *not* tracked — once the last peer leaves,
+    [leave_room] collects the entry. *)
+val room_exists : server -> string -> bool

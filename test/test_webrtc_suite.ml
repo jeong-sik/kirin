@@ -106,6 +106,55 @@ let test_webrtc_routes () =
   let routes = WR.routes () in
   check int "route count" 2 (List.length routes)
 
+(* Before this PR, [leave_room] never collected the room itself
+   from [server.rooms]; the entry stayed forever even when the
+   last peer disconnected.  A stream of unique [room_id]s — easy
+   to drive from untrusted Join messages — accumulated entries
+   without bound, a slow memory-DoS vector.  Pin the empty-room
+   cleanup contract via the new [room_exists] observer. *)
+
+let test_signaling_room_cleanup_on_last_leave () =
+  let server = WR.Signaling.create_server () in
+  WR.Signaling.join_room server ~room_id:"r1" ~peer_id:"alice";
+  check bool "room exists after join" true (WR.Signaling.room_exists server "r1");
+  WR.Signaling.leave_room server ~room_id:"r1" ~peer_id:"alice";
+  check bool "room collected after last leave"
+    false (WR.Signaling.room_exists server "r1")
+
+let test_signaling_room_stays_with_remaining_peer () =
+  let server = WR.Signaling.create_server () in
+  WR.Signaling.join_room server ~room_id:"r2" ~peer_id:"alice";
+  WR.Signaling.join_room server ~room_id:"r2" ~peer_id:"bob";
+  WR.Signaling.leave_room server ~room_id:"r2" ~peer_id:"alice";
+  check bool "room still alive with remaining peer"
+    true (WR.Signaling.room_exists server "r2");
+  check (list string) "bob remains in peers" ["bob"]
+    (WR.Signaling.get_peers server "r2");
+  (* And once Bob leaves, the room is collected too. *)
+  WR.Signaling.leave_room server ~room_id:"r2" ~peer_id:"bob";
+  check bool "room collected after Bob leaves"
+    false (WR.Signaling.room_exists server "r2")
+
+let test_signaling_leave_unknown_room_is_noop () =
+  (* A leave for a room that never existed must not crash and must
+     not leak a phantom entry. *)
+  let server = WR.Signaling.create_server () in
+  WR.Signaling.leave_room server ~room_id:"never-existed" ~peer_id:"alice";
+  check bool "no phantom room"
+    false (WR.Signaling.room_exists server "never-existed")
+
+let test_signaling_rejoin_after_cleanup () =
+  (* After the room is collected the id must still be usable —
+     [room_exists] tracks current state, not a tombstone. *)
+  let server = WR.Signaling.create_server () in
+  WR.Signaling.join_room server ~room_id:"r3" ~peer_id:"alice";
+  WR.Signaling.leave_room server ~room_id:"r3" ~peer_id:"alice";
+  WR.Signaling.join_room server ~room_id:"r3" ~peer_id:"alice";
+  check bool "rejoin re-creates the room"
+    true (WR.Signaling.room_exists server "r3");
+  check (list string) "alice is back in peers" ["alice"]
+    (WR.Signaling.get_peers server "r3")
+
 let tests = [
   test_case "ice states" `Quick (with_eio test_webrtc_ice_states);
   test_case "peer create" `Quick (with_eio test_webrtc_peer_create);
@@ -118,4 +167,8 @@ let tests = [
   test_case "signaling decode error" `Quick (with_eio test_webrtc_signaling_decode_error);
   test_case "ice candidate" `Quick (with_eio test_webrtc_ice_candidate);
   test_case "routes helper" `Quick (with_eio test_webrtc_routes);
+  test_case "signaling: room cleaned up on last leave" `Quick (with_eio test_signaling_room_cleanup_on_last_leave);
+  test_case "signaling: room kept with remaining peer" `Quick (with_eio test_signaling_room_stays_with_remaining_peer);
+  test_case "signaling: leave unknown room is noop" `Quick (with_eio test_signaling_leave_unknown_room_is_noop);
+  test_case "signaling: rejoin after cleanup" `Quick (with_eio test_signaling_rejoin_after_cleanup);
 ]
