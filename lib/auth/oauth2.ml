@@ -239,13 +239,22 @@ let exchange_code_params_pkce provider code verifier =
 
 (** {1 Route Helpers} *)
 
-(** Create login route handler *)
-let login_handler provider ?(scope = []) () =
+(** Create login route handler.
+
+    @param secure controls the [Secure] flag on the [oauth_state]
+           cookie. Defaults to [true]. The OAuth state cookie is the
+           sole CSRF guard for the callback — if it leaks to a
+           cleartext channel a network attacker can read it and
+           forge a callback that satisfies [verify_state]. Local-dev
+           callers using plain HTTP can pass [~secure:false] but
+           production must keep the default. *)
+let login_handler provider ?(scope = []) ?(secure = true) () =
   fun _req ->
     let (url, state) = authorization_url ~scope provider in
     (* Store state in session for verification *)
     let attrs = Kirin.Cookie.{
       default_attributes with
+      secure;
       http_only = true;
       same_site = Some `Lax;
       max_age = Some 600;
@@ -253,8 +262,31 @@ let login_handler provider ?(scope = []) () =
     Kirin.Response.redirect url
     |> Kirin.Cookie.set ~attrs "oauth_state" state
 
-(** Verify state parameter *)
+(* Constant-time string equality (OR-accumulator with the length
+   mismatch folded into the same accumulator). OCaml's [=] on strings
+   is byte-by-byte with short-circuit on the first mismatch, which
+   leaks how many bytes of the OAuth state an attacker has guessed
+   correctly. [verify_state] is called on every callback, so the
+   oracle is sampled at request rate. The state cookie is the sole
+   CSRF guard for the callback — a prefix-leak attack here turns a
+   single forged callback into a real account takeover. *)
+let constant_time_string_eq (a : string) (b : string) : bool =
+  let len_a = String.length a in
+  let len_b = String.length b in
+  let result = ref (len_a lxor len_b) in
+  let bound = min len_a len_b in
+  for i = 0 to bound - 1 do
+    result := !result lor (Char.code (String.get a i) lxor Char.code (String.get b i))
+  done;
+  !result = 0
+
+(** Verify state parameter.
+
+    Returns [true] only when the [oauth_state] cookie is present and
+    its value byte-equals [state]. Uses constant-time comparison so
+    a measuring attacker cannot recover the stored state prefix by
+    prefix. *)
 let verify_state req state =
   match Kirin.Cookie.get "oauth_state" req with
-  | Some stored when stored = state -> true
-  | _ -> false
+  | Some stored -> constant_time_string_eq stored state
+  | None -> false

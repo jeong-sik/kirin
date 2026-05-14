@@ -208,11 +208,118 @@ let test_oauth2_pkce () =
   check bool "state non-empty" true (String.length state > 0);
   check bool "verifier non-empty" true (String.length verifier > 0)
 
+(* OAuth state hardening regression tests.
+
+   Two distinct defenses pinned individually so a future "simplification"
+   trips a specific test instead of silently re-opening one of them:
+
+   - verify_state must agree byte-for-byte with [=] on functional
+     output (constant-time helper must remain a drop-in). Without a
+     test that references the helper indirectly, a refactor could
+     replace [constant_time_string_eq] with [=] and nothing here
+     would notice until a timing-harness audit.
+
+   - login_handler must default the Secure flag on. Production OAuth
+     callbacks travel over HTTPS; the state cookie is the only CSRF
+     guard, and a non-Secure cookie is readable by any active network
+     attacker on the same path. *)
+
+let oauth_make_request ?(headers=[]) path =
+  let raw =
+    Http.Request.make ~meth:`GET ~headers:(Http.Header.of_list headers) path
+  in
+  let body_source =
+    Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024
+  in
+  Kirin.Request.make ~raw ~body_source
+
+let oauth_make_response_with_state_cookie state =
+  let req = oauth_make_request
+    ~headers:[("cookie", "oauth_state=" ^ state)] "/cb" in
+  req
+
+let test_oauth_verify_state_match () =
+  let req = oauth_make_response_with_state_cookie "abc123" in
+  check bool "matching state passes" true
+    (Kirin_auth.Oauth2.verify_state req "abc123")
+
+let test_oauth_verify_state_mismatch () =
+  let req = oauth_make_response_with_state_cookie "abc123" in
+  check bool "different value rejected" false
+    (Kirin_auth.Oauth2.verify_state req "abcxxx");
+  check bool "shorter value rejected" false
+    (Kirin_auth.Oauth2.verify_state req "abc");
+  check bool "longer value rejected" false
+    (Kirin_auth.Oauth2.verify_state req "abc1234")
+
+let test_oauth_verify_state_no_cookie () =
+  let req = oauth_make_request "/cb" in
+  check bool "missing cookie rejected" false
+    (Kirin_auth.Oauth2.verify_state req "anything")
+
+let test_oauth_login_handler_secure_default () =
+  (* The Secure attribute must be present on the state cookie unless
+     the caller explicitly opts out. Inspect the raw Set-Cookie value. *)
+  let p = Kirin_auth.Oauth2.Provider.google
+    ~client_id:"id" ~client_secret:"sec"
+    ~redirect_uri:"https://app/cb" in
+  let handler = Kirin_auth.Oauth2.login_handler p () in
+  let req = oauth_make_request "/login" in
+  let resp = handler req in
+  match Kirin.Response.header "set-cookie" resp with
+  | None -> Alcotest.fail "expected set-cookie header"
+  | Some v ->
+    let contains needle =
+      let nl = String.length needle in
+      let vl = String.length v in
+      let rec scan i =
+        if i + nl > vl then false
+        else if String.sub v i nl = needle then true
+        else scan (i + 1)
+      in
+      scan 0
+    in
+    check bool "Secure flag present by default" true (contains "; Secure")
+
+let test_oauth_login_handler_secure_opt_out () =
+  (* Local-dev callers can pass ~secure:false. The flag must then be
+     absent so the cookie works on plain HTTP. *)
+  let p = Kirin_auth.Oauth2.Provider.google
+    ~client_id:"id" ~client_secret:"sec"
+    ~redirect_uri:"https://app/cb" in
+  let handler = Kirin_auth.Oauth2.login_handler p ~secure:false () in
+  let req = oauth_make_request "/login" in
+  let resp = handler req in
+  match Kirin.Response.header "set-cookie" resp with
+  | None -> Alcotest.fail "expected set-cookie header"
+  | Some v ->
+    let contains needle =
+      let nl = String.length needle in
+      let vl = String.length v in
+      let rec scan i =
+        if i + nl > vl then false
+        else if String.sub v i nl = needle then true
+        else scan (i + 1)
+      in
+      scan 0
+    in
+    check bool "Secure flag absent when opted out" false
+      (contains "; Secure")
+
 let oauth2_tests = [
   test_case "provider google" `Quick test_oauth2_provider_google;
   test_case "provider github" `Quick test_oauth2_provider_github;
   test_case "authorization url" `Quick test_oauth2_authorization_url;
   test_case "pkce" `Quick test_oauth2_pkce;
+  test_case "verify_state matches" `Quick test_oauth_verify_state_match;
+  test_case "verify_state rejects mismatch / length diff" `Quick
+    test_oauth_verify_state_mismatch;
+  test_case "verify_state rejects when cookie missing" `Quick
+    test_oauth_verify_state_no_cookie;
+  test_case "login_handler sets Secure by default" `Quick
+    test_oauth_login_handler_secure_default;
+  test_case "login_handler honours ~secure:false" `Quick
+    test_oauth_login_handler_secure_opt_out;
 ]
 
 (** {1 Auth Middleware Tests (Hmap context, no global ref)} *)
