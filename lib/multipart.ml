@@ -104,13 +104,31 @@ let parse_part content =
   | Some name -> Some { name; filename; content_type; content = body }
   | None -> None
 
-(** Parse multipart form data *)
-let parse ~boundary body =
+(** Default cap on the number of parts. A body that fits under
+    Server.config.max_body_size (10 MiB by default) can still contain
+    hundreds of thousands of zero-content boundary delimiters; without
+    a cap each becomes a list cell and a String.sub allocation, and
+    [find_substring] re-scans the remaining body per delimiter.
+    1000 parts covers any realistic file-upload form (browser forms
+    rarely send more than a handful of fields). *)
+let default_max_parts = 1000
+
+(** Parse multipart form data.
+
+    @param max_parts caps the number of boundary-delimited segments
+           accepted before parsing aborts. Defaults to
+           [default_max_parts]. Set to a large number for known-trusted
+           callers; the default is sized for browser-driven forms.
+           When exceeded, the result contains the parts accepted so
+           far and further input is ignored. *)
+let parse ?(max_parts = default_max_parts) ~boundary body =
   let delimiter = "--" ^ boundary in
   let _end_delimiter = delimiter ^ "--" in
 
   (* Split by delimiter *)
-  let rec split_parts acc start =
+  let rec split_parts acc count start =
+    if count >= max_parts then List.rev acc
+    else
     match find_substring body delimiter start with
     | None -> List.rev acc
     | Some idx ->
@@ -125,9 +143,10 @@ let parse ~boundary body =
           else part_content
         in
         if String.length part_content > 0 then
-          split_parts (part_content :: acc) (idx + String.length delimiter)
+          split_parts (part_content :: acc) (count + 1)
+            (idx + String.length delimiter)
         else
-          split_parts acc (idx + String.length delimiter)
+          split_parts acc count (idx + String.length delimiter)
       end else begin
         (* Skip to after delimiter *)
         let after_delim = idx + String.length delimiter in
@@ -143,24 +162,24 @@ let parse ~boundary body =
             then after_delim + 2
             else after_delim
           in
-          split_parts acc next_start
+          split_parts acc count next_start
         end
       end
   in
 
-  let raw_parts = split_parts [] 0 in
+  let raw_parts = split_parts [] 0 0 in
   let parts = List.filter_map parse_part raw_parts in
   { parts }
 
 (** Parse multipart from request *)
-let from_request req =
+let from_request ?max_parts req =
   match Request.header "content-type" req with
   | Some ct when String.length ct > 30 &&
                  String.lowercase_ascii (String.sub ct 0 19) = "multipart/form-data" ->
     (match extract_boundary ct with
     | Some boundary ->
       let body = Request.body req in
-      Some (parse ~boundary body)
+      Some (parse ?max_parts ~boundary body)
     | None -> None)
   | _ -> None
 
