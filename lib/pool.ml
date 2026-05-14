@@ -209,11 +209,41 @@ let size pool =
     (pool.in_use, List.length pool.connections, pool.config.max_size)
   )
 
+(* Poll-based acquire that *actually* honours
+   [config.max_wait_time].
+
+   The previous implementation called [Eio.Condition.await] inside
+   an [elapsed > max_wait_time] guard.  Two failure shapes fell
+   out of that:
+
+   - [await] has no deadline parameter.  If every in-use
+     connection hangs (slow downstream / deadlocked handler /
+     dropped socket), [release] is never called, the condition
+     never broadcasts, and the wait blocks forever.  The
+     elapsed-time guard is only re-checked on the next broadcast,
+     so the configured [max_wait_time] is silently dead — same
+     shape as the shutdown drain bug, but with a wider blast
+     radius because the pool is the chokepoint for every
+     database / HTTP call.
+
+   - Lost-wakeup race: [try_acquire] returns [None], a concurrent
+     fiber [release]s and broadcasts before this fiber re-enters
+     [await], and the broadcast is lost.  The pooled connection
+     sits idle while this fiber waits for the *next* broadcast.
+
+   Switch to a short [Time_compat.sleep] poll loop.  The deadline
+   is now observed independent of any broadcast and lost-wakeups
+   cannot hold a fiber past the timeout.  Polling at 50ms is
+   wasteful in steady state, but [acquire] only polls when the
+   pool is genuinely at capacity, and the typical loop body runs
+   in a few iterations. *)
+let acquire_poll_interval = 0.05
+
 (** Acquire a connection from the pool.
 
-    Blocks if no connections are available and pool is at max capacity.
-    Raises Pool_error(Timeout) if max_wait_time is exceeded.
-*)
+    Blocks if no connections are available and pool is at max
+    capacity.  Raises [Pool_error Timeout] when [max_wait_time]
+    elapses without a connection becoming free. *)
 let acquire pool =
   let start_time = now () in
 
@@ -254,26 +284,33 @@ let acquire pool =
     )
   in
 
-  let rec wait_for_connection () =
-    let elapsed = now () -. start_time in
-    if elapsed > pool.config.max_wait_time then begin
-      update_stats pool (fun s -> { s with total_timeouts = s.total_timeouts + 1 });
-      raise (Pool_error Timeout)
-    end;
-
-    match try_acquire () with
-    | Some pooled -> pooled
-    | None ->
-      (* Wait for a connection to be released *)
-      Eio.Mutex.use_rw ~protect:true pool.mutex (fun () ->
-        pool.waiting <- pool.waiting + 1;
-        Eio.Condition.await pool.condition pool.mutex;
-        pool.waiting <- pool.waiting - 1
-      );
-      wait_for_connection ()
+  let bump_waiting d =
+    with_lock pool.mutex (fun () -> pool.waiting <- pool.waiting + d)
+  in
+  let timed_out () =
+    update_stats pool (fun s -> { s with total_timeouts = s.total_timeouts + 1 });
+    raise (Pool_error Timeout)
   in
 
-  wait_for_connection ()
+  bump_waiting 1;
+  Fun.protect
+    ~finally:(fun () -> bump_waiting (-1))
+    (fun () ->
+      let rec loop () =
+        match try_acquire () with
+        | Some pooled -> pooled
+        | None ->
+          let elapsed = now () -. start_time in
+          if elapsed >= pool.config.max_wait_time then timed_out ()
+          else begin
+            let remaining = pool.config.max_wait_time -. elapsed in
+            let s = min acquire_poll_interval (max 0.0 remaining) in
+            if s > 0.0 then Time_compat.sleep s
+            else timed_out ();
+            loop ()
+          end
+      in
+      loop ())
 
 (** Release a connection back to the pool *)
 let release pool pooled =
