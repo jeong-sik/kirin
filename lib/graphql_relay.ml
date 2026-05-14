@@ -119,6 +119,18 @@ type connection_args = {
 let get_args first after last before =
   { first; after; last; before }
 
+(** Default cap on [first] / [last] page size.
+
+    Relay best practice is to bound the requested page size at the
+    server. A resolver that forwards the client's [first]/[last]
+    unchanged exposes an in-memory traversal whose cost the attacker
+    chooses — [first: 1_000_000] against [connection_from_list] is
+    a million-element [List.filteri] plus a million [encode_cursor]
+    base64 allocations. 1000 is permissive enough that legitimate UI
+    use is unaffected (typical paginated lists request <= 50) while
+    keeping the worst case bounded. *)
+let default_max_page_size = 1000
+
 (** Create a simple connection from a list (in-memory pagination).
 
     Implements the Relay Connection Specification pagination algorithm:
@@ -129,18 +141,59 @@ let get_args first after last before =
       {- If [last] is set, keep only the last [last] edges from the slice.}
     }
 
+    @param max_page_size caps [first] and [last] independently.
+           Defaults to [default_max_page_size]. A request larger than
+           the cap is silently clamped — Relay returns a smaller page
+           than requested, which the spec allows.
+    @raise Invalid_argument when [after] / [before] decodes to
+           something that is not a valid server-issued cursor. The
+           previous code fell back to index 0 on parse failure, which
+           silently turned a malformed cursor into "page from the
+           start" or "empty page" depending on which field carried it
+           — a Relay spec violation (cursors are opaque and
+           server-issued only) and a workaround-class silent
+           permissive default. Loud failure lets the GraphQL layer
+           surface the bad argument rather than paper over it.
+
     For large datasets, use database-level pagination instead.
 *)
-let connection_from_list ?(total_count) list args =
+let connection_from_list ?(max_page_size = default_max_page_size)
+    ?(total_count) list args =
   let count = List.length list in
   let total = Option.value total_count ~default:count in
 
   let decode_cursor c =
-    try Base64.decode_exn c |> int_of_string with Failure _ | Invalid_argument _ -> 0
+    (* Each step is allowed to fail; both produce a structural reject
+       rather than a silent fallback to 0. The decoded index must
+       also be in range — a negative or far-beyond-count value cannot
+       be a valid server-issued cursor for [list]. *)
+    match Base64.decode c with
+    | Error _ ->
+      invalid_arg
+        "Relay.connection_from_list: invalid cursor (not base64)"
+    | Ok decoded ->
+      (match int_of_string_opt decoded with
+       | None ->
+         invalid_arg
+           "Relay.connection_from_list: invalid cursor (not an integer index)"
+       | Some i when i < 0 || i > count ->
+         invalid_arg
+           "Relay.connection_from_list: cursor out of range"
+       | Some i -> i)
   in
   let encode_cursor i =
     Base64.encode_string (string_of_int i)
   in
+
+  (* Clamp first/last to max_page_size before they reach the slice
+     math. Done up front so the rest of the function operates on
+     bounded values regardless of what the client requested. *)
+  let clamp_opt = function
+    | Some n when n > max_page_size -> Some max_page_size
+    | other -> other
+  in
+  let first = clamp_opt args.first in
+  let last = clamp_opt args.last in
 
   (* Step 1-2: apply after/before to narrow the index range *)
   let after_idx = match args.after with
@@ -156,13 +209,13 @@ let connection_from_list ?(total_count) list args =
 
   (* Step 3: apply first to the narrowed range *)
   let range_start, range_end =
-    match args.first with
+    match first with
     | Some f when range_start + f < range_end -> (range_start, range_start + f)
     | _ -> (range_start, range_end)
   in
   (* Step 4: apply last to the narrowed range *)
   let range_start, range_end =
-    match args.last with
+    match last with
     | Some l when range_end - l > range_start -> (range_end - l, range_end)
     | _ -> (range_start, range_end)
   in
