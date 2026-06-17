@@ -240,44 +240,66 @@ let create
 
 (** {1 Job Submission} *)
 
+(** Internal: atomic check-then-insert under the queue mutex.
+    Returns [Error `Queue_full] when capacity is reached so [submit] and
+    [try_submit] can share the same critical section without racing the
+    [is_full] check against the actual insert. *)
+let do_submit_locked ?priority ?max_retries t task =
+  let priority = Option.value ~default:Normal priority in
+  let max_retries = Option.value ~default:t.config.default_max_retries max_retries in
+  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
+    if List.length t.jobs >= t.config.max_queue_size then
+      Error `Queue_full
+    else begin
+      let id =
+        let n = t.next_id in
+        t.next_id <- n + 1;
+        Printf.sprintf "job_%d_%d" n (int_of_float (Eio.Time.now t.clock *. 1000.0))
+      in
+      let job = {
+        id;
+        task;
+        priority;
+        status = Pending;
+        retries = 0;
+        max_retries;
+        created_at = Eio.Time.now t.clock;
+        started_at = None;
+        completed_at = None;
+      } in
+      t.jobs <- insert_by_priority job t.jobs;
+      Hashtbl.replace t.results job.id Pending;
+      t.stats <- {
+        t.stats with
+        total_submitted = t.stats.total_submitted + 1;
+        queue_size = t.stats.queue_size + 1;
+      };
+      Eio.Condition.broadcast t.job_available;
+      Ok job.id
+    end
+  )
+
 (** Submit a job to the queue.
 
     @param priority Job priority (default: Normal)
     @param max_retries Maximum retry attempts (default: config value)
     @return Job ID for tracking
+    @raise Failure when the queue is at [max_queue_size]
 *)
 let submit ?priority ?max_retries t task =
-  let priority = Option.value ~default:Normal priority in
-  let max_retries = Option.value ~default:t.config.default_max_retries max_retries in
-  Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
-    if List.length t.jobs >= t.config.max_queue_size then
-      failwith "Job queue full";
-    let id =
-      let n = t.next_id in
-      t.next_id <- n + 1;
-      Printf.sprintf "job_%d_%d" n (int_of_float (Eio.Time.now t.clock *. 1000.0))
-    in
-    let job = {
-      id;
-      task;
-      priority;
-      status = Pending;
-      retries = 0;
-      max_retries;
-      created_at = Eio.Time.now t.clock;
-      started_at = None;
-      completed_at = None;
-    } in
-    t.jobs <- insert_by_priority job t.jobs;
-    Hashtbl.replace t.results job.id Pending;
-    t.stats <- {
-      t.stats with
-      total_submitted = t.stats.total_submitted + 1;
-      queue_size = t.stats.queue_size + 1;
-    };
-    Eio.Condition.broadcast t.job_available;
-    job.id
-  )
+  match do_submit_locked ?priority ?max_retries t task with
+  | Ok id -> id
+  | Error `Queue_full -> failwith "Job queue full"
+
+(** Submit a job, returning [Error `Queue_full] instead of raising when the
+    queue is at capacity. Use this in request paths and producer loops where
+    queue saturation is a recoverable condition (apply backpressure, return
+    503, drop low-priority work, etc.).
+
+    The single critical section guarantees the capacity check and the
+    insert are atomic — no TOCTOU window between [is_full] and [submit]. *)
+let try_submit ?priority ?max_retries t task =
+  do_submit_locked ?priority ?max_retries t task
 
 let submit_all ?priority ?max_retries t tasks =
   List.map (submit ?priority ?max_retries t) tasks

@@ -87,6 +87,38 @@ let test_jobs_priority () =
   check int "all queued" 3 stats.queue_size;
   J.stop queue
 
+let test_jobs_try_submit_ok () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:2 () in
+  (match J.try_submit queue (fun () -> "x") with
+   | Ok id -> check bool "got id" true (String.length id > 0)
+   | Error `Queue_full -> fail "fresh queue should not be full");
+  J.stop queue
+
+let test_jobs_try_submit_queue_full () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  (* Tiny capacity. Workers=0 ensures nothing drains during the test. *)
+  let queue = J.create ~sw ~clock ~workers:0 ~max_queue_size:2 () in
+  (match J.try_submit queue (fun () -> "a") with
+   | Ok _ -> ()
+   | Error `Queue_full -> fail "1st submit should succeed");
+  (match J.try_submit queue (fun () -> "b") with
+   | Ok _ -> ()
+   | Error `Queue_full -> fail "2nd submit should succeed");
+  (match J.try_submit queue (fun () -> "c") with
+   | Ok _ -> fail "3rd submit should be rejected"
+   | Error `Queue_full -> ());
+  J.stop queue
+
+let test_jobs_submit_still_raises_when_full () =
+  with_eio_jobs @@ fun ~sw ~clock ->
+  let queue = J.create ~sw ~clock ~workers:0 ~max_queue_size:1 () in
+  let _ = J.submit queue (fun () -> "x") in
+  (match J.submit queue (fun () -> "y") with
+   | _ -> fail "submit should raise on full queue"
+   | exception Failure _ -> ());
+  J.stop queue
+
 let tests = [
   test_case "jobs create" `Quick test_jobs_create;
   test_case "jobs submit" `Quick test_jobs_submit;
@@ -97,4 +129,8 @@ let tests = [
   test_case "jobs cancel" `Quick test_jobs_cancel;
   test_case "jobs clear" `Quick test_jobs_clear;
   test_case "jobs priority" `Quick test_jobs_priority;
+  test_case "jobs try_submit ok" `Quick test_jobs_try_submit_ok;
+  test_case "jobs try_submit queue full" `Quick test_jobs_try_submit_queue_full;
+  test_case "jobs submit still raises when full" `Quick
+    test_jobs_submit_still_raises_when_full;
 ]

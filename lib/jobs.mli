@@ -111,6 +111,17 @@ val create :
     @raise Failure if the queue is full *)
 val submit : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) -> job_id
 
+(** [try_submit ?priority ?max_retries t task] submits a job, returning
+    [Error `Queue_full] instead of raising when the queue is at capacity.
+
+    The capacity check and the enqueue happen in a single mutex critical
+    section, so there is no TOCTOU window between a separate [is_full]
+    check and the [submit] call. Use this in request paths and producer
+    loops where saturation is a recoverable condition. *)
+val try_submit :
+  ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) ->
+  (job_id, [> `Queue_full ]) result
+
 (** [submit_all ?priority ?max_retries t tasks] submits multiple jobs. *)
 val submit_all : ?priority:priority -> ?max_retries:int -> 'a t -> (unit -> 'a) list -> job_id list
 
