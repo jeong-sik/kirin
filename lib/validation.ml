@@ -96,8 +96,22 @@ let validate_number constraints path value =
 
   !errors
 
-(** Validate array *)
-let rec validate_array item_schema constraints path items =
+(** Recursion depth cap. JSON Schema validation walks the
+    schema/value tree via mutually-recursive [validate_array],
+    [validate_object], [validate_schema]. Without a cap, an
+    attacker-supplied JSON body validated against a permissive
+    schema (e.g. one with a self-referential or recursive shape)
+    overflows the stack and crashes the request fiber.
+
+    64 is well above any practical hand-written schema depth and
+    keeps the call stack bounded to a few KB of frames. *)
+let max_validation_depth = 64
+
+exception Schema_too_deep
+
+(** Validate array. [depth] is the current schema-recursion depth; passed
+    through to nested [validate_schema] calls. *)
+let rec validate_array depth item_schema constraints path items =
   let errors = ref [] in
 
   (match constraints.min_items with
@@ -127,7 +141,7 @@ let rec validate_array item_schema constraints path items =
   (* Validate each item *)
   let validated_items = List.mapi (fun i item ->
     let item_path = path @ [string_of_int i] in
-    match validate_schema item_schema item_path item with
+    match validate_schema (depth + 1) item_schema item_path item with
     | Ok v -> v
     | Error errs ->
       errors := !errors @ errs;
@@ -138,7 +152,7 @@ let rec validate_array item_schema constraints path items =
   else Error !errors
 
 (** Validate object *)
-and validate_object obj_schema path json =
+and validate_object depth obj_schema path json =
   match json with
   | `Assoc fields ->
     let errors = ref [] in
@@ -156,7 +170,7 @@ and validate_object obj_schema path json =
       let field_path = path @ [name] in
       match List.assoc_opt name obj_schema.properties with
       | Some field_schema ->
-        (match validate_schema field_schema field_path value with
+        (match validate_schema (depth + 1) field_schema field_path value with
          | Ok v -> validated := (name, v) :: !validated
          | Error errs -> errors := !errors @ errs)
       | None ->
@@ -172,8 +186,10 @@ and validate_object obj_schema path json =
   | _ ->
     Error [make_error ~path ~code:"type_error" "Expected object"]
 
-(** Main validation function *)
-and validate_schema schema path json =
+(** Main validation function. Raises [Schema_too_deep] if a recursive
+    schema/value descent exceeds [max_validation_depth]. *)
+and validate_schema depth schema path json =
+  if depth > max_validation_depth then raise Schema_too_deep;
   match schema, json with
   | Any, v -> Ok v
 
@@ -201,10 +217,10 @@ and validate_schema schema path json =
   | Null, _ -> Error [make_error ~path ~code:"type_error" "Expected null"]
 
   | Array (item_schema, constraints), `List items ->
-    validate_array item_schema constraints path items
+    validate_array depth item_schema constraints path items
   | Array _, _ -> Error [make_error ~path ~code:"type_error" "Expected array"]
 
-  | Object obj_schema, json -> validate_object obj_schema path json
+  | Object obj_schema, json -> validate_object depth obj_schema path json
 
   | Enum values, json ->
     if List.exists (fun v -> v = json) values then Ok json
@@ -215,7 +231,7 @@ and validate_schema schema path json =
     else Error [make_error ~path ~code:"const_mismatch" "Value does not match expected constant"]
 
   | OneOf schemas, json ->
-    let results = List.map (fun s -> validate_schema s path json) schemas in
+    let results = List.map (fun s -> validate_schema (depth + 1) s path json) schemas in
     let valid = List.filter Result.is_ok results in
     if List.length valid = 1 then List.hd valid
     else if List.length valid = 0 then
@@ -224,13 +240,13 @@ and validate_schema schema path json =
       Error [make_error ~path ~code:"one_of_multiple" "Value matches multiple schemas (should match exactly one)"]
 
   | AnyOf schemas, json ->
-    let results = List.map (fun s -> validate_schema s path json) schemas in
+    let results = List.map (fun s -> validate_schema (depth + 1) s path json) schemas in
     (match List.find_opt Result.is_ok results with
      | Some result -> result
      | None -> Error [make_error ~path ~code:"any_of_none" "Value does not match any of the allowed schemas"])
 
   | AllOf schemas, json ->
-    let results = List.map (fun s -> validate_schema s path json) schemas in
+    let results = List.map (fun s -> validate_schema (depth + 1) s path json) schemas in
     let errors = List.concat_map (function Ok _ -> [] | Error e -> e) results in
     if errors = [] then Ok json
     else Error errors
@@ -242,9 +258,16 @@ and validate_schema schema path json =
 
 (** {1 Public API} *)
 
-(** Validate JSON against schema *)
+(** Validate JSON against schema. Returns [Error] with a
+    [schema_too_deep] code if recursion exceeds [max_validation_depth]
+    rather than letting [Schema_too_deep] escape the module. *)
 let validate schema json =
-  validate_schema schema [] json
+  try validate_schema 0 schema [] json
+  with Schema_too_deep ->
+    Error [make_error ~code:"schema_too_deep"
+             (Printf.sprintf
+                "Validation aborted: schema/value nested deeper than %d levels"
+                max_validation_depth)]
 
 (** Validate and return typed result *)
 let validate_json schema json =
