@@ -114,7 +114,8 @@ let decode_response str =
   with
   | Eio.Cancel.Cancelled _ as e -> raise e
   | e ->
-    Failure { id = 0; code = -32700; message = Printexc.to_string e }
+    Kirin.Logger.error "qwik decode_response exception: %s" (Printexc.to_string e);
+    Failure { id = 0; code = -32700; message = "Worker response parse error" }
 
 (** {1 Health Check} *)
 
@@ -148,7 +149,8 @@ let decode_batch str =
   with
   | Eio.Cancel.Cancelled _ as e -> raise e
   | e ->
-    [Failure { id = 0; code = -32700; message = Printexc.to_string e }]
+    Kirin.Logger.error "qwik decode_batch exception: %s" (Printexc.to_string e);
+    [Failure { id = 0; code = -32700; message = "Worker batch response parse error" }]
 
 (** {1 Serialization} *)
 

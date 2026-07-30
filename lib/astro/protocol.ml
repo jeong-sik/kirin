@@ -112,7 +112,8 @@ let decode_response s =
   with
   | Eio.Cancel.Cancelled _ as e -> raise e
   | e ->
-    Error { id = 0; code = parse_error; message = Printexc.to_string e; data = None }
+    Kirin.Logger.error "astro decode_response exception: %s" (Printexc.to_string e);
+    Error { id = 0; code = parse_error; message = "Worker response parse error"; data = None }
 
 (** {1 Response Construction} *)
 
