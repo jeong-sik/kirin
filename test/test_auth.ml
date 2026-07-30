@@ -128,10 +128,87 @@ let test_session_destroy () =
   check (option string) "destroyed session returns None" None
     (Kirin_auth.Session.get store id "key")
 
+(* Session middleware: cookie-refresh decision tests.
+
+   Regression for the expired-session memory leak: a request with a
+   cookie pointing at an *evicted* session_id used to mint a fresh
+   session server-side but not refresh the cookie. The client kept
+   the dead ID, each subsequent request minted another fresh
+   session, and the in-memory store grew unboundedly. The middleware
+   now sets the cookie whenever a *new* session was created — not
+   whenever the cookie was *missing*. *)
+
+let session_make_request ?(headers=[]) path =
+  let raw = Http.Request.make ~meth:`GET ~headers:(Http.Header.of_list headers) path in
+  let body_source =
+    Eio.Flow.string_source "" |> Eio.Buf_read.of_flow ~max_size:1024
+  in
+  Kirin.Request.make ~raw ~body_source
+
+let test_session_middleware_creates_cookie_when_missing () =
+  let store = Kirin_auth.Session.create_memory_store () in
+  let handler _req = Kirin.html "ok" in
+  let mw = Kirin_auth.Session.middleware ~secure:false store in
+  let req = session_make_request "/" in
+  let resp = mw handler req in
+  check bool "set-cookie issued for new session" true
+    (Option.is_some (Kirin.Response.header "set-cookie" resp))
+
+let test_session_middleware_no_refresh_when_valid () =
+  let store = Kirin_auth.Session.create_memory_store () in
+  let id = Kirin_auth.Session.create store () in
+  let handler _req = Kirin.html "ok" in
+  let mw = Kirin_auth.Session.middleware ~secure:false store in
+  let req = session_make_request
+    ~headers:[("cookie", "kirin_session=" ^ id)] "/" in
+  let resp = mw handler req in
+  check bool "no set-cookie for valid existing session" true
+    (Option.is_none (Kirin.Response.header "set-cookie" resp))
+
+let test_session_middleware_refreshes_cookie_after_expiry () =
+  (* This is the bug. Without the fix, set-cookie is absent here and
+     the client keeps walking around with the dead id forever, each
+     request minting yet another server-side session. *)
+  let store = Kirin_auth.Session.create_memory_store () in
+  let id = Kirin_auth.Session.create store () in
+  (* Simulate eviction: same effect as TTL expiry / cleanup from the
+     middleware's perspective. *)
+  Kirin_auth.Session.destroy store id;
+  let handler _req = Kirin.html "ok" in
+  let mw = Kirin_auth.Session.middleware ~secure:false store in
+  let req = session_make_request
+    ~headers:[("cookie", "kirin_session=" ^ id)] "/" in
+  let resp = mw handler req in
+  let set_cookie = Kirin.Response.header "set-cookie" resp in
+  check bool "set-cookie issued after expiry" true (Option.is_some set_cookie);
+  (* The new cookie must not echo the evicted id — otherwise the
+     client would still be pinned to a session that no longer exists. *)
+  match set_cookie with
+  | Some v ->
+    let needle = "kirin_session=" ^ id in
+    let len_v = String.length v in
+    let len_n = String.length needle in
+    let echoes_old =
+      let rec scan i =
+        if i + len_n > len_v then false
+        else if String.sub v i len_n = needle then true
+        else scan (i + 1)
+      in
+      scan 0
+    in
+    check bool "new cookie value differs from evicted id" false echoes_old
+  | None -> ()
+
 let session_tests = [
   test_case "create" `Quick (with_eio test_session_create);
   test_case "set/get" `Quick (with_eio test_session_set_get);
   test_case "destroy" `Quick (with_eio test_session_destroy);
+  test_case "middleware creates cookie when missing" `Quick
+    (with_eio test_session_middleware_creates_cookie_when_missing);
+  test_case "middleware no-refresh on valid session" `Quick
+    (with_eio test_session_middleware_no_refresh_when_valid);
+  test_case "middleware refreshes cookie after expiry" `Quick
+    (with_eio test_session_middleware_refreshes_cookie_after_expiry);
 ]
 
 (** {1 CSRF Tests} *)

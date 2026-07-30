@@ -203,24 +203,47 @@ let clear_session_cookie ?(cookie_name = default_cookie_name) ?(path = "/") resp
 
 (** {1 Middleware} *)
 
-(** Session middleware - ensures session exists *)
+(** Session middleware - ensures session exists.
+
+    The set-cookie decision used to be gated on whether the *cookie*
+    was present on the request, not on whether a *new session* was
+    created. That left a server-side memory leak: when the cookie was
+    present but its session_id had expired (or been evicted by
+    [cleanup]), [store.get] returned None, the middleware fell
+    through to [create store ()], and a fresh session was created —
+    but the response arm saw "cookie was present" and did *not* call
+    [set_session_cookie]. The client kept walking around with the
+    dead ID, every subsequent request minted yet another fresh
+    session, and the in-memory store grew unboundedly. An attacker
+    holding any expired ID could pin server memory at request rate.
+
+    Track [is_new] explicitly so the cookie refresh follows the
+    "session was just created" event, not the "cookie was missing"
+    event. The two conditions used to coincide before expiry was
+    possible. *)
 let middleware ?(cookie_name = default_cookie_name) ?(create_if_missing = true)
     ?(secure = true) store =
   fun handler req ->
-    let session_id =
-      match get_id_from_request ~cookie_name req with
-      | Some id when Option.is_some (store.get id) -> id
-      | _ when create_if_missing -> create store ()
-      | _ -> ""
+    let cookie_id = get_id_from_request ~cookie_name req in
+    let existing_id =
+      match cookie_id with
+      | Some id when Option.is_some (store.get id) -> Some id
+      | _ -> None
+    in
+    let session_id, is_new =
+      match existing_id with
+      | Some id -> id, false
+      | None when create_if_missing -> create store (), true
+      | None -> "", false
     in
     if session_id = "" then
       handler req
     else
       let resp = handler req in
-      (* Set cookie if new session was created *)
-      match get_id_from_request ~cookie_name req with
-      | Some _ -> resp
-      | None -> set_session_cookie ~cookie_name ~secure session_id resp
+      if is_new then
+        set_session_cookie ~cookie_name ~secure session_id resp
+      else
+        resp
 
 (** Get session ID from request cookie *)
 let get_id ?(cookie_name = default_cookie_name) req =
