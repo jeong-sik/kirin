@@ -273,6 +273,24 @@ let locale_management_tests = [
     let msg = I18n.translate i18n ~locale:"en-US" "greeting" in
     Alcotest.(check string) "fallback used" "Hello" msg
   );
+
+  "set fallback rejects self-loop", `Quick, (fun () ->
+    let i18n = I18n.create () |> I18n.add_translations "en" [] in
+    Alcotest.check_raises "self loop"
+      (Invalid_argument "I18n.set_fallback: locale \"en\" cannot fall back to itself")
+      (fun () -> ignore (I18n.set_fallback ~locale:"en" ~fallback:"en" i18n))
+  );
+
+  "set fallback rejects multi-step cycle", `Quick, (fun () ->
+    let i18n = I18n.create ()
+      |> I18n.add_translations "en" []
+      |> I18n.add_translations "ko" []
+      |> I18n.set_fallback ~locale:"ko" ~fallback:"en" in
+    Alcotest.check_raises "ko -> en already; en -> ko would cycle"
+      (Invalid_argument
+         "I18n.set_fallback: \"en\" -> \"ko\" would create a fallback cycle")
+      (fun () -> ignore (I18n.set_fallback ~locale:"en" ~fallback:"ko" i18n))
+  );
 ]
 
 let formatting_tests = [
