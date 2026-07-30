@@ -53,10 +53,23 @@ val authorization_url :
   ?state:string ->
   ?extra_params:(string * string) list -> provider -> string * string
 val parse_tokens : Yojson__Safe.t -> tokens
+(** @raise Yojson.Safe.Util.Type_error on missing/non-string [access_token]. *)
+
+val try_parse_tokens : Yojson__Safe.t -> (tokens, string) result
+(** Result-returning variant. Use in any path where the provider response
+    is not statically guaranteed to be well-formed. *)
+
 val exchange_code_params : provider -> string -> (string * string) list
 val token_request_body : provider -> string -> string
 val refresh_token_params : provider -> string -> (string * string) list
+
 val parse_user_info : provider -> Yojson__Safe.t -> user_info
+(** @raise Yojson.Safe.Util.Type_error on missing/wrong-typed [id]
+    (or non-int [id] for GitHub). *)
+
+val try_parse_user_info : provider -> Yojson__Safe.t -> (user_info, string) result
+(** Result-returning variant. *)
+
 val generate_code_verifier : unit -> string
 val generate_code_challenge : String.t -> string
 val authorization_url_pkce :

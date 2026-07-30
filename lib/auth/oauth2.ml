@@ -134,7 +134,13 @@ let authorization_url ?(scope = []) ?(state = generate_state ())
 
 (** {1 Token Exchange} *)
 
-(** Parse token response *)
+(** Parse token response.
+
+    OAuth2 provider responses are external input — a misbehaving provider
+    or an error response in an unexpected shape can leave [access_token]
+    missing or wrong-typed, which would [Yojson.Safe.Util.Type_error] out
+    of [to_string]. Use [try_parse_tokens] in any caller that wants a
+    structured failure instead of an escaping exception. *)
 let parse_tokens json =
   let open Yojson.Safe.Util in
   {
@@ -145,6 +151,12 @@ let parse_tokens json =
     scope = json |> member "scope" |> to_string_option;
     id_token = json |> member "id_token" |> to_string_option;
   }
+
+(** Result-returning variant of [parse_tokens]. Returns [Error msg] for
+    a missing/non-string [access_token] or any other unexpected JSON shape. *)
+let try_parse_tokens json =
+  try Ok (parse_tokens json)
+  with Yojson.Safe.Util.Type_error (msg, _) -> Error msg
 
 (** Exchange authorization code for tokens (blocking, needs HTTP client) *)
 let exchange_code_params provider code =
@@ -207,6 +219,13 @@ let parse_user_info (provider : provider) json =
          json |> member "picture" |> to_string_option)
   in
   { id; email; name = user_name; picture; raw = json }
+
+(** Result-returning variant of [parse_user_info]. Provider responses with
+    a missing/non-string [id] (or non-int for GitHub) become [Error msg]
+    instead of escaping as [Type_error]. *)
+let try_parse_user_info provider json =
+  try Ok (parse_user_info provider json)
+  with Yojson.Safe.Util.Type_error (msg, _) -> Error msg
 
 (** {1 PKCE Support} *)
 
