@@ -127,15 +127,24 @@ let join_room server ~room_id ~peer_id =
   Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
     Hashtbl.replace room.peers peer_id ())
 
+(** Take the server.rooms Hashtbl lookup under server.mutex so it cannot
+    race a concurrent [get_or_create_room] insertion. Return the room
+    handle (which has its own mutex) outside the server-lock so the
+    server critical section stays short — subsequent room.peers access
+    uses room.mutex, no nested locking. *)
+let find_room server room_id =
+  Eio.Mutex.use_ro server.mutex (fun () ->
+    Hashtbl.find_opt server.rooms room_id)
+
 let leave_room server ~room_id ~peer_id =
-  match Hashtbl.find_opt server.rooms room_id with
+  match find_room server room_id with
   | None -> ()
   | Some room ->
     Eio.Mutex.use_rw ~protect:true room.mutex (fun () ->
       Hashtbl.remove room.peers peer_id)
 
 let get_peers server room_id =
-  match Hashtbl.find_opt server.rooms room_id with
+  match find_room server room_id with
   | None -> []
   | Some room ->
     Eio.Mutex.use_ro room.mutex (fun () ->
