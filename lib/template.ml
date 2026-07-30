@@ -232,15 +232,37 @@ type partials = string -> string option
 (** No partials *)
 let no_partials _ = None
 
-(** Render AST to string *)
-let rec render_nodes ?(partials = no_partials) ctx nodes =
+(** Maximum partial-include nesting depth.
+
+    Partials are resolved by a caller-supplied [partials] function, so
+    a cyclic resolver — [fun "a" -> Some "{{> b}}" | "b" -> Some
+    "{{> a}}"] — recurses unboundedly through [render -> Partial ->
+    render -> Partial -> ...] and blows the OCaml call stack, taking
+    the process down even though the template author and the resolver
+    author each thought their piece was fine in isolation.
+
+    The cap is on *partial* nesting only; ordinary section nesting
+    (if / unless / each) is bounded by the static template's own size
+    and is not influenced by the resolver, so charging those would
+    slow normal renders without buying any safety. 32 levels is well
+    past anything a hand-authored layout needs (typical stacks: page
+    -> layout -> sidebar -> snippet, ~4 deep) but stops cycles cold.
+    Hitting the cap logs a warning and emits the empty string for the
+    offending expansion site — the surrounding template still
+    renders, so the caller sees a visible gap rather than a 500. *)
+let max_partial_depth = 32
+
+(* The render trio is mutually recursive and threads a [depth] counter
+   that increments only when crossing a partial boundary. The
+   public-facing entries below start at depth 0. *)
+let rec render_nodes_d ~partials ~depth ctx nodes =
   let buf = Buffer.create 256 in
   List.iter (fun node ->
-    Buffer.add_string buf (render_node ~partials ctx node)
+    Buffer.add_string buf (render_node_d ~partials ~depth ctx node)
   ) nodes;
   Buffer.contents buf
 
-and render_node ?(partials = no_partials) ctx = function
+and render_node_d ~partials ~depth ctx = function
   | Text s -> s
   | Comment -> ""
   | Var (key, escape) ->
@@ -252,15 +274,15 @@ and render_node ?(partials = no_partials) ctx = function
   | If (key, then_nodes, else_nodes) ->
     let value = lookup ctx key in
     if Option.map is_truthy value = Some true then
-      render_nodes ~partials ctx then_nodes
+      render_nodes_d ~partials ~depth ctx then_nodes
     else
       (match else_nodes with
-       | Some nodes -> render_nodes ~partials ctx nodes
+       | Some nodes -> render_nodes_d ~partials ~depth ctx nodes
        | None -> "")
   | Unless (key, nodes) ->
     let value = lookup ctx key in
     if Option.map is_truthy value <> Some true then
-      render_nodes ~partials ctx nodes
+      render_nodes_d ~partials ~depth ctx nodes
     else
       ""
   | Each (key, nodes) ->
@@ -280,19 +302,35 @@ and render_node ?(partials = no_partials) ctx = function
                      ("@first", `Bool (i = 0));
                      ("@last", `Bool (i = List.length items - 1))]
          in
-         render_nodes ~partials item_ctx nodes
+         render_nodes_d ~partials ~depth item_ctx nodes
        ) items in
        String.concat "" results
      | _ -> "")
   | Partial name ->
-    (match partials name with
-     | Some partial_template -> render ~partials ctx partial_template
-     | None -> "")
+    if depth >= max_partial_depth then begin
+      Printf.eprintf
+        "[template] partial expansion depth %d exceeded — cyclic include? \
+         aborting at %S\n%!"
+        max_partial_depth name;
+      ""
+    end else
+      (match partials name with
+       | Some partial_template ->
+         let inner = parse partial_template in
+         render_nodes_d ~partials ~depth:(depth + 1) ctx inner
+       | None -> "")
+
+(** Render AST to string *)
+let render_nodes ?(partials = no_partials) ctx nodes =
+  render_nodes_d ~partials ~depth:0 ctx nodes
+
+let render_node ?(partials = no_partials) ctx node =
+  render_node_d ~partials ~depth:0 ctx node
 
 (** Main render function *)
-and render ?(partials = no_partials) ctx template =
+let render ?(partials = no_partials) ctx template =
   let nodes = parse template in
-  render_nodes ~partials ctx nodes
+  render_nodes_d ~partials ~depth:0 ctx nodes
 
 (** Render template to response *)
 let html ?(partials = no_partials) ctx template =
