@@ -24,13 +24,20 @@ let hash_length = 32
 
 (** {1 Helpers} *)
 
-(** Generate random salt using SHA256 of timestamp + random *)
+(** Generate a cryptographically random salt.
+
+    Previous implementation hashed [Unix.gettimeofday] + [Random.int] +
+    [Unix.getpid] — all predictable inputs. [Random] is Mersenne Twister
+    (not a CSPRNG) and only seeded by [Random.self_init], which mixes
+    in weak entropy. The result was a salt with limited effective
+    entropy that an attacker could approximate by guessing the second
+    and PID, enabling precomputed rainbow-table attacks against the
+    password column even though the values *looked* random.
+
+    [Secure_random.random_string] reads directly from [/dev/urandom],
+    which is the kernel CSPRNG with full system-entropy backing. *)
 let generate_salt () =
-  let now = Unix.gettimeofday () in
-  let rand = Random.int 1_000_000_000 in
-  let entropy = Printf.sprintf "salt-%.6f-%d-%d" now rand (Unix.getpid ()) in
-  let hash = Digestif.SHA256.digest_string entropy in
-  String.sub (Digestif.SHA256.to_raw_string hash) 0 salt_length
+  Secure_random.random_string salt_length
 
 (** Bytes to hex string *)
 let bytes_to_hex bytes =
