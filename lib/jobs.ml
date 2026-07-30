@@ -284,12 +284,17 @@ let submit_all ?priority ?max_retries t tasks =
 
 (** {1 Job Status} *)
 
-let status t job_id =
+let try_status t job_id =
   Eio.Mutex.use_ro t.mutex (fun () ->
     match Hashtbl.find_opt t.results job_id with
-    | Some s -> s
-    | None -> failwith ("Unknown job: " ^ job_id)
+    | Some s -> Ok s
+    | None -> Error `Unknown_job
   )
+
+let status t job_id =
+  match try_status t job_id with
+  | Ok s -> s
+  | Error `Unknown_job -> failwith ("Unknown job: " ^ job_id)
 
 let is_complete t job_id =
   match status t job_id with
@@ -297,8 +302,9 @@ let is_complete t job_id =
   | Pending | Running -> false
 
 (** Wait for a job to complete. Suspends the current fiber without blocking
-    OS threads. *)
-let wait t job_id =
+    OS threads. Returns [Error `Unknown_job] without entering the wait loop
+    if the id is not known — callers cannot deadlock on a typo. *)
+let try_wait t job_id =
   let rec loop () =
     let st =
       Eio.Mutex.use_ro t.mutex (fun () ->
@@ -306,15 +312,20 @@ let wait t job_id =
       )
     in
     match st with
-    | Some (Completed _ as s) | Some (Failed _ as s) -> s
+    | Some (Completed _ as s) | Some (Failed _ as s) -> Ok s
     | Some Pending | Some Running ->
       Eio.Mutex.use_rw ~protect:true t.mutex (fun () ->
         Eio.Condition.await t.job_completed t.mutex
       );
       loop ()
-    | None -> failwith ("Unknown job: " ^ job_id)
+    | None -> Error `Unknown_job
   in
   loop ()
+
+let wait t job_id =
+  match try_wait t job_id with
+  | Ok s -> s
+  | Error `Unknown_job -> failwith ("Unknown job: " ^ job_id)
 
 (** {1 Queue Control} *)
 
