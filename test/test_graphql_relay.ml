@@ -239,9 +239,107 @@ let backward_tests = [
   "empty list backward", `Quick, test_empty_list_backward;
 ]
 
+(* Cursor-parse and page-cap regression tests.
+
+   Two distinct hardening paths:
+
+   1. Malformed cursors now raise Invalid_argument instead of silently
+      decoding to index 0. Each malformed shape is pinned individually
+      so a future "let's be lenient" refactor trips a specific test
+      rather than re-opening the silent-permissive-default class.
+
+   2. [first] / [last] above the cap are clamped before the slice
+      math, so an attacker-chosen [first: huge] cannot drive an
+      O(huge) in-memory traversal. *)
+
+let invalid_arg_raised f =
+  try let _ = f () in false
+  with Invalid_argument _ -> true
+
+let test_relay_after_cursor_garbage_rejected () =
+  let users = ["a"; "b"; "c"] in
+  let args =
+    Kirin.Graphql_relay.get_args None (Some "***not-base64***") None None
+  in
+  Alcotest.(check bool) "garbage after-cursor is rejected" true
+    (invalid_arg_raised (fun () ->
+       Kirin.Graphql_relay.connection_from_list users args))
+
+let test_relay_before_cursor_non_integer_rejected () =
+  let users = ["a"; "b"; "c"] in
+  (* "abcd" base64-decodes fine, but the result is not an integer
+     index. Old code: silently to 0. New code: rejected. *)
+  let args = Kirin.Graphql_relay.get_args None None None (Some "abcd") in
+  Alcotest.(check bool) "non-integer before-cursor is rejected" true
+    (invalid_arg_raised (fun () ->
+       Kirin.Graphql_relay.connection_from_list users args))
+
+let test_relay_cursor_out_of_range_rejected () =
+  let users = ["a"; "b"; "c"] in
+  (* A server-issued cursor for a 3-element list can only encode
+     0..3 (3 is end-exclusive). Anything else is malformed. *)
+  let huge = Base64.encode_string (string_of_int 9_999_999) in
+  let args = Kirin.Graphql_relay.get_args None (Some huge) None None in
+  Alcotest.(check bool) "out-of-range cursor is rejected" true
+    (invalid_arg_raised (fun () ->
+       Kirin.Graphql_relay.connection_from_list users args))
+
+let test_relay_negative_cursor_rejected () =
+  let users = ["a"; "b"; "c"] in
+  let negative = Base64.encode_string "-1" in
+  let args = Kirin.Graphql_relay.get_args None (Some negative) None None in
+  Alcotest.(check bool) "negative cursor is rejected" true
+    (invalid_arg_raised (fun () ->
+       Kirin.Graphql_relay.connection_from_list users args))
+
+let test_relay_first_clamped_to_cap () =
+  (* Request a million against the default 1000 cap. With a small
+     list (5 elements) the post-clamp page is bounded by list size,
+     which gives a fast, observable signal that the clamp ran before
+     the slice math — if the cap never fires, the million-allocation
+     path either OOMs or stack-overflows under alcotest. *)
+  let users = ["a"; "b"; "c"; "d"; "e"] in
+  let args =
+    Kirin.Graphql_relay.get_args (Some 1_000_000) None None None
+  in
+  let conn = Kirin.Graphql_relay.connection_from_list users args in
+  Alcotest.(check int) "edges count bounded by list size after cap"
+    5 (List.length conn.edges)
+
+let test_relay_first_explicit_cap () =
+  (* Explicit lower max_page_size proves the parameter is wired,
+     not just the default. *)
+  let users = ["a"; "b"; "c"; "d"; "e"] in
+  let args = Kirin.Graphql_relay.get_args (Some 100) None None None in
+  let conn =
+    Kirin.Graphql_relay.connection_from_list ~max_page_size:2 users args
+  in
+  Alcotest.(check int) "explicit max_page_size clamps first to 2"
+    2 (List.length conn.edges)
+
+let test_relay_last_explicit_cap () =
+  let users = ["a"; "b"; "c"; "d"; "e"] in
+  let args = Kirin.Graphql_relay.get_args None None (Some 100) None in
+  let conn =
+    Kirin.Graphql_relay.connection_from_list ~max_page_size:2 users args
+  in
+  Alcotest.(check int) "explicit max_page_size clamps last to 2"
+    2 (List.length conn.edges)
+
+let cursor_and_cap_tests = [
+  "garbage after-cursor rejected",       `Quick, test_relay_after_cursor_garbage_rejected;
+  "non-integer before-cursor rejected",  `Quick, test_relay_before_cursor_non_integer_rejected;
+  "out-of-range cursor rejected",        `Quick, test_relay_cursor_out_of_range_rejected;
+  "negative cursor rejected",            `Quick, test_relay_negative_cursor_rejected;
+  "first clamped to default cap",        `Quick, test_relay_first_clamped_to_cap;
+  "explicit max_page_size clamps first", `Quick, test_relay_first_explicit_cap;
+  "explicit max_page_size clamps last",  `Quick, test_relay_last_explicit_cap;
+]
+
 let () =
   run "GraphQL Relay" [
     "Global ID", global_id_tests;
     "Connection", connection_tests;
     "Backward Pagination", backward_tests;
+    "Cursor + Page Cap", cursor_and_cap_tests;
   ]

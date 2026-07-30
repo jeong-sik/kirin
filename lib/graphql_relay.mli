@@ -76,10 +76,25 @@ val get_args :
   int option -> string option -> int option -> string option ->
   connection_args
 
-(** [connection_from_list ?total_count list args] creates a connection
-    from an in-memory list with cursor-based pagination.
-    For large datasets, use database-level pagination instead. *)
+(** Default cap on [first] / [last] used by [connection_from_list]
+    (1000). Exposed so callers building their own paginators can
+    reuse the same baseline. *)
+val default_max_page_size : int
+
+(** [connection_from_list ?max_page_size ?total_count list args]
+    creates a connection from an in-memory list with cursor-based
+    pagination. For large datasets, use database-level pagination
+    instead.
+
+    @param max_page_size caps [args.first] and [args.last]
+           independently. Defaults to [default_max_page_size]. A
+           request above the cap is silently clamped.
+    @raise Invalid_argument when [args.after] or [args.before]
+           decodes to something that is not a valid server-issued
+           cursor (not base64, not an integer, or out of range for
+           [list]). *)
 val connection_from_list :
+  ?max_page_size:int ->
   ?total_count:int ->
   'node list ->
   connection_args ->
