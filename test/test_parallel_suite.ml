@@ -65,6 +65,30 @@ let test_parallel_recommended () =
   let n = P.recommended_domains () in
   check bool "at least 1 domain" true (n >= 1)
 
+let test_parallel_pool_try_map_after_shutdown () =
+  let pool = P.Pool.create ~size:2 () in
+  (match P.Pool.try_map pool (fun x -> x + 1) [1; 2; 3] with
+   | Ok rs -> check (list int) "active try_map" [2; 3; 4] rs
+   | Error `Pool_shutdown -> fail "active pool should not return Pool_shutdown");
+  P.Pool.shutdown pool;
+  (match P.Pool.try_map pool (fun x -> x + 1) [1; 2; 3] with
+   | Ok _ -> fail "shutdown pool should not return Ok"
+   | Error `Pool_shutdown -> ())
+
+let test_parallel_pool_try_iter_after_shutdown () =
+  let pool = P.Pool.create ~size:2 () in
+  P.Pool.shutdown pool;
+  (match P.Pool.try_iter pool (fun _ -> ()) [1; 2; 3] with
+   | Ok () -> fail "shutdown pool should not return Ok"
+   | Error `Pool_shutdown -> ())
+
+let test_parallel_pool_try_reduce_after_shutdown () =
+  let pool = P.Pool.create ~size:2 () in
+  P.Pool.shutdown pool;
+  (match P.Pool.try_reduce pool (+) 0 [1; 2; 3] with
+   | Ok _ -> fail "shutdown pool should not return Ok"
+   | Error `Pool_shutdown -> ())
+
 let tests = [
   test_case "parallel map" `Quick test_parallel_map;
   test_case "parallel iter" `Quick test_parallel_iter;
@@ -75,4 +99,10 @@ let tests = [
   test_case "parallel pool" `Quick test_parallel_pool;
   test_case "parallel chunk_list" `Quick test_parallel_chunk_list;
   test_case "parallel recommended" `Quick test_parallel_recommended;
+  test_case "pool try_map after shutdown" `Quick
+    test_parallel_pool_try_map_after_shutdown;
+  test_case "pool try_iter after shutdown" `Quick
+    test_parallel_pool_try_iter_after_shutdown;
+  test_case "pool try_reduce after shutdown" `Quick
+    test_parallel_pool_try_reduce_after_shutdown;
 ]

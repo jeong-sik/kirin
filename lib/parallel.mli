@@ -90,6 +90,23 @@ module Pool : sig
 
   (** [shutdown pool] shuts down the pool. *)
   val shutdown : t -> unit
+
+  (** {2 Result-returning variants}
+
+      The [try_*] family returns [Error `Pool_shutdown] instead of raising
+      [Failure] when the pool is no longer active. Use these in any code
+      path that should survive a pool shutdown — request handlers,
+      background loops, supervisor restarts. *)
+
+  val try_map :
+    t -> ('a -> 'b) -> 'a list -> ('b list, [> `Pool_shutdown ]) Stdlib.result
+
+  val try_iter :
+    t -> ('a -> unit) -> 'a list -> (unit, [> `Pool_shutdown ]) Stdlib.result
+
+  val try_reduce :
+    t -> ('a -> 'a -> 'a) -> 'a -> 'a list ->
+    ('a, [> `Pool_shutdown ]) Stdlib.result
 end
 
 (** {1 Utilities} *)
