@@ -176,24 +176,42 @@ let parse_request body : graphql_request option =
     | None -> None
   with Yojson.Json_error _ -> None
 
-(** Convert Yojson.Safe.t to Graphql_parser.const_value *)
-let rec yojson_to_const_value : Yojson.Safe.t -> Graphql_parser.const_value = function
-  | `Null -> `Null
-  | `Bool b -> `Bool b
-  | `Int i -> `Int i
-  | `Float f -> `Float f
-  | `String s -> `String s
-  | `List items -> `List (List.map yojson_to_const_value items)
-  | `Assoc fields -> `Assoc (List.map (fun (k, v) -> (k, yojson_to_const_value v)) fields)
-  | `Intlit s ->
-    (* Attempt exact int conversion; fall back to float for large integers
-       that exceed OCaml's native int range rather than silently mapping to 0. *)
-    (match int_of_string_opt s with
-     | Some i -> `Int i
-     | None ->
-       match float_of_string_opt s with
-       | Some f -> `Float f
-       | None -> `String s)
+(** Maximum recursion depth for JSON↔GraphQL conversion. GraphQL variables
+    don't legitimately nest beyond 10-20; cap at 64 leaves headroom for
+    unusual but plausible schemas while preventing a deeply-nested
+    attacker-supplied [variables] payload from blowing the call stack. *)
+let max_value_depth = 64
+
+(** Convert Yojson.Safe.t to Graphql_parser.const_value.
+    @raise Yojson.Json_error if the value nests deeper than [max_value_depth].
+           The existing [parse_request] / [batched_handler] try/with arms
+           catch this and turn it into a 400 with an "Invalid JSON" message. *)
+let yojson_to_const_value (v : Yojson.Safe.t) : Graphql_parser.const_value =
+  let rec walk depth value =
+    if depth > max_value_depth then
+      raise (Yojson.Json_error
+               (Printf.sprintf "variables nested deeper than %d levels"
+                  max_value_depth));
+    match value with
+    | `Null -> `Null
+    | `Bool b -> `Bool b
+    | `Int i -> `Int i
+    | `Float f -> `Float f
+    | `String s -> `String s
+    | `List items -> `List (List.map (walk (depth + 1)) items)
+    | `Assoc fields ->
+      `Assoc (List.map (fun (k, v) -> (k, walk (depth + 1) v)) fields)
+    | `Intlit s ->
+      (* Attempt exact int conversion; fall back to float for large integers
+         that exceed OCaml's native int range rather than silently mapping to 0. *)
+      (match int_of_string_opt s with
+       | Some i -> `Int i
+       | None ->
+         match float_of_string_opt s with
+         | Some f -> `Float f
+         | None -> `String s)
+  in
+  walk 0 v
 
 (** Convert variables to Graphql format *)
 let convert_variables (vars : Yojson.Safe.t option) : (string * Graphql_parser.const_value) list =
@@ -203,15 +221,27 @@ let convert_variables (vars : Yojson.Safe.t option) : (string * Graphql_parser.c
     List.map (fun (key, value) -> (key, yojson_to_const_value value)) pairs
   | Some _ -> []
 
-(** Convert Yojson.Basic.t to Yojson.Safe.t for response *)
-let rec basic_to_safe : Yojson.Basic.t -> Yojson.Safe.t = function
-  | `Null -> `Null
-  | `Bool b -> `Bool b
-  | `Int i -> `Int i
-  | `Float f -> `Float f
-  | `String s -> `String s
-  | `List items -> `List (List.map basic_to_safe items)
-  | `Assoc fields -> `Assoc (List.map (fun (k, v) -> (k, basic_to_safe v)) fields)
+(** Convert Yojson.Basic.t to Yojson.Safe.t for response. Same depth cap
+    as [yojson_to_const_value] — exceptionally deep server output is more
+    likely a schema bug than an attack, but the recursion would still
+    blow the stack. *)
+let basic_to_safe (v : Yojson.Basic.t) : Yojson.Safe.t =
+  let rec walk depth value =
+    if depth > max_value_depth then
+      raise (Yojson.Json_error
+               (Printf.sprintf "response nested deeper than %d levels"
+                  max_value_depth));
+    match value with
+    | `Null -> `Null
+    | `Bool b -> `Bool b
+    | `Int i -> `Int i
+    | `Float f -> `Float f
+    | `String s -> `String s
+    | `List items -> `List (List.map (walk (depth + 1)) items)
+    | `Assoc fields ->
+      `Assoc (List.map (fun (k, v) -> (k, walk (depth + 1) v)) fields)
+  in
+  walk 0 v
 
 (** Execute a GraphQL query
 
