@@ -143,3 +143,11 @@
 (test
  (name test_cookie)
  (libraries kirin alcotest eio eio_main))
+
+(test
+ (name test_cache_qcheck)
+ (libraries kirin alcotest qcheck-core qcheck-alcotest eio_main unix))
+
+(test
+ (name test_pool_qcheck)
+ (libraries kirin alcotest qcheck-core qcheck-alcotest eio_main unix))
