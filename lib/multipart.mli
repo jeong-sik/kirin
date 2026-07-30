@@ -25,14 +25,24 @@ type t
     from a Content-Type header value. *)
 val extract_boundary : string -> string option
 
-(** [parse ~boundary body] parses a multipart body using the given
-    boundary delimiter. *)
-val parse : boundary:string -> string -> t
+(** [parse ?max_parts ~boundary body] parses a multipart body using
+    the given boundary delimiter.
+
+    @param max_parts caps the number of boundary-delimited segments
+           accepted (default 1000). A body that fits under the server's
+           [max_body_size] can still contain hundreds of thousands of
+           empty boundary delimiters; without the cap each becomes a
+           list cell and an O(N) [find_substring] re-scan — a DoS
+           vector. The default is sized for browser-driven forms; set
+           higher only for trusted callers. *)
+val parse : ?max_parts:int -> boundary:string -> string -> t
 
 (** [from_request req] parses multipart form data from a request.
     Returns [None] if the Content-Type is not multipart/form-data
-    or the boundary cannot be extracted. *)
-val from_request : Request.t -> t option
+    or the boundary cannot be extracted.
+
+    @param max_parts forwarded to [parse]. *)
+val from_request : ?max_parts:int -> Request.t -> t option
 
 (** {1 Accessors} *)
 
