@@ -17,5 +17,8 @@ val create_server :
   ?version:string ->
   ?log_level:Logging.log_level ->
   ?log_handler:(Logging.log_message -> unit) -> unit -> Server.t
-val create_client : Transport.t -> Client.t
+val create_client :
+  ?clock:float Eio.Time.clock_ty Eio.Resource.t ->
+  ?timeout:float ->
+  Transport.t -> Client.t
 val version : string

@@ -6,12 +6,23 @@
 
 (** {1 Types} *)
 
-(** MCP Client *)
+(** MCP Client.
+
+    [default_clock] and [default_timeout] are forwarded to
+    [Transport.send_request] on every request. When both are set, the HTTP
+    transport bounds the [Promise.await] with [Eio.Time.with_timeout] and
+    deregisters the pending entry on expiry (raises [Transport_error]).
+
+    Omitting either keeps the historical unbounded await — clients running
+    outside a cancelling [Eio.Switch] should always pass both at construction
+    time. *)
 type t = {
   transport : Transport.t;
   mutable server_capabilities : Protocol.server_capabilities option;
   mutable server_info : Protocol.implementation_info option;
   mutable request_id : int;
+  default_clock : float Eio.Time.clock_ty Eio.Resource.t option;
+  default_timeout : float option;
 }
 
 (** Client error *)
@@ -19,13 +30,20 @@ exception Client_error of string
 
 (** {1 Constructor} *)
 
-(** Create a client connected to a transport *)
-let create transport =
+(** Create a client connected to a transport.
+
+    Pass [?clock] + [?timeout] to install a per-client deadline that applies
+    to every HTTP request the client makes. Per-call override is not yet
+    exposed at the helper layer — use [Transport.send_request] directly or
+    wrap the call in [Eio.Time.with_timeout] for fine-grained control. *)
+let create ?clock ?timeout transport =
   {
     transport;
     server_capabilities = None;
     server_info = None;
     request_id = 0;
+    default_clock = clock;
+    default_timeout = timeout;
   }
 
 (** {1 Request ID Generation} *)
@@ -38,11 +56,21 @@ let next_id t =
 
 (** {1 Low-Level Communication} *)
 
-(** Send a request and wait for response *)
+(** Send a request and wait for response.
+
+    Forwards the client's [default_clock]/[default_timeout] to
+    [Transport.send_request]. When both are set on the client and the
+    transport is HTTP, the await is bounded — on expiry a
+    [Transport.Transport_error] is raised (not [Client_error]). *)
 let send_request t ~method_ ?params () =
   let id = next_id t in
   let request = Jsonrpc.make_request ~id ~method_ ?params () in
-  let response = Transport.send_request t.transport request in
+  let response =
+    Transport.send_request
+      ?clock:t.default_clock
+      ?timeout:t.default_timeout
+      t.transport request
+  in
   match response.error with
   | Some err ->
     raise (Client_error (Printf.sprintf "RPC error %d: %s"
