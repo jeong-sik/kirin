@@ -87,7 +87,8 @@ let make_cohttp_handler ~clock ~config _sw (handler : Router.handler) =
 
     let resp =
       try handle_with_timeout ()
-      with Eio.Buf_read.Buffer_limit_exceeded ->
+      with
+      | Eio.Buf_read.Buffer_limit_exceeded ->
         Logger.warn "Request body too large (limit %d bytes): %s %s"
           config.max_body_size
           (Http.Method.to_string (Cohttp.Request.meth request))
@@ -96,6 +97,24 @@ let make_cohttp_handler ~clock ~config _sw (handler : Router.handler) =
           ~status:`Request_entity_too_large
           ~headers:(Cohttp.Header.of_list [("content-type", "application/json")])
           (`String (Printf.sprintf "{\"error\":\"Request body too large\",\"max_bytes\":%d}" config.max_body_size))
+      | Eio.Cancel.Cancelled _ as exn ->
+        (* Structured-concurrency control flow — never absorb a Cancelled
+           into a 500 or the parent switch can't unwind. *)
+        raise exn
+      | exn ->
+        (* Any other handler exception becomes a generic 500. Without this
+           catch, cohttp-eio's default error path emits whatever the
+           underlying transport chooses (potentially Printexc.to_string of
+           the exception, which can leak internal details — file paths,
+           stack frames, secret values in error messages). *)
+        Logger.error "Unhandled handler exception on %s %s: %s"
+          (Http.Method.to_string (Cohttp.Request.meth request))
+          (Cohttp.Request.resource request)
+          (Printexc.to_string exn);
+        Response.make
+          ~status:`Internal_server_error
+          ~headers:(Cohttp.Header.of_list [("content-type", "application/json")])
+          (`String "{\"error\":\"Internal server error\"}")
     in
 
     (* Convert to cohttp-eio response *)
