@@ -143,3 +143,8 @@
 (test
  (name test_cookie)
  (libraries kirin alcotest eio eio_main))
+
+(test
+ (name test_keepalive_body)
+ (modules test_keepalive_body)
+ (libraries kirin alcotest eio eio_main unix))
